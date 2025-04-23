@@ -1,7 +1,7 @@
 import { TOOL_VALUES } from "@/constants"
 
 export type ImageEditorToolsAction = {
-  type: keyof typeof TOOL_VALUES | "reset"
+  type: keyof typeof TOOL_VALUES | "reset" | "zoom"
   payload: number
 }
 
@@ -27,6 +27,9 @@ export type TransformToolsState = {
 
 export type FinetuneToolsState = {
   blur: number
+  blurType: number
+  blurDirection: number
+  blurCenter: number
   brightness: number
   contrast: number
   exposure: number
@@ -56,8 +59,8 @@ export const initialState: ImageEditorToolsState = {
   currentIndex: 0,
   rotate: TOOL_VALUES.rotate.defaultValue,
   scale: TOOL_VALUES.scale.defaultValue,
-  flipVertical: false,
-  flipHorizontal: false,
+  flipVertical: TOOL_VALUES.flipVertical.defaultValue,
+  flipHorizontal: TOOL_VALUES.flipHorizontal.defaultValue,
   brightness: TOOL_VALUES.brightness.defaultValue,
   contrast: TOOL_VALUES.contrast.defaultValue,
   hue: TOOL_VALUES.hue.defaultValue,
@@ -67,6 +70,9 @@ export const initialState: ImageEditorToolsState = {
   gamma: TOOL_VALUES.gamma.defaultValue,
   vintage: TOOL_VALUES.vintage.defaultValue,
   blur: TOOL_VALUES.blur.defaultValue,
+  blurType: TOOL_VALUES.blurType.defaultValue,
+  blurDirection: TOOL_VALUES.blurDirection.defaultValue,
+  blurCenter: TOOL_VALUES.blurCenter.defaultValue,
   invert: TOOL_VALUES.invert.defaultValue,
   sepia: TOOL_VALUES.sepia.defaultValue,
   grayscale: TOOL_VALUES.grayscale.defaultValue,
@@ -75,7 +81,7 @@ export const initialState: ImageEditorToolsState = {
   vibrance: TOOL_VALUES.vibrance.defaultValue,
   noise: TOOL_VALUES.noise.defaultValue,
   grain: TOOL_VALUES.grain.defaultValue,
-  zoom: 50,
+  zoom: TOOL_VALUES.zoom.defaultValue,
 }
 
 export function imageEditorToolsReducer(
@@ -83,7 +89,10 @@ export function imageEditorToolsReducer(
   action: ImageEditorToolsActions
 ): ImageEditorToolsState {
   if (action.type === "reset") {
-    return initialState
+    return {
+      ...initialState,
+      zoom: state.zoom,
+    }
   }
 
   const nextState = {

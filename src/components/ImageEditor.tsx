@@ -8,16 +8,13 @@ import { ImageEditorSidebar } from "./ImageEditorSidebar"
 import type { TOOL_VALUES } from "@/constants"
 import { getEditorTools } from "./ImageEditorTools"
 import {
-  ImageEditorToolsActions,
   imageEditorToolsReducer,
   initialState,
-  type ImageEditorToolsAction,
-  type ImageEditorToolsState,
+  type ImageEditorToolsActions,
 } from "./image-editor.state"
 import { Button } from "./ui/button"
 import { cn } from "@/lib/utils"
 import { PlusIcon, MinusIcon } from "lucide-react"
-import { FilterPresets } from "./FilterPresets"
 
 export interface ImageEditorProps extends React.ComponentProps<"div"> {
   image: File
@@ -159,6 +156,7 @@ export function ImageEditor({ image, ...props }: ImageEditorProps) {
         value={value}
         onSelectedToolChange={handleSelectedToolChange}
         className='col-start-2 row-start-3 mx-auto'
+        toolsValues={toolsValues}
       />
 
       <ZoomControls

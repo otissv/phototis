@@ -13,8 +13,15 @@ import {
   RotateCcwSquare,
   RotateCwSquare,
   Sun,
+  ImageIcon,
+  Square,
+  MoveHorizontal,
+  CircleDot,
 } from "lucide-react"
-import type { ImageEditorToolsActions } from "./image-editor.state"
+import type {
+  ImageEditorToolsActions,
+  ImageEditorToolsState,
+} from "./image-editor.state"
 import SlidingTrack from "./sliding-track"
 import { FilterPresets } from "./FilterPresets"
 
@@ -24,8 +31,10 @@ export interface ImageEditorFooterProps
   selectedTool: keyof typeof TOOL_VALUES
   dispatch: React.Dispatch<ImageEditorToolsActions>
   onSelectedToolChange: (tool: keyof typeof TOOL_VALUES) => void
-  onChange: (value: number) => void
+  onChange?: (value: number) => void
   operator?: string
+  toolsValues?: ImageEditorToolsState
+  image?: File
 }
 
 function onValueChange({
@@ -78,6 +87,7 @@ export function FinetuneFooter({
   value,
   onSelectedToolChange,
   dispatch,
+  toolsValues,
   ...props
 }: ImageEditorFooterProps) {
   const handleOnChange = (value: number) => {
@@ -102,10 +112,90 @@ export function FinetuneFooter({
         return dispatch({ type: "sharpen", payload: value })
       case "blur":
         return dispatch({ type: "blur", payload: value })
-
+      case "blurType":
+        return dispatch({ type: "blurType", payload: value })
+      case "blurDirection":
+        return dispatch({ type: "blurDirection", payload: value })
+      case "blurCenter":
+        return dispatch({ type: "blurCenter", payload: value })
       default:
         return () => {}
     }
+  }
+
+  const renderBlurControls = () => {
+    if (selectedTool === "blur") {
+      return (
+        <div className='flex flex-col gap-4 mt-4'>
+          <div className='flex gap-2 justify-center'>
+            <ImageEditorButton
+              variant='ghost'
+              onClick={() => dispatch({ type: "blurType", payload: 0 })}
+              isActive={toolsValues?.blurType === 0}
+            >
+              <ImageIcon size={16} className='mr-1' />
+              Gaussian
+            </ImageEditorButton>
+            <ImageEditorButton
+              variant='ghost'
+              onClick={() => dispatch({ type: "blurType", payload: 1 })}
+              isActive={toolsValues?.blurType === 1}
+            >
+              <Square size={16} className='mr-1' />
+              Box
+            </ImageEditorButton>
+            <ImageEditorButton
+              variant='ghost'
+              onClick={() => dispatch({ type: "blurType", payload: 2 })}
+              isActive={toolsValues?.blurType === 2}
+            >
+              <MoveHorizontal size={16} className='mr-1' />
+              Motion
+            </ImageEditorButton>
+            <ImageEditorButton
+              variant='ghost'
+              onClick={() => dispatch({ type: "blurType", payload: 3 })}
+              isActive={toolsValues?.blurType === 3}
+            >
+              <CircleDot size={16} className='mr-1' />
+              Radial
+            </ImageEditorButton>
+          </div>
+
+          {toolsValues?.blurType === 2 && (
+            <div className='flex flex-col gap-2'>
+              <span className='text-sm text-muted-foreground'>Direction</span>
+              <SlidingTrack
+                min={TOOL_VALUES.blurDirection.min}
+                max={TOOL_VALUES.blurDirection.max}
+                step={TOOL_VALUES.blurDirection.step}
+                defaultValue={toolsValues?.blurDirection || 0}
+                operator='°'
+                onValueChange={(value) =>
+                  dispatch({ type: "blurDirection", payload: value })
+                }
+              />
+            </div>
+          )}
+
+          {toolsValues?.blurType === 3 && (
+            <div className='flex flex-col gap-2'>
+              <span className='text-sm text-muted-foreground'>Center</span>
+              <SlidingTrack
+                min={TOOL_VALUES.blurCenter.min}
+                max={TOOL_VALUES.blurCenter.max}
+                step={TOOL_VALUES.blurCenter.step}
+                defaultValue={toolsValues?.blurCenter || 0.5}
+                onValueChange={(value) =>
+                  dispatch({ type: "blurCenter", payload: value })
+                }
+              />
+            </div>
+          )}
+        </div>
+      )
+    }
+    return null
   }
 
   return (
@@ -115,7 +205,7 @@ export function FinetuneFooter({
       onChange={handleOnChange}
       {...props}
     >
-      <ul className='flex gap-2 mt-10  justify-center'>
+      <ul className='flex gap-2 mt-10 justify-center'>
         <li>
           <ImageEditorButton
             variant='ghost'
@@ -185,7 +275,7 @@ export function FinetuneFooter({
             variant='ghost'
             onClick={() => onSelectedToolChange("vintage")}
           >
-            vintage
+            Vintage
           </ImageEditorButton>
         </li>
         {/* <li>
@@ -207,6 +297,7 @@ export function FinetuneFooter({
           </ImageEditorButton>
         </li>
       </ul>
+      {renderBlurControls()}
     </ImageEditorFooter>
   )
 }
@@ -255,16 +346,6 @@ export function FilterFooter({
       {...props}
     >
       <ul className='flex gap-2 mt-10  justify-center'>
-        <li>
-          <ImageEditorButton
-            isActive={selectedTool === "filters"}
-            variant='ghost'
-            onClick={() => onSelectedToolChange("filters")}
-          >
-            Filters
-          </ImageEditorButton>
-        </li>
-
         <li>
           <ImageEditorButton
             isActive={selectedTool === "tint"}
@@ -349,28 +430,32 @@ export function TransformHeader({
   dispatch,
   ...props
 }: TransformHeaderProps) {
-  const [rotatePosition, setRotatePosition] = React.useState(0)
-
   const handleRotateLeft = () => {
-    if (rotatePosition === 0) {
-      setRotatePosition(1)
-      dispatch({ type: "rotate", payload: 90 })
-    } else if (rotatePosition === 1) {
-      setRotatePosition(2)
-      dispatch({ type: "rotate", payload: 180 })
-    } else if (rotatePosition === 2) {
-      setRotatePosition(3)
-      dispatch({ type: "rotate", payload: 270 })
-    } else if (rotatePosition === 3) {
-      setRotatePosition(0)
-      dispatch({ type: "rotate", payload: 0 })
-    }
+    const currentRotation =
+      typeof toolsValues.rotate === "number" ? toolsValues.rotate : 0
+    // Invert rotation direction if image is flipped horizontally
+    const rotationDirection = toolsValues.flipHorizontal ? -90 : 90
+    const newRotation = (currentRotation + rotationDirection + 360) % 360
+    dispatch({ type: "rotate", payload: newRotation })
   }
 
   const handleFlipHorizontal = () => {
+    const isCurrentlyFlipped = toolsValues.flipHorizontal
+    const currentRotation =
+      typeof toolsValues.rotate === "number" ? toolsValues.rotate : 0
+
+    // When flipping horizontally, we need to invert the rotation
+    const newRotation = (360 - currentRotation) % 360
+
     dispatch({
       type: "flipHorizontal",
-      payload: toolsValues.flipHorizontal ? 0 : 1,
+      payload: isCurrentlyFlipped ? 0 : 1,
+    })
+
+    // Update rotation to match the flipped state
+    dispatch({
+      type: "rotate",
+      payload: newRotation,
     })
   }
 
@@ -401,16 +486,6 @@ export function TransformHeader({
           Flip Vertical
         </ImageEditorButton>
       </li>
-      <li>
-        <ImageEditorButton
-          isActive={false}
-          variant='ghost'
-          onClick={() => onSelectedToolChange("crop")}
-        >
-          <Crop size={16} className='mr-1' />
-          Crop
-        </ImageEditorButton>
-      </li>
     </ul>
   )
 }
@@ -421,15 +496,18 @@ export function TransformFooter({
   value,
   dispatch,
   image,
+  toolsValues,
   ...props
 }: ImageEditorFooterProps) {
   const handleOnChange = (value: number) => {
     if (selectedTool === "rotate") {
       dispatch({ type: "rotate", payload: value })
-    } else {
+    } else if (selectedTool === "scale") {
       dispatch({ type: "scale", payload: value })
     }
   }
+
+  console.log(value)
 
   return (
     <ImageEditorFooter
@@ -475,9 +553,7 @@ export function ImageEditorFooter({
   return (
     <div {...props} className={cn("w-full max-w-lg", className)}>
       <div className='m-4'>
-        <label className='sr-only' htmlFor={`transform-slider-${selectedTool}`}>
-          {selectedTool}
-        </label>
+        <span className='sr-only'>{selectedTool}</span>
 
         <SlidingTrack
           min={TOOL_VALUES[selectedTool].min}
@@ -487,7 +563,7 @@ export function ImageEditorFooter({
           operator={operator}
           onValueChange={onValueChange({
             selectedTool,
-            onChange: onChange,
+            onChange: onChange || (() => {}),
           })}
         />
       </div>

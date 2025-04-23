@@ -1,8 +1,8 @@
 "use client"
 
 import { cn } from "@/lib/utils"
-import { ChevronUp, Dot, Minus } from "lucide-react"
-import { motion, useMotionValue } from "motion/react"
+import { ChevronUp, Dot } from "lucide-react"
+import { motion, useMotionValue, transform } from "motion/react"
 import { useEffect, useRef, useState } from "react"
 
 const SLIDER_WIDTH = 500 // pixels
@@ -14,6 +14,8 @@ interface SlidingTrackProps {
   defaultValue?: number
   operator?: string
   onValueChange?: (value: number) => void
+  range?: [number, number] | [string, string]
+  label?: () => React.ReactNode
 }
 
 export default function SlidingTrack({
@@ -99,7 +101,6 @@ export default function SlidingTrack({
         </div>
         <div className='text-xs flex flex-col items-center gap-0'>
           <ChevronUp className='size-3' />
-          {value}
           {operator}
         </div>
       </div>

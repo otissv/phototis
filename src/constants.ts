@@ -18,14 +18,14 @@ export const TOOL_VALUES = {
     defaultValue: 100,
   },
   exposure: {
-    min: -90,
+    min: -100,
     max: 100,
     step: 1,
     defaultValue: 0,
   },
   hue: {
-    min: -100,
-    max: 100,
+    min: -180,
+    max: 180,
     step: 1,
     defaultValue: 0,
   },
@@ -37,7 +37,7 @@ export const TOOL_VALUES = {
   },
   gamma: {
     min: 0.1,
-    max: 4,
+    max: 3.0,
     step: 0.01,
     defaultValue: 1,
   },
@@ -49,15 +49,33 @@ export const TOOL_VALUES = {
   },
   blur: {
     min: 0,
-    max: 50,
+    max: 200,
     step: 1,
     defaultValue: 0,
   },
-  invert: {
-    min: 50,
-    max: 200,
+  blurType: {
+    min: 0,
+    max: 3,
     step: 1,
-    defaultValue: 5,
+    defaultValue: 0,
+  },
+  blurDirection: {
+    min: 0,
+    max: 360,
+    step: 1,
+    defaultValue: 0,
+  },
+  blurCenter: {
+    min: 0,
+    max: 1,
+    step: 0.01,
+    defaultValue: 0.5,
+  },
+  invert: {
+    min: 0,
+    max: 100,
+    step: 1,
+    defaultValue: 0,
   },
   sepia: {
     min: 0,
@@ -72,37 +90,35 @@ export const TOOL_VALUES = {
     defaultValue: 0,
   },
   tint: {
-    min: 0,
+    min: -100,
     max: 100,
     step: 1,
     defaultValue: 0,
   },
   vibrance: {
-    min: 0,
+    min: -100,
     max: 100,
     step: 1,
     defaultValue: 0,
   },
   noise: {
     min: 0,
-    max: 100,
+    max: 50,
     step: 1,
     defaultValue: 0,
   },
   grain: {
     min: 0,
+    max: 50,
+    step: 1,
+    defaultValue: 0,
+  },
+  sharpen: {
+    min: 0,
     max: 100,
     step: 1,
     defaultValue: 0,
   },
-
-  sharpen: {
-    min: 0,
-    max: 25,
-    step: 0.1,
-    defaultValue: 0,
-  },
-
   rotate: {
     min: 0,
     max: 360,
@@ -116,16 +132,13 @@ export const TOOL_VALUES = {
     defaultValue: 1,
   },
   flipVertical: {
-    min: 0,
-    max: 1,
-    step: 1,
-    defaultValue: 0,
+    defaultValue: false,
   },
   flipHorizontal: {
-    min: 0,
-    max: 1,
-    step: 1,
-    defaultValue: 0,
+    defaultValue: false,
+  },
+  zoom: {
+    defaultValue: 50,
   },
 }
 
