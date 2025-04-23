@@ -1,0 +1,158 @@
+export const TOOL_VALUES = {
+  brightness: {
+    min: 0,
+    max: 200,
+    step: 1,
+    defaultValue: 100,
+  },
+  contrast: {
+    min: 0,
+    max: 200,
+    step: 1,
+    defaultValue: 100,
+  },
+  saturation: {
+    min: 0,
+    max: 200,
+    step: 1,
+    defaultValue: 100,
+  },
+  exposure: {
+    min: -90,
+    max: 100,
+    step: 1,
+    defaultValue: 0,
+  },
+  hue: {
+    min: -100,
+    max: 100,
+    step: 1,
+    defaultValue: 0,
+  },
+  temperature: {
+    min: -100,
+    max: 100,
+    step: 1,
+    defaultValue: 0,
+  },
+  gamma: {
+    min: 0.1,
+    max: 4,
+    step: 0.01,
+    defaultValue: 1,
+  },
+  vintage: {
+    min: 0,
+    max: 100,
+    step: 1,
+    defaultValue: 0,
+  },
+  blur: {
+    min: 0,
+    max: 50,
+    step: 1,
+    defaultValue: 0,
+  },
+  invert: {
+    min: 50,
+    max: 200,
+    step: 1,
+    defaultValue: 5,
+  },
+  sepia: {
+    min: 0,
+    max: 100,
+    step: 1,
+    defaultValue: 0,
+  },
+  grayscale: {
+    min: 0,
+    max: 100,
+    step: 1,
+    defaultValue: 0,
+  },
+  tint: {
+    min: 0,
+    max: 100,
+    step: 1,
+    defaultValue: 0,
+  },
+  vibrance: {
+    min: 0,
+    max: 100,
+    step: 1,
+    defaultValue: 0,
+  },
+  noise: {
+    min: 0,
+    max: 100,
+    step: 1,
+    defaultValue: 0,
+  },
+  grain: {
+    min: 0,
+    max: 100,
+    step: 1,
+    defaultValue: 0,
+  },
+
+  sharpen: {
+    min: 0,
+    max: 25,
+    step: 0.1,
+    defaultValue: 0,
+  },
+
+  rotate: {
+    min: 0,
+    max: 360,
+    step: 1,
+    defaultValue: 0,
+  },
+  scale: {
+    min: 1,
+    max: 100,
+    step: 1,
+    defaultValue: 1,
+  },
+  flipVertical: {
+    min: 0,
+    max: 1,
+    step: 1,
+    defaultValue: 0,
+  },
+  flipHorizontal: {
+    min: 0,
+    max: 1,
+    step: 1,
+    defaultValue: 0,
+  },
+}
+
+export const SIDEBAR_TOOLS = {
+  transform: ["rotate", "scale"],
+  finetune: [
+    "brightness",
+    "contrast",
+    "hue",
+    "saturation",
+    "exposure",
+    "temperature",
+    "gamma",
+    "blur",
+    "sharpen",
+    "vintage",
+  ],
+  filter: [
+    "tint",
+    "vibrance",
+    "sharpen",
+    "blur",
+    "noise",
+    "grain",
+    "sharpen",
+    "invert",
+    "sepia",
+    "grayscale",
+  ],
+}
