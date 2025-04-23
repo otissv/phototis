@@ -1,18 +1,18 @@
 export const TOOL_VALUES = {
   brightness: {
-    min: 0,
+    min: 1,
     max: 200,
     step: 1,
     defaultValue: 100,
   },
   contrast: {
-    min: 0,
+    min: 1,
     max: 200,
     step: 1,
     defaultValue: 100,
   },
   saturation: {
-    min: 0,
+    min: 1,
     max: 200,
     step: 1,
     defaultValue: 100,

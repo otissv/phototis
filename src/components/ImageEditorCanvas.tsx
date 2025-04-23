@@ -91,35 +91,35 @@ const fragmentShaderSource = `
     vec2 uv = v_texCoord;
     vec4 color = texture2D(u_image, uv);
     
-    // Apply brightness
-    color.rgb *= u_brightness / 100.0;
+    // Apply brightness (normalized to 0-2 range)
+    color.rgb *= (u_brightness / 100.0);
     
-    // Apply contrast
-    color.rgb = (color.rgb - 0.5) * (u_contrast / 100.0) + 0.5;
+    // Apply contrast (normalized to 0-2 range)
+    color.rgb = ((color.rgb - 0.5) * (u_contrast / 100.0)) + 0.5;
     
     // Convert to HSV for hue and saturation adjustments
     vec3 hsv = rgb2hsv(color.rgb);
     
-    // Apply hue rotation
-    hsv.x = mod(hsv.x + u_hue / 360.0, 1.0);
+    // Apply hue rotation (normalized to 0-1 range)
+    hsv.x = mod(hsv.x + (u_hue / 360.0), 1.0);
     
-    // Apply saturation
-    hsv.y *= u_saturation / 100.0;
+    // Apply saturation (normalized to 0-2 range)
+    hsv.y *= (u_saturation / 100.0);
     
     // Convert back to RGB
     color.rgb = hsv2rgb(hsv);
     
-    // Apply exposure
+    // Apply exposure (normalized to -1 to 1 range)
     color.rgb *= pow(2.0, u_exposure / 100.0);
     
-    // Apply temperature
+    // Apply temperature (normalized to -1 to 1 range)
     color.rgb += vec3(u_temperature / 100.0, 0.0, -u_temperature / 100.0);
     
-    // Apply gamma
+    // Apply gamma (normalized to 0.1-3.0 range)
     color.rgb = pow(color.rgb, vec3(1.0 / u_gamma));
     
     // Apply vintage effect (vignette)
-    float vignette = 1.0 - length(uv - 0.5) * u_vintage / 100.0;
+    float vignette = 1.0 - length(uv - 0.5) * (u_vintage / 100.0);
     color.rgb *= vignette;
     
     // Apply blur with different types
@@ -130,16 +130,16 @@ const fragmentShaderSource = `
       float total = 0.0;
       
       if (u_blurType < 0.5) { // Gaussian Blur
-        for (float x = -16.0; x <= 16.0; x++) {
-          for (float y = -16.0; y <= 16.0; y++) {
-            float weight = exp(-(x*x + y*y) / (16.0 * blurAmount * blurAmount));
+        for (float x = -8.0; x <= 8.0; x++) {
+          for (float y = -8.0; y <= 8.0; y++) {
+            float weight = exp(-(x*x + y*y) / (8.0 * blurAmount * blurAmount));
             blurColor += texture2D(u_image, uv + vec2(x, y) * blurSize) * weight;
             total += weight;
           }
         }
       } else if (u_blurType < 1.5) { // Box Blur
-        for (float x = -12.0; x <= 12.0; x++) {
-          for (float y = -12.0; y <= 12.0; y++) {
+        for (float x = -6.0; x <= 6.0; x++) {
+          for (float y = -6.0; y <= 6.0; y++) {
             blurColor += texture2D(u_image, uv + vec2(x, y) * blurSize);
             total += 1.0;
           }
@@ -147,30 +147,30 @@ const fragmentShaderSource = `
       } else if (u_blurType < 2.5) { // Motion Blur
         float angle = u_blurDirection * 3.14159 / 180.0;
         vec2 direction = vec2(cos(angle), sin(angle));
-        for (float i = -24.0; i <= 24.0; i++) {
-          blurColor += texture2D(u_image, uv + direction * i * blurSize * 6.0);
+        for (float i = -12.0; i <= 12.0; i++) {
+          blurColor += texture2D(u_image, uv + direction * i * blurSize * 3.0);
           total += 1.0;
         }
       } else { // Radial Blur
         vec2 center = vec2(0.5 + u_blurCenter * 0.5, 0.5);
         vec2 dir = uv - center;
         float dist = length(dir);
-        for (float i = -24.0; i <= 24.0; i++) {
-          vec2 offset = dir * i * blurSize * 6.0;
+        for (float i = -12.0; i <= 12.0; i++) {
+          vec2 offset = dir * i * blurSize * 3.0;
           blurColor += texture2D(u_image, uv + offset);
           total += 1.0;
         }
       }
       
-      color = mix(color, blurColor / total, blurAmount * 4.0);
+      color = mix(color, blurColor / total, blurAmount * 2.0);
     }
     
-    // Apply invert
+    // Apply invert (normalized to 0-1 range)
     if (u_invert > 0.0) {
       color.rgb = mix(color.rgb, 1.0 - color.rgb, u_invert / 100.0);
     }
     
-    // Apply sepia
+    // Apply sepia (normalized to 0-1 range)
     if (u_sepia > 0.0) {
       vec3 sepia = vec3(
         dot(color.rgb, vec3(0.393, 0.769, 0.189)),
@@ -180,18 +180,18 @@ const fragmentShaderSource = `
       color.rgb = mix(color.rgb, sepia, u_sepia / 100.0);
     }
     
-    // Apply grayscale
+    // Apply grayscale (normalized to 0-1 range)
     if (u_grayscale > 0.0) {
       float gray = dot(color.rgb, vec3(0.299, 0.587, 0.114));
       color.rgb = mix(color.rgb, vec3(gray), u_grayscale / 100.0);
     }
     
-    // Apply tint
+    // Apply tint (normalized to -1 to 1 range)
     if (u_tint > 0.0) {
       color.rgb += vec3(u_tint / 100.0, 0.0, 0.0);
     }
     
-    // Apply vibrance
+    // Apply vibrance (normalized to -1 to 1 range)
     if (u_vibrance > 0.0) {
       float maxChannel = max(max(color.r, color.g), color.b);
       float minChannel = min(min(color.r, color.g), color.b);
@@ -199,15 +199,15 @@ const fragmentShaderSource = `
       color.rgb = mix(color.rgb, color.rgb * (1.0 + u_vibrance / 100.0), saturation);
     }
     
-    // Apply noise
+    // Apply noise (normalized to 0-0.5 range)
     if (u_noise > 0.0) {
-      float noise = random(uv) * u_noise / 100.0;
+      float noise = random(uv) * (u_noise / 100.0);
       color.rgb += noise;
     }
     
-    // Apply grain
+    // Apply grain (normalized to 0-0.5 range)
     if (u_grain > 0.0) {
-      float grain = random(uv * 100.0) * u_grain / 100.0;
+      float grain = random(uv * 100.0) * (u_grain / 100.0);
       color.rgb += grain;
     }
     
@@ -242,6 +242,7 @@ export function ImageEditorCanvas({
 
   // Initialize WebGL context and shaders
   React.useEffect(() => {
+    // 1. Initial Checks
     if (!canvasRef.current || !imageUrl) return
 
     const canvas = canvasRef.current
@@ -250,10 +251,9 @@ export function ImageEditorCanvas({
       console.error("WebGL2 not supported")
       return
     }
-
     glRef.current = gl
 
-    // Create and compile shaders
+    // 2. Shader Creation and Compilation
     const vertexShader = gl.createShader(gl.VERTEX_SHADER)
     if (!vertexShader) return
     gl.shaderSource(vertexShader, vertexShaderSource)
@@ -264,58 +264,60 @@ export function ImageEditorCanvas({
     gl.shaderSource(fragmentShader, fragmentShaderSource)
     gl.compileShader(fragmentShader)
 
-    // Create program
+    // 3. WebGL Program Creation
     const program = gl.createProgram()
     if (!program) return
     gl.attachShader(program, vertexShader)
     gl.attachShader(program, fragmentShader)
     gl.linkProgram(program)
 
+    // Program linking check
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
       console.error("Failed to link program:", gl.getProgramInfoLog(program))
       return
     }
-
     programRef.current = program
 
-    // Create buffers
+    // 4. Buffer Creation and Setup
+    // Position Buffer
     const positionBuffer = gl.createBuffer()
     if (!positionBuffer) return
     gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer)
-    // Keep the original position coordinates
     gl.bufferData(
       gl.ARRAY_BUFFER,
-      new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]),
+      new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), // Full screen quad
       gl.STATIC_DRAW
     )
     positionBufferRef.current = positionBuffer
 
+    // Texture Coordinate Buffer
     const texCoordBuffer = gl.createBuffer()
     if (!texCoordBuffer) return
     gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer)
-    // Keep the original texture coordinates
     gl.bufferData(
       gl.ARRAY_BUFFER,
-      new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]),
+      new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), // UV coordinates
       gl.STATIC_DRAW
     )
     texCoordBufferRef.current = texCoordBuffer
 
-    // Create texture
+    // 5. Texture Creation and Setup
     const texture = gl.createTexture()
     if (!texture) return
     gl.bindTexture(gl.TEXTURE_2D, texture)
+
+    // Set texture parameters
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
     textureRef.current = texture
 
-    // Load image
+    // 6. Image Loading and Canvas Setup
     const img = new Image()
     img.crossOrigin = "anonymous"
     img.onload = () => {
-      // Set canvas dimensions
+      // Calculate dimensions while maintaining aspect ratio
       const aspectRatio = img.width / img.height
       const maxWidth = 800
       const maxHeight = 600
@@ -323,32 +325,34 @@ export function ImageEditorCanvas({
       let width = img.width
       let height = img.height
 
+      // Resize logic
       if (width > maxWidth) {
         width = maxWidth
         height = width / aspectRatio
       }
-
       if (height > maxHeight) {
         height = maxHeight
         width = height * aspectRatio
       }
 
+      // Set canvas dimensions
       canvas.width = width
       canvas.height = height
       gl.viewport(0, 0, width, height)
 
-      // Add this line to flip the texture right-side up
+      // Flip texture vertically
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true)
 
-      // Upload image to texture
+      // Upload image to GPU
       gl.bindTexture(gl.TEXTURE_2D, texture)
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img)
 
-      // Draw
+      // Initial render
       draw()
     }
     img.src = imageUrl
 
+    // 7. Cleanup Function
     return () => {
       gl.deleteProgram(program)
       gl.deleteShader(vertexShader)
@@ -367,32 +371,32 @@ export function ImageEditorCanvas({
 
     gl.useProgram(program)
 
-    // Set uniforms
+    // Set uniforms with proper normalization
     const uniforms = {
-      u_brightness: toolsValues.brightness,
-      u_contrast: toolsValues.contrast,
-      u_saturation: toolsValues.saturation,
-      u_hue: toolsValues.hue,
-      u_exposure: toolsValues.exposure,
-      u_temperature: toolsValues.temperature,
-      u_gamma: toolsValues.gamma,
-      u_vintage: toolsValues.vintage,
-      u_blur: toolsValues.blur,
-      u_blurType: toolsValues.blurType,
-      u_blurDirection: toolsValues.blurDirection,
-      u_blurCenter: toolsValues.blurCenter,
-      u_invert: toolsValues.invert,
-      u_sepia: toolsValues.sepia,
-      u_grayscale: toolsValues.grayscale,
-      u_tint: toolsValues.tint,
-      u_vibrance: toolsValues.vibrance,
-      u_noise: toolsValues.noise,
-      u_grain: toolsValues.grain,
+      u_brightness: toolsValues.brightness || 100,
+      u_contrast: toolsValues.contrast || 100,
+      u_saturation: toolsValues.saturation || 100,
+      u_hue: toolsValues.hue || 0,
+      u_exposure: toolsValues.exposure || 0,
+      u_temperature: toolsValues.temperature || 0,
+      u_gamma: toolsValues.gamma || 1,
+      u_vintage: toolsValues.vintage || 0,
+      u_blur: toolsValues.blur || 0,
+      u_blurType: toolsValues.blurType || 0,
+      u_blurDirection: toolsValues.blurDirection || 0,
+      u_blurCenter: toolsValues.blurCenter || 0.5,
+      u_invert: toolsValues.invert || 0,
+      u_sepia: toolsValues.sepia || 0,
+      u_grayscale: toolsValues.grayscale || 0,
+      u_tint: toolsValues.tint || 0,
+      u_vibrance: toolsValues.vibrance || 0,
+      u_noise: toolsValues.noise || 0,
+      u_grain: toolsValues.grain || 0,
       u_resolution: [gl.canvas.width, gl.canvas.height],
-      u_rotate: toolsValues.rotate,
-      u_scale: toolsValues.scale,
-      u_flipHorizontal: toolsValues.flipHorizontal,
-      u_flipVertical: toolsValues.flipVertical,
+      u_rotate: toolsValues.rotate || 0,
+      u_scale: toolsValues.scale || 1,
+      u_flipHorizontal: toolsValues.flipHorizontal || false,
+      u_flipVertical: toolsValues.flipVertical || false,
     }
 
     Object.entries(uniforms).forEach(([name, value]) => {

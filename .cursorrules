@@ -3,7 +3,7 @@ You are a Senior Full-Stack Developer and Expert specializing in modern web tech
 
 ## Supported Technologies
 Primary: React 19, Next.js 15, TypeScript, Node.js, 
-UI: TailwindCSS v4.1, Shadcn, React DnD
+UI: TailwindCSS v4.1, Shadcn, React DnD, motion/react
 Utils: Zod, React Dropzone, biome, pnpm
 
 ## File Patterns

@@ -35,6 +35,7 @@ export interface ImageEditorFooterProps
   operator?: string
   toolsValues?: ImageEditorToolsState
   image?: File
+  label?: (value: number, operator: string) => React.ReactNode
 }
 
 function onValueChange({
@@ -507,14 +508,18 @@ export function TransformFooter({
     }
   }
 
-  console.log(value)
-
   return (
     <ImageEditorFooter
       value={value}
       selectedTool={selectedTool}
       onChange={handleOnChange}
       operator={selectedTool === "rotate" ? "°" : "%"}
+      label={(value, operator) => {
+        if (selectedTool === "rotate") {
+          return `${Math.round(value)} ${operator}`
+        }
+        return `${Math.round(value)} ${operator}`
+      }}
       {...props}
     >
       <ul className='flex gap-2 mt-10  justify-center'>
@@ -548,6 +553,7 @@ export function ImageEditorFooter({
   children,
   onChange,
   operator,
+  label,
   ...props
 }: Omit<ImageEditorFooterProps, "dispatch" | "onSelectedToolChange">) {
   return (
@@ -565,6 +571,7 @@ export function ImageEditorFooter({
             selectedTool,
             onChange: onChange || (() => {}),
           })}
+          label={label}
         />
       </div>
 
