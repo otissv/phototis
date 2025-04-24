@@ -2,16 +2,13 @@
 
 import * as React from "react"
 import { type SIDEBAR_TOOLS, TOOL_VALUES } from "@/constants"
-import { cn } from "@/lib/utils"
+import { cn, onToolControlValueChange } from "@/lib/utils"
 
 import { ImageEditorButton } from "./button-image-editor"
 import {
-  Crop,
   FlipHorizontal2,
   FlipVertical2,
-  RotateCcwSquare,
   RotateCwSquare,
-  Sun,
   ImageIcon,
   Square,
   MoveHorizontal,
@@ -22,48 +19,25 @@ import type {
   ImageEditorToolsState,
 } from "./state.image-editor"
 import SlidingTrack from "../sliding-track"
-
-import { Button } from "../ui/button"
-
-export interface ImageEditorHeaderProps
-  extends Omit<React.ComponentProps<"ul">, "onChange" | "onProgress"> {
-  selectedTool: keyof typeof TOOL_VALUES
-  toolsValues: typeof TOOL_VALUES
-  dispatch: React.Dispatch<ImageEditorToolsActions>
-  onSelectedToolChange: (tool: keyof typeof TOOL_VALUES) => void
-  onProgress?: (progress: number) => void
-}
-
-export interface ImageEditorFooterProps
-  extends Omit<React.ComponentProps<"div">, "onChange" | "onProgress"> {
-  image?: File
-  operator?: string
-  selectedTool: keyof typeof TOOL_VALUES
-  toolsValues?: ImageEditorToolsState
-  value: number
-  label?: (value: number, operator: string) => React.ReactNode
-  dispatch: React.Dispatch<ImageEditorToolsActions>
-  onSelectedToolChange: (tool: keyof typeof TOOL_VALUES) => void
-  onChange?: (value: number) => void
-  onProgress?: (progress: number) => void
-  progress?: number
-}
-
-function onValueChange({
-  selectedTool,
-  onChange,
-}: {
-  selectedTool: keyof typeof TOOL_VALUES
-  onChange: (value: number) => void
-}) {
-  return (value: number) => {
-    const nextValue =
-      value < TOOL_VALUES[selectedTool].min
-        ? TOOL_VALUES[selectedTool].min
-        : value
-    onChange(nextValue)
-  }
-}
+import type {
+  ImageEditorHeaderProps,
+  ImageEditorFooterProps,
+} from "./tools/utils.tools"
+import { RotationButton, RotationControls } from "./tools/rotation.tools"
+import { ScaleButton, ScaleControls } from "./tools/scale.tools"
+import { ResizeButton, ResizeControls } from "./tools/resize.tools"
+import { UpscaleButton } from "./tools/upscale.tools"
+import { BrightnessButton, BrightnessControls } from "./tools/brightness.tools"
+import { ContrastButton, ContrastControls } from "./tools/contrast.tools"
+import { SaturationButton, SaturationControls } from "./tools/saturation.tools"
+import { HueButton, HueControls } from "./tools/hue.tools"
+import { ExposureButton, ExposureControls } from "./tools/exposure.tools"
+import {
+  TemperatureButton,
+  TemperatureControls,
+} from "./tools/temperature.tools"
+import { GammaButton, GammaControls } from "./tools/gamma.tools"
+import { VintageButton, VintageControls } from "./tools/vintage.tools"
 
 export function getEditorTools(selected: keyof typeof SIDEBAR_TOOLS) {
   switch (selected) {
@@ -107,6 +81,7 @@ export function FinetuneFooter({
   onSelectedToolChange,
   dispatch,
   toolsValues,
+  progress,
   ...props
 }: ImageEditorFooterProps) {
   const handleOnChange = (value: number) => {
@@ -142,6 +117,39 @@ export function FinetuneFooter({
     }
   }
 
+  const Control = React.useMemo(() => {
+    const controlProps = {
+      value,
+      progress,
+      selectedTool,
+      label: (value, operator) => {
+        if (selectedTool === "rotate") {
+          return `${Math.round(value)} ${operator}`
+        }
+        return `${Math.round(value)} ${operator}`
+      },
+      onChange: handleOnChange,
+    }
+    switch (selectedTool) {
+      case "brightness":
+        return <BrightnessControls {...controlProps} />
+      case "contrast":
+        return <ContrastControls {...controlProps} />
+      case "hue":
+        return <HueControls {...controlProps} />
+      case "saturation":
+        return <SaturationControls {...controlProps} />
+      case "exposure":
+        return <ExposureControls {...controlProps} />
+      case "temperature":
+        return <TemperatureControls {...controlProps} />
+      case "gamma":
+        return <GammaControls {...controlProps} />
+      case "vintage":
+        return <VintageControls {...controlProps} />
+    }
+  }, [selectedTool, value, progress])
+
   const renderBlurControls = () => {
     if (selectedTool === "blur") {
       return (
@@ -151,6 +159,7 @@ export function FinetuneFooter({
               variant='ghost'
               onClick={() => dispatch({ type: "blurType", payload: 0 })}
               isActive={toolsValues?.blurType === 0}
+              disabled={progress}
             >
               <ImageIcon size={16} className='mr-1' />
               Gaussian
@@ -159,6 +168,7 @@ export function FinetuneFooter({
               variant='ghost'
               onClick={() => dispatch({ type: "blurType", payload: 1 })}
               isActive={toolsValues?.blurType === 1}
+              disabled={progress}
             >
               <Square size={16} className='mr-1' />
               Box
@@ -167,6 +177,7 @@ export function FinetuneFooter({
               variant='ghost'
               onClick={() => dispatch({ type: "blurType", payload: 2 })}
               isActive={toolsValues?.blurType === 2}
+              disabled={progress}
             >
               <MoveHorizontal size={16} className='mr-1' />
               Motion
@@ -175,6 +186,7 @@ export function FinetuneFooter({
               variant='ghost'
               onClick={() => dispatch({ type: "blurType", payload: 3 })}
               isActive={toolsValues?.blurType === 3}
+              disabled={progress}
             >
               <CircleDot size={16} className='mr-1' />
               Radial
@@ -190,9 +202,10 @@ export function FinetuneFooter({
                 step={TOOL_VALUES.blurDirection.step}
                 defaultValue={toolsValues?.blurDirection || 0}
                 operator='°'
-                onValueChange={(value) =>
+                onToolControlValueChange={(value) =>
                   dispatch({ type: "blurDirection", payload: value })
                 }
+                disabled={progress}
               />
             </div>
           )}
@@ -205,9 +218,10 @@ export function FinetuneFooter({
                 max={TOOL_VALUES.blurCenter.max}
                 step={TOOL_VALUES.blurCenter.step}
                 defaultValue={toolsValues?.blurCenter || 0.5}
-                onValueChange={(value) =>
+                onToolControlValueChange={(value) =>
                   dispatch({ type: "blurCenter", payload: value })
                 }
+                disabled={progress}
               />
             </div>
           )}
@@ -218,94 +232,68 @@ export function FinetuneFooter({
   }
 
   return (
-    <ImageEditorFooter
-      value={value}
-      selectedTool={selectedTool}
-      onChange={handleOnChange}
-      {...props}
-    >
-      <ul className='flex gap-2 mt-10 justify-center'>
+    <div {...props}>
+      <div className='flex justify-center'>
+        <div className='max-w-lg'>{Control}</div>
+      </div>
+      <ul className='flex gap-6 mt-10 w-full justify-center'>
         <li>
-          <ImageEditorButton
-            variant='ghost'
-            onClick={() => onSelectedToolChange("brightness")}
-            isActive={selectedTool === "brightness"}
-          >
-            Brightness
-          </ImageEditorButton>
+          <BrightnessButton
+            onSelectedToolChange={onSelectedToolChange}
+            selectedTool={selectedTool}
+            progress={progress}
+          />
         </li>
         <li>
-          <ImageEditorButton
-            isActive={selectedTool === "contrast"}
-            variant='ghost'
-            onClick={() => onSelectedToolChange("contrast")}
-          >
-            Contrast
-          </ImageEditorButton>
+          <ContrastButton
+            onSelectedToolChange={onSelectedToolChange}
+            selectedTool={selectedTool}
+            progress={progress}
+          />
         </li>
         <li>
-          <ImageEditorButton
-            isActive={selectedTool === "saturation"}
-            variant='ghost'
-            onClick={() => onSelectedToolChange("saturation")}
-          >
-            Saturation
-          </ImageEditorButton>
+          <HueButton
+            onSelectedToolChange={onSelectedToolChange}
+            selectedTool={selectedTool}
+            progress={progress}
+          />
         </li>
         <li>
-          <ImageEditorButton
-            isActive={selectedTool === "hue"}
-            variant='ghost'
-            onClick={() => onSelectedToolChange("hue")}
-          >
-            Hue
-          </ImageEditorButton>
+          <SaturationButton
+            onSelectedToolChange={onSelectedToolChange}
+            selectedTool={selectedTool}
+            progress={progress}
+          />
         </li>
         <li>
-          <ImageEditorButton
-            isActive={selectedTool === "exposure"}
-            variant='ghost'
-            onClick={() => onSelectedToolChange("exposure")}
-          >
-            Exposure
-          </ImageEditorButton>
+          <ExposureButton
+            onSelectedToolChange={onSelectedToolChange}
+            selectedTool={selectedTool}
+            progress={progress}
+          />
         </li>
         <li>
-          <ImageEditorButton
-            isActive={selectedTool === "temperature"}
-            variant='ghost'
-            onClick={() => onSelectedToolChange("temperature")}
-          >
-            Temperature
-          </ImageEditorButton>
+          <TemperatureButton
+            onSelectedToolChange={onSelectedToolChange}
+            selectedTool={selectedTool}
+            progress={progress}
+          />
         </li>
         <li>
-          <ImageEditorButton
-            isActive={selectedTool === "gamma"}
-            variant='ghost'
-            onClick={() => onSelectedToolChange("gamma")}
-          >
-            Gamma
-          </ImageEditorButton>
+          <GammaButton
+            onSelectedToolChange={onSelectedToolChange}
+            selectedTool={selectedTool}
+            progress={progress}
+          />
         </li>
         <li>
-          <ImageEditorButton
-            isActive={selectedTool === "vintage"}
-            variant='ghost'
-            onClick={() => onSelectedToolChange("vintage")}
-          >
-            Vintage
-          </ImageEditorButton>
+          <VintageButton
+            onSelectedToolChange={onSelectedToolChange}
+            selectedTool={selectedTool}
+            progress={progress}
+          />
         </li>
-        {/* <li>
-          <ImageEditorButton
-            isActive={selectedTool === "sharpen"}
-            variant='ghost'
-            onClick={() => onSelectedToolChange("sharpen")}
-          >
-            Sharpen
-          </ImageEditorButton>
-        </li> */}
+
         <li>
           <ImageEditorButton
             isActive={selectedTool === "blur"}
@@ -317,7 +305,7 @@ export function FinetuneFooter({
         </li>
       </ul>
       {renderBlurControls()}
-    </ImageEditorFooter>
+    </div>
   )
 }
 
@@ -331,6 +319,7 @@ export function FilterFooter({
   onSelectedToolChange,
   dispatch,
   image,
+  progress,
   ...props
 }: ImageEditorFooterProps) {
   const [selectedPreset, setSelectedPreset] = React.useState<string>("Normal")
@@ -371,6 +360,7 @@ export function FilterFooter({
             isActive={selectedTool === "tint"}
             variant='ghost'
             onClick={() => onSelectedToolChange("tint")}
+            disabled={progress}
           >
             Tint
           </ImageEditorButton>
@@ -380,6 +370,7 @@ export function FilterFooter({
             isActive={selectedTool === "vibrance"}
             variant='ghost'
             onClick={() => onSelectedToolChange("vibrance")}
+            disabled={progress}
           >
             Vibrance
           </ImageEditorButton>
@@ -389,6 +380,7 @@ export function FilterFooter({
             isActive={selectedTool === "noise"}
             variant='ghost'
             onClick={() => onSelectedToolChange("noise")}
+            disabled={progress}
           >
             Noise
           </ImageEditorButton>
@@ -398,6 +390,7 @@ export function FilterFooter({
             isActive={selectedTool === "grain"}
             variant='ghost'
             onClick={() => onSelectedToolChange("grain")}
+            disabled={progress}
           >
             Grain
           </ImageEditorButton>
@@ -407,6 +400,7 @@ export function FilterFooter({
             isActive={selectedTool === "invert"}
             variant='ghost'
             onClick={() => onSelectedToolChange("invert")}
+            disabled={progress}
           >
             Invert
           </ImageEditorButton>
@@ -416,6 +410,7 @@ export function FilterFooter({
             isActive={selectedTool === "sepia"}
             variant='ghost'
             onClick={() => onSelectedToolChange("sepia")}
+            disabled={progress}
           >
             Sepia
           </ImageEditorButton>
@@ -425,6 +420,7 @@ export function FilterFooter({
             isActive={selectedTool === "grayscale"}
             variant='ghost'
             onClick={() => onSelectedToolChange("grayscale")}
+            disabled={progress}
           >
             Grayscale
           </ImageEditorButton>
@@ -443,6 +439,8 @@ export function TransformHeader({
   toolsValues,
   onSelectedToolChange,
   dispatch,
+  progress,
+  onProgress,
   ...props
 }: ImageEditorHeaderProps) {
   const handleRotateLeft = () => {
@@ -484,19 +482,31 @@ export function TransformHeader({
   return (
     <ul className='flex gap-2 justify-center' {...props}>
       <li>
-        <ImageEditorButton variant='ghost' onClick={handleRotateLeft}>
+        <ImageEditorButton
+          variant='ghost'
+          onClick={handleRotateLeft}
+          disabled={progress}
+        >
           <RotateCwSquare size={16} className='mr-1' />
           Rotate 90°
         </ImageEditorButton>
       </li>
       <li>
-        <ImageEditorButton variant='ghost' onClick={handleFlipHorizontal}>
+        <ImageEditorButton
+          variant='ghost'
+          onClick={handleFlipHorizontal}
+          disabled={progress}
+        >
           <FlipHorizontal2 size={16} className='mr-1' />
           Flip Horizontal
         </ImageEditorButton>
       </li>
       <li>
-        <ImageEditorButton variant='ghost' onClick={handleFlipVertical}>
+        <ImageEditorButton
+          variant='ghost'
+          onClick={handleFlipVertical}
+          disabled={progress}
+        >
           <FlipVertical2 size={16} className='mr-1' />
           Flip Vertical
         </ImageEditorButton>
@@ -506,12 +516,14 @@ export function TransformHeader({
 }
 
 export function TransformFooter({
+  className,
+  image,
+  progress,
   selectedTool,
-  onSelectedToolChange,
+  toolsValues,
   value,
   dispatch,
-  image,
-  toolsValues,
+  onSelectedToolChange,
   ...props
 }: ImageEditorFooterProps) {
   const handleOnChange = (value: number) => {
@@ -532,73 +544,81 @@ export function TransformFooter({
     operator = "%"
   }
 
-  return (
-    <ImageEditorFooter
-      value={value}
-      selectedTool={selectedTool}
-      onChange={handleOnChange}
-      operator={operator}
-      label={(value, operator) => {
+  const Control = React.useMemo(() => {
+    const controlProps = {
+      value,
+      progress,
+      operator,
+      selectedTool,
+      label: (value, operator) => {
         if (selectedTool === "rotate") {
           return `${Math.round(value)} ${operator}`
         }
         return `${Math.round(value)} ${operator}`
-      }}
-      {...props}
-    >
-      <ul className='flex gap-2 mt-10  justify-center'>
+      },
+      onChange: handleOnChange,
+    }
+    switch (selectedTool) {
+      case "rotate":
+        return <RotationControls {...controlProps} />
+      case "scale":
+        return <ScaleControls {...controlProps} />
+      case "resize":
+        return <ResizeControls {...controlProps} />
+    }
+  }, [selectedTool, value, operator, progress])
+
+  return (
+    <div {...props}>
+      <div className='flex justify-center'>
+        <div className='max-w-lg'>{Control}</div>
+      </div>
+      <ul className='flex gap-6 mt-10 w-full justify-center'>
         <li>
-          <ImageEditorButton
-            variant='outline'
-            onClick={() => onSelectedToolChange("rotate")}
-            isActive={selectedTool === "rotate"}
-          >
-            Rotation
-          </ImageEditorButton>
+          <RotationButton
+            onSelectedToolChange={onSelectedToolChange}
+            selectedTool={selectedTool}
+            progress={progress}
+          />
         </li>
         <li>
-          <ImageEditorButton
-            variant='outline'
-            onClick={() => onSelectedToolChange("scale")}
-            isActive={selectedTool === "scale"}
-          >
-            Scale
-          </ImageEditorButton>
+          <ScaleButton
+            onSelectedToolChange={onSelectedToolChange}
+            selectedTool={selectedTool}
+            progress={progress}
+          />
+        </li>
+
+        <li>
+          <ResizeButton
+            onSelectedToolChange={onSelectedToolChange}
+            selectedTool={selectedTool}
+            progress={progress}
+          />
         </li>
       </ul>
-    </ImageEditorFooter>
+    </div>
   )
 }
 
-/**
- * Upscale
- */
 export function UpscaleFooter({
-  selectedTool,
-  value,
-  onSelectedToolChange,
-  dispatch,
-  onProgress,
-  toolsValues,
+  className,
+  image,
   progress,
+  selectedTool,
+  toolsValues,
+  value,
+  dispatch,
+  onSelectedToolChange,
   ...props
 }: ImageEditorFooterProps) {
-  const [upscale, setUpscale] = React.useState(toolsValues?.upscale || 0)
-
-  React.useEffect(() => {
-    setUpscale(toolsValues?.upscale || 0)
-  }, [toolsValues?.upscale])
-
   return (
-    <div className='flex justify-center'>
-      <Button
-        variant='outline'
-        className='rounded-full'
-        onClick={() => dispatch({ type: "upscale", payload: upscale + 1 })}
-        disabled={progress}
-      >
-        Upscale
-      </Button>
+    <div className='flex justify-center ' {...props}>
+      <UpscaleButton
+        value={toolsValues?.upscale || 0}
+        dispatch={dispatch}
+        progress={progress}
+      />
     </div>
   )
 }
@@ -611,6 +631,7 @@ export function ImageEditorFooter({
   value,
   label,
   onChange,
+  progress,
   ...props
 }: Omit<ImageEditorFooterProps, "dispatch" | "onSelectedToolChange">) {
   return (
@@ -624,11 +645,12 @@ export function ImageEditorFooter({
           step={TOOL_VALUES[selectedTool].step}
           defaultValue={value}
           operator={operator}
-          onValueChange={onValueChange({
+          onToolControlValueChange={onToolControlValueChange({
             selectedTool,
             onChange: onChange || (() => {}),
           })}
           label={label}
+          disabled={progress}
         />
       </div>
 

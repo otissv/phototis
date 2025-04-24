@@ -2,29 +2,23 @@
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import {
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  ChevronUp,
-  Dot,
-} from "lucide-react"
-import { motion, useMotionValue, transform } from "motion/react"
+import { ArrowDownToLine, ChevronLeft, ChevronRight, Dot } from "lucide-react"
+import { motion, useMotionValue } from "motion/react"
 import { useEffect, useId, useRef, useState } from "react"
 import { Input } from "./ui/input"
-
-const SLIDER_WIDTH = 500 // pixels
 
 interface SlidingTrackProps {
   min?: number
   max?: number
   step?: number
+  value?: number
   defaultValue?: number
   operator?: string
   sensitivity?: number
   onValueChange?: (value: number) => void
   range?: [number, number] | [string, string]
   label?: (value: number, operator: string) => React.ReactNode
+  disabled?: boolean
 }
 
 export default function SlidingTrack({
@@ -32,12 +26,14 @@ export default function SlidingTrack({
   max = 100,
   step = 1,
   operator = "",
-  defaultValue = 50,
+  value: hostValue = 50,
+  defaultValue,
   onValueChange,
   label,
   sensitivity = 0.04,
+  disabled = false,
 }: SlidingTrackProps) {
-  const [value, setValue] = useState(defaultValue)
+  const [value, setValue] = useState(hostValue)
   const [isEditing, setIsEditing] = useState(false)
   const displayValue =
     label?.(value, operator) || `${operator ? `${value} ${operator}` : value}`
@@ -97,6 +93,8 @@ export default function SlidingTrack({
   }, [defaultValue, value, min, max, x])
 
   const handleDrag = (_event: any, info: { point: { x: number } }) => {
+    if (disabled) return
+
     if (initialDragX.current === null) {
       initialDragX.current = info.point.x
       return
@@ -173,49 +171,15 @@ export default function SlidingTrack({
 
   return (
     <div data-id={containerId} className='relative flex flex-col items-center'>
-      <div className='text-xs flex flex-col items-center translate-y-3'>
-        <div
-          onPointerDown={() => {
-            setIsEditing(true)
-            setTimeout(() => {
-              inputRef.current?.focus()
-            }, 0)
-          }}
-        >
-          {isEditing ? (
-            <div className='flex flex-col items-center gap-2 mt-1'>
-              <Input
-                ref={inputRef}
-                value={value}
-                onChange={handleOnInputChange}
-                onBlur={() => setIsEditing(false)}
-                className='bg-transparent border-none p-1 text-center h-6'
-              />
-              <p className='text-xs text-muted-foreground'>
-                {min}
-                {operator} to {max}
-                {operator}
-              </p>
-            </div>
-          ) : (
-            <div className='w-full flex flex-col justify-center items-center'>
-              {displayValue}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {!isEditing && (
+      {!isEditing ? (
         <>
-          <ChevronUp className='absolute bottom-0 size-3 -translate-y-1' />
-
           <div className='grid grid-cols-[auto_1fr_auto] justify-center items-center h-10'>
             <Button
               variant='ghost'
               size='icon'
-              className='rounded-full disabled:opacity-0 transition-opacity duration-200'
+              className='rounded-full transition-opacity duration-200'
               onClick={() => handleDirectionChange("left")}
-              disabled={value === min}
+              disabled={value === min || disabled}
             >
               <ChevronLeft className='size-4' />
             </Button>
@@ -257,14 +221,48 @@ export default function SlidingTrack({
             <Button
               variant='ghost'
               size='icon'
-              className='rounded-full disabled:opacity-0 transition-opacity duration-200'
+              className='rounded-full transition-opacity duration-200'
               onClick={() => handleDirectionChange("right")}
-              disabled={value === max}
+              disabled={value === max || disabled}
             >
               <ChevronRight className='size-4' />
             </Button>
           </div>
+
+          <div className='text-xs flex flex-col items-center -translate-y-10'>
+            <div
+              onPointerDown={() => {
+                setIsEditing(true)
+                setTimeout(() => {
+                  inputRef.current?.focus()
+                }, 0)
+              }}
+            >
+              <div className='w-full flex flex-col justify-center items-center'>
+                {displayValue}
+              </div>
+            </div>
+          </div>
         </>
+      ) : (
+        <div className='relative flex flex-col items-center gap-2 mt-1'>
+          <div className='flex items-center gap-2'>
+            <Input
+              ref={inputRef}
+              value={Math.round(value)}
+              onChange={handleOnInputChange}
+              onBlur={() => setIsEditing(false)}
+              className={cn("bg-transparent p-1 text-center rounded-full")}
+              disabled={disabled}
+            />
+          </div>
+
+          <p className='text-xs text-muted-foreground'>
+            {min}
+            {operator} &ndash; {max}
+            {operator}
+          </p>
+        </div>
       )}
     </div>
   )

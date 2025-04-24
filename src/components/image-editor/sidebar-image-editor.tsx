@@ -13,6 +13,7 @@ export interface ImageEditorSidebarProps
   onChange: (selected: keyof typeof SIDEBAR_TOOLS) => void
   onSelectedToolChange: (tool: keyof typeof TOOL_VALUES) => void
   dispatch: React.Dispatch<ImageEditorToolsActions>
+  progress?: number
 }
 export function ImageEditorSidebar({
   selected,
@@ -20,6 +21,7 @@ export function ImageEditorSidebar({
   onChange,
   onSelectedToolChange,
   dispatch,
+  progress,
   ...props
 }: ImageEditorSidebarProps) {
   return (
@@ -32,6 +34,7 @@ export function ImageEditorSidebar({
           onClick={() => {
             dispatch({ type: "reset" })
           }}
+          disabled={progress}
         >
           <History className='size-4' />
           Reset
@@ -50,6 +53,7 @@ export function ImageEditorSidebar({
               onSelectedToolChange("rotate")
             }
           }}
+          disabled={progress}
         >
           <ImageUpscale />
           Transform
@@ -69,6 +73,7 @@ export function ImageEditorSidebar({
               onSelectedToolChange("brightness")
             }
           }}
+          disabled={progress}
         >
           <SlidersHorizontal />
           Finetune
@@ -88,6 +93,7 @@ export function ImageEditorSidebar({
               onSelectedToolChange("tint")
             }
           }}
+          disabled={progress}
         >
           <Blend />
           Filter
@@ -106,6 +112,7 @@ export function ImageEditorSidebar({
               onSelectedToolChange("upscale")
             }
           }}
+          disabled={progress}
         >
           <ImageUpscale />
           Upscale

@@ -125,6 +125,7 @@ export function ImageEditor({ image, ...props }: ImageEditorProps) {
         onChange={handleSelectedSidebarChange}
         className='col-start-1 row-start-1 row-end-3'
         dispatch={dispatch}
+        progress={progress}
       />
 
       <div className='col-start-2 row-start-1 w-full flex flex-col'>
@@ -134,6 +135,7 @@ export function ImageEditor({ image, ...props }: ImageEditorProps) {
             selectedTool={selectedTool}
             onSelectedToolChange={handleSelectedToolChange}
             toolsValues={toolsValues}
+            progress={progress}
           />
         </div>
       </div>

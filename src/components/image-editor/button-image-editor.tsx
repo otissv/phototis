@@ -11,14 +11,19 @@ export interface ImageEditorButtonProps
 export function ImageEditorButton({
   children,
   isActive,
+  className,
   ...props
 }: ImageEditorButtonProps) {
   return (
     <Button
       size='sm'
-      className={cn("text-xs rounded-full", {
-        "bg-primary text-primary-foreground": isActive,
-      })}
+      className={cn(
+        "text-xs rounded-full",
+        {
+          "bg-primary text-primary-foreground": isActive,
+        },
+        className
+      )}
       {...props}
     >
       {children}

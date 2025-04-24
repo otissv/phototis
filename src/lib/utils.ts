@@ -1,8 +1,25 @@
+import { TOOL_VALUES } from "@/constants"
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
+}
+
+export function onToolControlValueChange({
+  selectedTool,
+  onChange,
+}: {
+  selectedTool: keyof typeof TOOL_VALUES
+  onChange: (value: number) => void
+}) {
+  return (value: number) => {
+    const nextValue =
+      value < TOOL_VALUES[selectedTool].min
+        ? TOOL_VALUES[selectedTool].min
+        : value
+    onChange(nextValue)
+  }
 }
 
 export const sizes = {
