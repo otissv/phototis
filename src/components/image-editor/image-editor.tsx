@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils"
 import type { SIDEBAR_TOOLS, TOOL_VALUES } from "@/constants"
 import { ImageEditorCanvas } from "@/components/image-editor/canvas-image-editor"
 import { ImageEditorSidebar } from "@/components/image-editor/sidebar-image-editor"
-import { getEditorTools } from "@/components/image-editor/tools-image-editor"
+import { getEditorTools } from "@/components/image-editor/tools.image-editor"
 import {
   imageEditorToolsReducer,
   initialState,
@@ -24,21 +24,12 @@ export function ImageEditor({ image, ...props }: ImageEditorProps) {
     React.useState<keyof typeof SIDEBAR_TOOLS>("transform")
   const [selectedTool, setSelectedTool] =
     React.useState<keyof typeof TOOL_VALUES>("rotate")
+  const [progress, setProgress] = React.useState(0)
 
   const [toolsValues, dispatch] = React.useReducer(
     imageEditorToolsReducer,
     initialState
   )
-
-  // const [grain, setGrain] = React.useState(TOOL_VALUES.grain.defaultValue)
-
-  const handleSelectedToolChange = (tool: keyof typeof TOOL_VALUES) => {
-    setSelectedTool(tool)
-  }
-
-  const handleSelectedSidebarChange = (sidebar: keyof typeof SIDEBAR_TOOLS) => {
-    setSelectedSidebar(sidebar)
-  }
 
   const value = React.useMemo(() => {
     switch (selectedTool) {
@@ -106,10 +97,22 @@ export function ImageEditor({ image, ...props }: ImageEditorProps) {
     toolsValues.grain,
   ])
 
+  const handleSelectedToolChange = (tool: keyof typeof TOOL_VALUES) => {
+    setSelectedTool(tool)
+  }
+
+  const handleSelectedSidebarChange = (sidebar: keyof typeof SIDEBAR_TOOLS) => {
+    setSelectedSidebar(sidebar)
+  }
+
   const { header: Header, footer: ImageEditorFooter } = React.useMemo(
     () => getEditorTools(selectedSidebar),
     [selectedSidebar]
   )
+
+  const handleOnProgress = (progress: number) => {
+    setProgress(progress)
+  }
 
   return (
     <div
@@ -139,7 +142,11 @@ export function ImageEditor({ image, ...props }: ImageEditorProps) {
         <div className='flex justify-center items-center w-full overflow-hidden h-[calc(100vh-300px)]'>
           <div className='relative w-full h-full overflow-auto'>
             <div className='absolute inset-0 flex items-center justify-center'>
-              <ImageEditorCanvas image={image} toolsValues={toolsValues} />
+              <ImageEditorCanvas
+                image={image}
+                toolsValues={toolsValues}
+                onProgress={handleOnProgress}
+              />
             </div>
           </div>
         </div>
@@ -153,6 +160,8 @@ export function ImageEditor({ image, ...props }: ImageEditorProps) {
         onSelectedToolChange={handleSelectedToolChange}
         className='col-start-2 row-start-3 mx-auto'
         toolsValues={toolsValues}
+        onProgress={handleOnProgress}
+        progress={progress}
       />
 
       <ZoomControls

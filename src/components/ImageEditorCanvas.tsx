@@ -1,10 +1,8 @@
 "use client"
 
 import React from "react"
-import { cn } from "@/lib/utils"
-
-import type { ImageEditorToolsState } from "@/components/image-editor/state.image-editor"
-import { upscaleTool } from "./tools/upscaler"
+import type { ImageEditorToolsState } from "./image-editor.state"
+import { transform } from "motion/react"
 
 // Vertex shader for rendering a full-screen quad
 const vertexShaderSource = `
@@ -220,13 +218,11 @@ const fragmentShaderSource = `
 export interface ImageEditorCanvasProps extends React.ComponentProps<"canvas"> {
   image: File
   toolsValues: ImageEditorToolsState
-  onProgress?: (progress: number) => void
 }
 
 export function ImageEditorCanvas({
   image,
   toolsValues,
-  onProgress,
   ...props
 }: ImageEditorCanvasProps) {
   const canvasRef = React.useRef<HTMLCanvasElement>(null)
@@ -236,7 +232,6 @@ export function ImageEditorCanvas({
   const textureRef = React.useRef<WebGLTexture | null>(null)
   const positionBufferRef = React.useRef<WebGLBuffer | null>(null)
   const texCoordBufferRef = React.useRef<WebGLBuffer | null>(null)
-  const [processing, setProcessing] = React.useState(0)
 
   // Handle image URL creation and cleanup
   React.useEffect(() => {
@@ -368,91 +363,6 @@ export function ImageEditorCanvas({
     }
   }, [imageUrl])
 
-  React.useEffect(() => {
-    if (!imageUrl || !toolsValues.upscale) return
-
-    const upscale = async () => {
-      try {
-        const image = await upscaleTool({
-          imageUrl,
-          upscale: toolsValues.upscale,
-          patchSize: 64,
-          padding: 2,
-          awaitNextFrame: true,
-          onProgress: (progress) => {
-            const roundedProgress = Math.round(progress * 100)
-
-            if (roundedProgress === 100) {
-              onProgress?.(0)
-              setProcessing(0)
-            } else {
-              onProgress?.(roundedProgress)
-              setProcessing(roundedProgress)
-            }
-          },
-        })
-
-        if (image && glRef.current && textureRef.current) {
-          const gl = glRef.current
-          const canvas = canvasRef.current
-          if (!canvas) return
-
-          // Create a new image from the base64 string
-          const upscaledImage = new Image()
-          upscaledImage.crossOrigin = "anonymous"
-          upscaledImage.src = image
-
-          upscaledImage.onload = () => {
-            // Update canvas dimensions
-            const aspectRatio = upscaledImage.width / upscaledImage.height
-            const maxWidth = 800 * toolsValues.upscale
-            const maxHeight = 600 * toolsValues.upscale
-
-            let width = upscaledImage.width
-            let height = upscaledImage.height
-
-            // Resize logic
-            if (width > maxWidth) {
-              width = maxWidth
-              height = width / aspectRatio
-            }
-            if (height > maxHeight) {
-              height = maxHeight
-              width = height * aspectRatio
-            }
-
-            // Set new canvas dimensions
-            canvas.width = width
-            canvas.height = height
-            gl.viewport(0, 0, width, height)
-
-            // Upload upscaled image to GPU
-            gl.bindTexture(gl.TEXTURE_2D, textureRef.current)
-            gl.texImage2D(
-              gl.TEXTURE_2D,
-              0,
-              gl.RGBA,
-              gl.RGBA,
-              gl.UNSIGNED_BYTE,
-              upscaledImage
-            )
-
-            // Reset processing state
-            setProcessing(0)
-
-            // Trigger redraw
-            draw()
-          }
-        }
-      } catch (error) {
-        console.error("Error during upscaling:", error)
-        setProcessing(0)
-      }
-    }
-
-    upscale()
-  }, [imageUrl, toolsValues.upscale])
-
   // Draw function
   const draw = React.useCallback(() => {
     const gl = glRef.current
@@ -551,25 +461,15 @@ export function ImageEditorCanvas({
   }, [draw])
 
   return (
-    <div className='relative'>
-      <canvas
-        ref={canvasRef}
-        className={cn(
-          "max-w-full max-h-full object-contain"
-          // processing && "opacity-30"
-        )}
-        style={{
-          transform: `scale(${toolsValues.zoom / 100})`,
-          transformOrigin: "center",
-        }}
-        {...props}
-        id='image-editor-canvas'
-      />
-      {processing > 0 && (
-        <div className='absolute inset-0 flex items-center justify-center'>
-          <div className='text-sm '>Upscaling {processing}%</div>
-        </div>
-      )}
-    </div>
+    <canvas
+      ref={canvasRef}
+      className='max-w-full max-h-full object-contain'
+      style={{
+        transform: `scale(${toolsValues.zoom / 100})`,
+        transformOrigin: "center",
+      }}
+      {...props}
+      id='image-editor-canvas'
+    />
   )
 }

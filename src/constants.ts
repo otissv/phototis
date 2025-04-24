@@ -141,10 +141,7 @@ export const TOOL_VALUES = {
     defaultValue: 50,
   },
   upscale: {
-    min: 1,
-    max: 4,
-    step: 1,
-    defaultValue: 1,
+    defaultValue: 0,
   },
 }
 

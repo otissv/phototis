@@ -22,32 +22,31 @@ import type {
   ImageEditorToolsState,
 } from "./state.image-editor"
 import SlidingTrack from "../sliding-track"
-import { FilterPresets } from "./FilterPresets"
-import {
-  RadioGroup,
-  RadioGroupContent,
-  RadioGroupContentItem,
-  RadioGroupItem,
-} from "../ui/radio-group"
 
-export interface ImageEditorHeaderProps extends React.ComponentProps<"ul"> {
+import { Button } from "../ui/button"
+
+export interface ImageEditorHeaderProps
+  extends Omit<React.ComponentProps<"ul">, "onChange" | "onProgress"> {
   selectedTool: keyof typeof TOOL_VALUES
-  onSelectedToolChange: (tool: keyof typeof TOOL_VALUES) => void
   toolsValues: typeof TOOL_VALUES
   dispatch: React.Dispatch<ImageEditorToolsActions>
+  onSelectedToolChange: (tool: keyof typeof TOOL_VALUES) => void
+  onProgress?: (progress: number) => void
 }
 
 export interface ImageEditorFooterProps
-  extends Omit<React.ComponentProps<"div">, "onChange"> {
-  value: number
+  extends Omit<React.ComponentProps<"div">, "onChange" | "onProgress"> {
+  image?: File
+  operator?: string
   selectedTool: keyof typeof TOOL_VALUES
+  toolsValues?: ImageEditorToolsState
+  value: number
+  label?: (value: number, operator: string) => React.ReactNode
   dispatch: React.Dispatch<ImageEditorToolsActions>
   onSelectedToolChange: (tool: keyof typeof TOOL_VALUES) => void
   onChange?: (value: number) => void
-  operator?: string
-  toolsValues?: ImageEditorToolsState
-  image?: File
-  label?: (value: number, operator: string) => React.ReactNode
+  onProgress?: (progress: number) => void
+  progress?: number
 }
 
 function onValueChange({
@@ -579,44 +578,39 @@ export function UpscaleFooter({
   value,
   onSelectedToolChange,
   dispatch,
+  onProgress,
+  toolsValues,
+  progress,
   ...props
 }: ImageEditorFooterProps) {
-  const handleOnChange = (value: string) => {
-    dispatch({ type: "upscale", payload: Number.parseInt(value) })
-  }
+  const [upscale, setUpscale] = React.useState(toolsValues?.upscale || 0)
+
+  React.useEffect(() => {
+    setUpscale(toolsValues?.upscale || 0)
+  }, [toolsValues?.upscale])
 
   return (
-    <RadioGroup
-      className='items-center'
-      defaultValue='1'
-      onValueChange={handleOnChange}
-    >
-      <RadioGroupContent>
-        <RadioGroupContentItem value='1' id='1'>
-          1x
-        </RadioGroupContentItem>
-        <RadioGroupContentItem value='2' id='2'>
-          2x
-        </RadioGroupContentItem>
-        <RadioGroupContentItem value='3' id='3'>
-          3x
-        </RadioGroupContentItem>
-        <RadioGroupContentItem value='4' id='4'>
-          4x
-        </RadioGroupContentItem>
-      </RadioGroupContent>
-    </RadioGroup>
+    <div className='flex justify-center'>
+      <Button
+        variant='outline'
+        className='rounded-full'
+        onClick={() => dispatch({ type: "upscale", payload: upscale + 1 })}
+        disabled={progress}
+      >
+        Upscale
+      </Button>
+    </div>
   )
 }
 
 export function ImageEditorFooter({
+  children,
+  className,
+  operator,
   selectedTool,
   value,
-  className,
-  children,
-  onChange,
-  operator,
   label,
+  onChange,
   ...props
 }: Omit<ImageEditorFooterProps, "dispatch" | "onSelectedToolChange">) {
   return (

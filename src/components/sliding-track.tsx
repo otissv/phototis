@@ -2,7 +2,13 @@
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { ChevronLeft, ChevronRight, ChevronUp, Dot } from "lucide-react"
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  Dot,
+} from "lucide-react"
 import { motion, useMotionValue, transform } from "motion/react"
 import { useEffect, useId, useRef, useState } from "react"
 import { Input } from "./ui/input"
@@ -166,58 +172,8 @@ export default function SlidingTrack({
   }
 
   return (
-    <div data-id={containerId} className='relative'>
-      <div className='grid grid-cols-[auto_1fr_auto] justify-center items-center'>
-        <Button
-          variant='ghost'
-          size='icon'
-          className='rounded-full disabled:opacity-0 transition-opacity duration-200'
-          onClick={() => handleDirectionChange("left")}
-          disabled={value === min}
-        >
-          <ChevronLeft className='size-4' />
-        </Button>
-
-        <div ref={containerRef} className=' h-2 overflow-hidden cursor-grab'>
-          <motion.div
-            drag='x'
-            dragConstraints={{
-              left: -sliderWidth / 2,
-              right: sliderWidth / 2,
-            }}
-            style={{ x }}
-            onDrag={handleDrag}
-            onDragEnd={handleDragEnd}
-            className='flex h-2'
-          >
-            <div className='flex items-center justify-center -translate-x-1/2'>
-              {dotPattern.map((_, i) => {
-                return (
-                  <div key={`dot-${i}`} className='text-gray-400 select-none'>
-                    <Dot
-                      className={cn("w-2 h-2 ", {
-                        "w-4 h-4": i % 2 === 0,
-                      })}
-                    />
-                  </div>
-                )
-              })}
-            </div>
-          </motion.div>
-        </div>
-
-        <Button
-          variant='ghost'
-          size='icon'
-          className='rounded-full disabled:opacity-0 transition-opacity duration-200'
-          onClick={() => handleDirectionChange("right")}
-          disabled={value === max}
-        >
-          <ChevronRight className='size-4' />
-        </Button>
-      </div>
-
-      <div className='text-xs flex flex-col items-center -translate-y-4'>
+    <div data-id={containerId} className='relative flex flex-col items-center'>
+      <div className='text-xs flex flex-col items-center translate-y-3'>
         <div
           onPointerDown={() => {
             setIsEditing(true)
@@ -243,12 +199,73 @@ export default function SlidingTrack({
             </div>
           ) : (
             <div className='w-full flex flex-col justify-center items-center'>
-              <ChevronUp className='size-3' />
               {displayValue}
             </div>
           )}
         </div>
       </div>
+
+      {!isEditing && (
+        <>
+          <ChevronUp className='absolute bottom-0 size-3 -translate-y-1' />
+
+          <div className='grid grid-cols-[auto_1fr_auto] justify-center items-center h-10'>
+            <Button
+              variant='ghost'
+              size='icon'
+              className='rounded-full disabled:opacity-0 transition-opacity duration-200'
+              onClick={() => handleDirectionChange("left")}
+              disabled={value === min}
+            >
+              <ChevronLeft className='size-4' />
+            </Button>
+
+            <div
+              ref={containerRef}
+              className=' h-10 overflow-hidden cursor-grab flex items-center '
+            >
+              <motion.div
+                drag='x'
+                dragConstraints={{
+                  left: -sliderWidth / 2,
+                  right: sliderWidth / 2,
+                }}
+                style={{ x }}
+                onDrag={handleDrag}
+                onDragEnd={handleDragEnd}
+                className='flex h-10'
+              >
+                <div className='flex items-center justify-center -translate-x-1/2'>
+                  {dotPattern.map((_, i) => {
+                    return (
+                      <div
+                        key={`dot-${i}`}
+                        className='text-gray-400 select-none'
+                      >
+                        <Dot
+                          className={cn("w-2 h-2 ", {
+                            "w-4 h-4": i % 2 === 0,
+                          })}
+                        />
+                      </div>
+                    )
+                  })}
+                </div>
+              </motion.div>
+            </div>
+
+            <Button
+              variant='ghost'
+              size='icon'
+              className='rounded-full disabled:opacity-0 transition-opacity duration-200'
+              onClick={() => handleDirectionChange("right")}
+              disabled={value === max}
+            >
+              <ChevronRight className='size-4' />
+            </Button>
+          </div>
+        </>
+      )}
     </div>
   )
 }
