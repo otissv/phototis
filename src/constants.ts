@@ -128,7 +128,7 @@ export const TOOL_VALUES = {
   scale: {
     min: 1,
     max: 100,
-    step: 1,
+    step: 0.01,
     defaultValue: 1,
   },
   flipVertical: {
@@ -140,10 +140,17 @@ export const TOOL_VALUES = {
   zoom: {
     defaultValue: 50,
   },
+  upscale: {
+    min: 1,
+    max: 4,
+    step: 1,
+    defaultValue: 1,
+  },
 }
 
 export const SIDEBAR_TOOLS = {
   transform: ["rotate", "scale"],
+  upscale: ["upscale"],
   finetune: [
     "brightness",
     "contrast",

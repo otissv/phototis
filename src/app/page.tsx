@@ -6,7 +6,7 @@ import { HTML5Backend } from "react-dnd-html5-backend"
 import { Dropzone } from "@/components/Dropzone"
 import { ImageCard } from "@/components/ImageCard"
 import { Button } from "@/components/ui/button"
-import { ImageEditor } from "@/components/ImageEditor"
+import { ImageEditor } from "@/components/image-editor/image-editor"
 import SlidingTrack from "@/components/sliding-track"
 
 export default function Home() {

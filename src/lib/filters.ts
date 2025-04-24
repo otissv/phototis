@@ -1,4 +1,4 @@
-import type { ImageEditorToolsState } from "@/components/image-editor.state"
+import type { ImageEditorToolsState } from "@/components/image-editor/state.image-editor"
 
 export type FilterPreset = {
   name: string

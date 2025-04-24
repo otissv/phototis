@@ -1,29 +1,27 @@
 "use client"
 
 import React from "react"
-import { useDebouncedCallback } from "use-debounce"
+import { PlusIcon, MinusIcon } from "lucide-react"
 
-import { ImageEditorCanvas } from "./ImageEditorCanvas"
-import { ImageEditorSidebar } from "./ImageEditorSidebar"
-import type { TOOL_VALUES } from "@/constants"
-import { getEditorTools } from "./ImageEditorTools"
+import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
+import type { SIDEBAR_TOOLS, TOOL_VALUES } from "@/constants"
+import { ImageEditorCanvas } from "@/components/image-editor/canvas-image-editor"
+import { ImageEditorSidebar } from "@/components/image-editor/sidebar-image-editor"
+import { getEditorTools } from "@/components/image-editor/tools-image-editor"
 import {
   imageEditorToolsReducer,
   initialState,
   type ImageEditorToolsActions,
-} from "./image-editor.state"
-import { Button } from "./ui/button"
-import { cn } from "@/lib/utils"
-import { PlusIcon, MinusIcon } from "lucide-react"
+} from "@/components/image-editor/state.image-editor"
 
 export interface ImageEditorProps extends React.ComponentProps<"div"> {
   image: File
 }
 
 export function ImageEditor({ image, ...props }: ImageEditorProps) {
-  const [selectedSidebar, setSelectedSidebar] = React.useState<
-    "transform" | "finetune" | "filter"
-  >("transform")
+  const [selectedSidebar, setSelectedSidebar] =
+    React.useState<keyof typeof SIDEBAR_TOOLS>("transform")
   const [selectedTool, setSelectedTool] =
     React.useState<keyof typeof TOOL_VALUES>("rotate")
 
@@ -38,9 +36,7 @@ export function ImageEditor({ image, ...props }: ImageEditorProps) {
     setSelectedTool(tool)
   }
 
-  const handleSelectedSidebarChange = (
-    sidebar: "transform" | "finetune" | "filter"
-  ) => {
+  const handleSelectedSidebarChange = (sidebar: keyof typeof SIDEBAR_TOOLS) => {
     setSelectedSidebar(sidebar)
   }
 

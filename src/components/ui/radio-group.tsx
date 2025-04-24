@@ -23,7 +23,7 @@ RadioGroup.displayName = RadioGroupPrimitive.Root.displayName
 const RadioGroupItem = React.forwardRef<
   React.ElementRef<typeof RadioGroupPrimitive.Item>,
   React.ComponentPropsWithoutRef<typeof RadioGroupPrimitive.Item>
->(({ className, children, ...props }, ref) => {
+>(({ className, ...props }, ref) => {
   return (
     <RadioGroupPrimitive.Item
       ref={ref}
@@ -41,4 +41,37 @@ const RadioGroupItem = React.forwardRef<
 })
 RadioGroupItem.displayName = RadioGroupPrimitive.Item.displayName
 
-export { RadioGroup, RadioGroupItem }
+interface RadioGroupContentProps extends React.ComponentPropsWithoutRef<"ul"> {}
+function RadioGroupContent({
+  className,
+  children,
+  ...props
+}: RadioGroupContentProps) {
+  return (
+    <ul className={cn("flex justify-center gap-6", className)} {...props}>
+      {children}
+    </ul>
+  )
+}
+RadioGroupContent.displayName = "RadioGroupContent"
+
+interface RadioGroupContentItemProps
+  extends React.ComponentPropsWithoutRef<"li"> {
+  value: string
+}
+function RadioGroupContentItem({
+  className,
+  children,
+  value,
+  ...props
+}: RadioGroupContentItemProps) {
+  return (
+    <li className='flex items-center gap-1' {...props}>
+      <RadioGroupItem value={value} id={value} />
+      <label htmlFor={value}>{children}</label>
+    </li>
+  )
+}
+RadioGroupContentItem.displayName = "RadioGroupContentItem"
+
+export { RadioGroup, RadioGroupContent, RadioGroupItem, RadioGroupContentItem }

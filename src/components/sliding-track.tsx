@@ -32,6 +32,11 @@ export default function SlidingTrack({
   sensitivity = 0.04,
 }: SlidingTrackProps) {
   const [value, setValue] = useState(defaultValue)
+  const [isEditing, setIsEditing] = useState(false)
+  const displayValue =
+    label?.(value, operator) || `${operator ? `${value} ${operator}` : value}`
+  const inputRef = useRef<HTMLInputElement>(null)
+
   const containerRef = useRef<HTMLDivElement>(null)
   const x = useMotionValue(0)
   const trackWidth = useRef(0)
@@ -153,19 +158,13 @@ export default function SlidingTrack({
   }
 
   const handleOnInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    console.log(e.target.value)
     const newValue =
       e.target.value.trim() === "" ? 0 : Number.parseInt(e.target.value)
-
-    console.log(newValue)
 
     setValue(newValue)
     onValueChange?.(newValue)
   }
 
-  const [isEditing, setIsEditing] = useState(false)
-  const displayValue = label?.(value, operator) || `${value} ${operator}`
-  const inputRef = useRef<HTMLInputElement>(null)
   return (
     <div data-id={containerId} className='relative'>
       <div className='grid grid-cols-[auto_1fr_auto] justify-center items-center'>
@@ -228,15 +227,22 @@ export default function SlidingTrack({
           }}
         >
           {isEditing ? (
-            <Input
-              ref={inputRef}
-              value={value}
-              onChange={handleOnInputChange}
-              onBlur={() => setIsEditing(false)}
-              className='bg-transparent border-none p-1 text-center'
-            />
+            <div className='flex flex-col items-center gap-2 mt-1'>
+              <Input
+                ref={inputRef}
+                value={value}
+                onChange={handleOnInputChange}
+                onBlur={() => setIsEditing(false)}
+                className='bg-transparent border-none p-1 text-center h-6'
+              />
+              <p className='text-xs text-muted-foreground'>
+                {min}
+                {operator} to {max}
+                {operator}
+              </p>
+            </div>
           ) : (
-            <div className='w-full'>
+            <div className='w-full flex flex-col justify-center items-center'>
               <ChevronUp className='size-3' />
               {displayValue}
             </div>

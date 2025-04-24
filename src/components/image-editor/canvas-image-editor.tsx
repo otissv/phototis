@@ -1,8 +1,9 @@
 "use client"
 
 import React from "react"
-import type { ImageEditorToolsState } from "./image-editor.state"
-import { transform } from "motion/react"
+import { cn } from "@/lib/utils"
+
+import type { ImageEditorToolsState } from "@/components/image-editor/state.image-editor"
 
 // Vertex shader for rendering a full-screen quad
 const vertexShaderSource = `
@@ -232,6 +233,7 @@ export function ImageEditorCanvas({
   const textureRef = React.useRef<WebGLTexture | null>(null)
   const positionBufferRef = React.useRef<WebGLBuffer | null>(null)
   const texCoordBufferRef = React.useRef<WebGLBuffer | null>(null)
+  const [isUpscaling, setIsUpscaling] = React.useState(false)
 
   // Handle image URL creation and cleanup
   React.useEffect(() => {
@@ -453,6 +455,7 @@ export function ImageEditorCanvas({
     toolsValues.scale,
     toolsValues.flipHorizontal,
     toolsValues.flipVertical,
+    toolsValues.upscale,
   ])
 
   // Redraw when tools values change
@@ -461,15 +464,25 @@ export function ImageEditorCanvas({
   }, [draw])
 
   return (
-    <canvas
-      ref={canvasRef}
-      className='max-w-full max-h-full object-contain'
-      style={{
-        transform: `scale(${toolsValues.zoom / 100})`,
-        transformOrigin: "center",
-      }}
-      {...props}
-      id='image-editor-canvas'
-    />
+    <div className='relative'>
+      <canvas
+        ref={canvasRef}
+        className={cn(
+          "max-w-full max-h-full object-contain",
+          isUpscaling && "opacity-30"
+        )}
+        style={{
+          transform: `scale(${toolsValues.zoom / 100})`,
+          transformOrigin: "center",
+        }}
+        {...props}
+        id='image-editor-canvas'
+      />
+      {isUpscaling && (
+        <div className='absolute inset-0 flex items-center justify-center'>
+          <div className='text-sm '>Upscaling image...</div>
+        </div>
+      )}
+    </div>
   )
 }

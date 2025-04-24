@@ -1,11 +1,12 @@
+"use client"
+
 import React from "react"
-import { FILTER_PRESETS } from "@/lib/filters"
-import { Button } from "./ui/button"
-import { cn } from "@/lib/utils"
-import type { ImageEditorToolsActions } from "./image-editor.state"
-import { FilterPreview } from "./FilterPreview"
-import { ImageEditorCanvas } from "./ImageEditorCanvas"
 import { motion, useMotionValue } from "motion/react"
+
+import { FILTER_PRESETS } from "@/lib/filters"
+import { cn } from "@/lib/utils"
+import type { ImageEditorToolsActions } from "./state.image-editor"
+import { ImageEditorCanvas } from "./canvas-image-editor"
 
 interface FilterPresetsProps {
   className?: string

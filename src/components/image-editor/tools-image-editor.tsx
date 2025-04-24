@@ -3,9 +3,8 @@
 import * as React from "react"
 import { type SIDEBAR_TOOLS, TOOL_VALUES } from "@/constants"
 import { cn } from "@/lib/utils"
-import { Slider } from "@/components/ui/slider"
 
-import { ImageEditorButton } from "./ImageEditorButton"
+import { ImageEditorButton } from "./button-image-editor"
 import {
   Crop,
   FlipHorizontal2,
@@ -21,9 +20,22 @@ import {
 import type {
   ImageEditorToolsActions,
   ImageEditorToolsState,
-} from "./image-editor.state"
-import SlidingTrack from "./sliding-track"
+} from "./state.image-editor"
+import SlidingTrack from "../sliding-track"
 import { FilterPresets } from "./FilterPresets"
+import {
+  RadioGroup,
+  RadioGroupContent,
+  RadioGroupContentItem,
+  RadioGroupItem,
+} from "../ui/radio-group"
+
+export interface ImageEditorHeaderProps extends React.ComponentProps<"ul"> {
+  selectedTool: keyof typeof TOOL_VALUES
+  onSelectedToolChange: (tool: keyof typeof TOOL_VALUES) => void
+  toolsValues: typeof TOOL_VALUES
+  dispatch: React.Dispatch<ImageEditorToolsActions>
+}
 
 export interface ImageEditorFooterProps
   extends Omit<React.ComponentProps<"div">, "onChange"> {
@@ -58,20 +70,27 @@ export function getEditorTools(selected: keyof typeof SIDEBAR_TOOLS) {
   switch (selected) {
     case "finetune":
       return {
-        header: () => <></>,
+        header: (_props: ImageEditorHeaderProps) => <></>,
         footer: (props: ImageEditorFooterProps) => (
           <FinetuneFooter {...props} />
         ),
       }
     case "filter":
       return {
-        header: () => <></>,
+        header: (_props: ImageEditorHeaderProps) => <></>,
         footer: (props: ImageEditorFooterProps) => <FilterFooter {...props} />,
+      }
+    case "upscale":
+      return {
+        header: (_props: ImageEditorHeaderProps) => <></>,
+        footer: (props: ImageEditorFooterProps) => <UpscaleFooter {...props} />,
       }
 
     default:
       return {
-        header: (props: TransformHeaderProps) => <TransformHeader {...props} />,
+        header: (props: ImageEditorHeaderProps) => (
+          <TransformHeader {...props} />
+        ),
         footer: (props: ImageEditorFooterProps) => (
           <TransformFooter {...props} />
         ),
@@ -339,6 +358,7 @@ export function FilterFooter({
         return () => {}
     }
   }
+
   return (
     <ImageEditorFooter
       value={value}
@@ -418,19 +438,14 @@ export function FilterFooter({
 /**
  * Transform
  */
-export interface TransformHeaderProps extends React.ComponentProps<"ul"> {
-  selectedTool: keyof typeof TOOL_VALUES
-  onSelectedToolChange: (tool: keyof typeof TOOL_VALUES) => void
-  toolsValues: typeof TOOL_VALUES
-  dispatch: React.Dispatch<ImageEditorToolsActions>
-}
+
 export function TransformHeader({
   selectedTool,
   toolsValues,
   onSelectedToolChange,
   dispatch,
   ...props
-}: TransformHeaderProps) {
+}: ImageEditorHeaderProps) {
   const handleRotateLeft = () => {
     const currentRotation =
       typeof toolsValues.rotate === "number" ? toolsValues.rotate : 0
@@ -505,7 +520,17 @@ export function TransformFooter({
       dispatch({ type: "rotate", payload: value })
     } else if (selectedTool === "scale") {
       dispatch({ type: "scale", payload: value })
+    } else if (selectedTool === "upscale") {
+      dispatch({ type: "upscale", payload: value })
     }
+  }
+
+  let operator = ""
+
+  if (selectedTool === "rotate") {
+    operator = "°"
+  } else if (selectedTool === "scale") {
+    operator = "%"
   }
 
   return (
@@ -513,7 +538,7 @@ export function TransformFooter({
       value={value}
       selectedTool={selectedTool}
       onChange={handleOnChange}
-      operator={selectedTool === "rotate" ? "°" : "%"}
+      operator={operator}
       label={(value, operator) => {
         if (selectedTool === "rotate") {
           return `${Math.round(value)} ${operator}`
@@ -543,6 +568,44 @@ export function TransformFooter({
         </li>
       </ul>
     </ImageEditorFooter>
+  )
+}
+
+/**
+ * Upscale
+ */
+export function UpscaleFooter({
+  selectedTool,
+  value,
+  onSelectedToolChange,
+  dispatch,
+  ...props
+}: ImageEditorFooterProps) {
+  const handleOnChange = (value: string) => {
+    dispatch({ type: "upscale", payload: Number.parseInt(value) })
+  }
+
+  return (
+    <RadioGroup
+      className='items-center'
+      defaultValue='1'
+      onValueChange={handleOnChange}
+    >
+      <RadioGroupContent>
+        <RadioGroupContentItem value='1' id='1'>
+          1x
+        </RadioGroupContentItem>
+        <RadioGroupContentItem value='2' id='2'>
+          2x
+        </RadioGroupContentItem>
+        <RadioGroupContentItem value='3' id='3'>
+          3x
+        </RadioGroupContentItem>
+        <RadioGroupContentItem value='4' id='4'>
+          4x
+        </RadioGroupContentItem>
+      </RadioGroupContent>
+    </RadioGroup>
   )
 }
 

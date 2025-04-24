@@ -1,10 +1,11 @@
 "use client"
 
-import { Button } from "./ui/button"
-import { cn } from "@/lib/utils"
 import { Blend, ImageUpscale, SlidersHorizontal, History } from "lucide-react"
+
+import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import { SIDEBAR_TOOLS, type TOOL_VALUES } from "@/constants"
-import type { ImageEditorToolsActions } from "./image-editor.state"
+import type { ImageEditorToolsActions } from "@/components/image-editor/state.image-editor"
 
 export interface ImageEditorSidebarProps
   extends Omit<React.ComponentProps<"ul">, "onChange"> {
@@ -84,12 +85,30 @@ export function ImageEditorSidebar({
             onChange("filter")
 
             if (!SIDEBAR_TOOLS.filter.includes(selected)) {
-              onSelectedToolChange("filters")
+              onSelectedToolChange("tint")
             }
           }}
         >
           <Blend />
           Filter
+        </Button>
+      </li>
+      <li>
+        <Button
+          variant='outline'
+          className={cn("flex flex-col rounded-md text-xs size-18", {
+            "bg-accent text-accent-foreground": selected === "upscale",
+          })}
+          onClick={() => {
+            onChange("upscale")
+
+            if (!SIDEBAR_TOOLS.filter.includes(selected)) {
+              onSelectedToolChange("upscale")
+            }
+          }}
+        >
+          <ImageUpscale />
+          Upscale
         </Button>
       </li>
     </ul>
