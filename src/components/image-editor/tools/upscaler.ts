@@ -34,24 +34,6 @@ export async function upscaleTool({
           onProgress?.(progress)
         },
       })
-
-      // if (upscaledImage) {
-      //   width = upscaledImage.width
-      //   height = upscaledImage.height
-
-      //   // Update canvas dimensions
-      //   canvas.width = width
-      //   canvas.height = height
-      //   gl.viewport(0, 0, width, height)
-
-      //   // Upload upscaled image to GPU
-      //   gl.bindTexture(gl.TEXTURE_2D, textureRef.current)
-      //   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, upscaledImage)
-
-      //   // Trigger redraw
-      //   draw()
-      //   return
-      // }
     } catch (error) {
       console.error("Error during upscaling:", error)
     }

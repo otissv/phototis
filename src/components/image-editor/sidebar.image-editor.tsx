@@ -1,6 +1,12 @@
 "use client"
 
-import { Blend, ImageUpscale, SlidersHorizontal, History } from "lucide-react"
+import {
+  Blend,
+  ImageUpscale,
+  SlidersHorizontal,
+  History,
+  Play,
+} from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -116,6 +122,21 @@ export function ImageEditorSidebar({
         >
           <ImageUpscale />
           Upscale
+        </Button>
+      </li>
+      <li>
+        <Button
+          variant='outline'
+          className={cn("flex flex-col rounded-md text-xs size-18", {
+            "bg-accent text-accent-foreground": selected === "resize",
+          })}
+          onClick={() => {
+            onChange("resize")
+          }}
+          disabled={progress}
+        >
+          <Play />
+          Actions
         </Button>
       </li>
     </ul>

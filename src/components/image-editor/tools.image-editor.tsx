@@ -4,7 +4,7 @@ import * as React from "react"
 import { type SIDEBAR_TOOLS, TOOL_VALUES } from "@/constants"
 import { cn, onToolControlValueChange } from "@/lib/utils"
 
-import { ImageEditorButton } from "./button-image-editor"
+import { ImageEditorButton } from "./button.image-editor"
 import {
   FlipHorizontal2,
   FlipVertical2,
@@ -14,10 +14,7 @@ import {
   MoveHorizontal,
   CircleDot,
 } from "lucide-react"
-import type {
-  ImageEditorToolsActions,
-  ImageEditorToolsState,
-} from "./state.image-editor"
+
 import SlidingTrack from "../sliding-track"
 import type {
   ImageEditorHeaderProps,
@@ -82,6 +79,7 @@ export function FinetuneFooter({
   dispatch,
   toolsValues,
   progress,
+  image,
   ...props
 }: ImageEditorFooterProps) {
   const handleOnChange = (value: number) => {
@@ -119,10 +117,11 @@ export function FinetuneFooter({
 
   const Control = React.useMemo(() => {
     const controlProps = {
+      image,
       value,
       progress,
       selectedTool,
-      label: (value, operator) => {
+      label: (value: number, operator: string) => {
         if (selectedTool === "rotate") {
           return `${Math.round(value)} ${operator}`
         }
@@ -527,13 +526,7 @@ export function TransformFooter({
   ...props
 }: ImageEditorFooterProps) {
   const handleOnChange = (value: number) => {
-    if (selectedTool === "rotate") {
-      dispatch({ type: "rotate", payload: value })
-    } else if (selectedTool === "scale") {
-      dispatch({ type: "scale", payload: value })
-    } else if (selectedTool === "upscale") {
-      dispatch({ type: "upscale", payload: value })
-    }
+    dispatch({ type: selectedTool, payload: value })
   }
 
   let operator = ""
@@ -546,11 +539,12 @@ export function TransformFooter({
 
   const Control = React.useMemo(() => {
     const controlProps = {
+      image,
       value,
       progress,
       operator,
       selectedTool,
-      label: (value, operator) => {
+      label: (value: number, operator: string) => {
         if (selectedTool === "rotate") {
           return `${Math.round(value)} ${operator}`
         }

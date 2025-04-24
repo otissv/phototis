@@ -368,8 +368,13 @@ export function ImageEditorCanvas({
     }
   }, [imageUrl])
 
+  // Upscaling
   React.useEffect(() => {
-    if (!imageUrl || !toolsValues.upscale) return
+    const canvas = canvasRef.current
+
+    if (!canvas || !imageUrl || !toolsValues.upscale) {
+      return
+    }
 
     const upscale = async () => {
       try {
@@ -394,8 +399,6 @@ export function ImageEditorCanvas({
 
         if (image && glRef.current && textureRef.current) {
           const gl = glRef.current
-          const canvas = canvasRef.current
-          if (!canvas) return
 
           // Create a new image from the base64 string
           const upscaledImage = new Image()
@@ -452,6 +455,65 @@ export function ImageEditorCanvas({
 
     upscale()
   }, [imageUrl, toolsValues.upscale])
+
+  // Resizing
+  React.useEffect(() => {
+    const canvas = canvasRef.current
+
+    if (
+      !canvas ||
+      !imageUrl ||
+      !toolsValues.resize.width ||
+      !toolsValues.resize.height
+    ) {
+      return
+    }
+
+    if (glRef.current && textureRef.current) {
+      const gl = glRef.current
+
+      // Create a new image from the base64 string
+      const img = new Image()
+      img.crossOrigin = "anonymous"
+      img.src = imageUrl
+
+      img.onload = () => {
+        // Update canvas dimensions
+        const aspectRatio = img.width / img.height
+        const maxWidth = 800 * toolsValues.resize.width
+        const maxHeight = 600 * toolsValues.resize.height
+
+        let width = toolsValues.resize.width
+        let height = toolsValues.resize.height
+
+        // Resize logic
+        if (width > maxWidth) {
+          width = maxWidth
+          height = width / aspectRatio
+        }
+        if (height > maxHeight) {
+          height = maxHeight
+          width = height * aspectRatio
+        }
+
+        // Set new canvas dimensions
+        canvas.width = width
+        canvas.height = height
+        gl.viewport(0, 0, width, height)
+
+        // Upload upscaled image to GPU
+        gl.bindTexture(gl.TEXTURE_2D, textureRef.current)
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img)
+
+        // Reset processing state
+        setProcessing(0)
+
+        // Trigger redraw
+        draw()
+      }
+    }
+    return
+  }, [imageUrl, toolsValues.resize.width, toolsValues.resize.height])
 
   // Draw function
   const draw = React.useCallback(() => {

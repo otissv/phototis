@@ -65,7 +65,6 @@ export default function SlidingTrack({
 
     const handleResize = () => {
       if (slider) {
-        console.log(slider.offsetWidth)
         setSliderWidth(slider.offsetWidth)
       }
     }

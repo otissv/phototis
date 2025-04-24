@@ -2,7 +2,7 @@
 
 import React from "react"
 
-import { ImageEditorButton } from "../button-image-editor"
+import { ImageEditorButton } from "../button.image-editor"
 import type { ImageEditorToolsActions } from "../state.image-editor"
 
 export interface UpscaleButtonProps {

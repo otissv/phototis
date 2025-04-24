@@ -53,6 +53,10 @@ export type ImageEditorToolsState = TransformToolsState &
   HistoryToolsState & {
     zoom: number
     upscale: number
+    resize: {
+      width: number
+      height: number
+    }
   }
 
 export const initialState: ImageEditorToolsState = {
@@ -84,6 +88,7 @@ export const initialState: ImageEditorToolsState = {
   grain: TOOL_VALUES.grain.defaultValue,
   zoom: TOOL_VALUES.zoom.defaultValue,
   upscale: TOOL_VALUES.upscale.defaultValue,
+  resize: TOOL_VALUES.resize.defaultValue,
 }
 
 export function imageEditorToolsReducer(

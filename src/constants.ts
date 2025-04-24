@@ -144,13 +144,19 @@ export const TOOL_VALUES = {
     defaultValue: 0,
   },
   resize: {
-    defaultValue: 0,
+    width: 0,
+    height: 0,
+    defaultValue: {
+      width: 0,
+      height: 0,
+    },
   },
 }
 
 export const SIDEBAR_TOOLS = {
-  transform: ["rotate", "scale", "resize"],
+  transform: ["rotate", "scale", "resize", "flipVertical", "flipHorizontal"],
   upscale: ["upscale"],
+  actions: ["actions"],
   finetune: [
     "brightness",
     "contrast",

@@ -1,7 +1,7 @@
 "use client"
 
 import { TOOL_VALUES } from "@/constants"
-import { ImageEditorButton } from "../button-image-editor"
+import { ImageEditorButton } from "../button.image-editor"
 import SlidingTrack from "@/components/sliding-track"
 import { cn, onToolControlValueChange } from "@/lib/utils"
 import type { ImageEditorFooterProps } from "./utils.tools"
