@@ -515,7 +515,6 @@ export function TransformHeader({
 }
 
 export function TransformFooter({
-  className,
   image,
   progress,
   selectedTool,
@@ -596,7 +595,6 @@ export function TransformFooter({
 }
 
 export function UpscaleFooter({
-  className,
   image,
   progress,
   selectedTool,

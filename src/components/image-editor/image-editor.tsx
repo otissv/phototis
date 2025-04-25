@@ -1,7 +1,7 @@
 "use client"
 
 import React from "react"
-import { PlusIcon, MinusIcon } from "lucide-react"
+import { PlusIcon, MinusIcon, ChevronDown } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -14,12 +14,23 @@ import {
   initialState,
   type ImageEditorToolsActions,
 } from "@/components/image-editor/state.image-editor"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu"
+import { useWebGLDownload } from "@/components/image-editor/useWebGLDownload"
 
 export interface ImageEditorProps extends React.ComponentProps<"div"> {
   image: File
 }
 
 export function ImageEditor({ image, ...props }: ImageEditorProps) {
+  const canvasRef = React.useRef<HTMLCanvasElement>(null)
+  const [drawFn, setDrawFn] = React.useState<() => void>(() => {})
+  const drawFnRef = React.useRef<() => void>(() => {})
+
   const [selectedSidebar, setSelectedSidebar] =
     React.useState<keyof typeof SIDEBAR_TOOLS>("transform")
   const [selectedTool, setSelectedTool] =
@@ -113,11 +124,16 @@ export function ImageEditor({ image, ...props }: ImageEditorProps) {
   const handleOnProgress = (progress: number) => {
     setProgress(progress)
   }
+  const downloadImage = useWebGLDownload(canvasRef, drawFnRef)
+
+  const handleOnDownload = (mimeType: string) => () => {
+    downloadImage(mimeType)
+  }
 
   return (
     <div
       {...props}
-      className='grid grid-cols-[80px_1fr] grid-rows-[auto_1fr_auto] gap-x4 justify-center'
+      className='grid grid-cols-[80px_1fr_100px] grid-rows-[auto_1fr_auto] gap-x-4 gap-y-2 justify-center'
     >
       <ImageEditorSidebar
         selected={selectedSidebar}
@@ -148,6 +164,9 @@ export function ImageEditor({ image, ...props }: ImageEditorProps) {
                 image={image}
                 toolsValues={toolsValues}
                 onProgress={handleOnProgress}
+                id='image-editor-canvas'
+                canvasRef={canvasRef}
+                onDrawReady={(d) => (drawFnRef.current = d)}
               />
             </div>
           </div>
@@ -171,6 +190,36 @@ export function ImageEditor({ image, ...props }: ImageEditorProps) {
         dispatch={dispatch}
         value={toolsValues.zoom}
       />
+
+      <div className='col-start-3 row-start-1 row-end-3'>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant='outline' className='rounded-full gap-2'>
+              Download <ChevronDown className='w-4 h-4' />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuItem onClick={handleOnDownload("image/jpeg")}>
+              jpeg
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleOnDownload("image/png")}>
+              png
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleOnDownload("image/webp")}>
+              webp
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleOnDownload("image/gif")}>
+              gif
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleOnDownload("image/avif")}>
+              avif
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleOnDownload("image/ico")}>
+              ico
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
     </div>
   )
 }

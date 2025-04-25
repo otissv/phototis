@@ -9,9 +9,14 @@ import { ImageIcon, Upload } from "lucide-react"
 interface DropzoneProps {
   onFilesAccepted: (files: File[]) => void
   className?: string
+  isMultiple?: boolean
 }
 
-export function Dropzone({ onFilesAccepted, className }: DropzoneProps) {
+export function Dropzone({
+  onFilesAccepted,
+  className,
+  isMultiple = false,
+}: DropzoneProps) {
   const [isDragging, setIsDragging] = useState(false)
 
   const onDrop = useCallback(
@@ -27,6 +32,7 @@ export function Dropzone({ onFilesAccepted, className }: DropzoneProps) {
     accept: {
       "image/*": [".png", ".jpg", ".jpeg", ".webp"],
     },
+    multiple: isMultiple,
     onDragEnter: () => setIsDragging(true),
     onDragLeave: () => setIsDragging(false),
   })

@@ -10,11 +10,20 @@ import { ImageEditor } from "@/components/image-editor/image-editor"
 import SlidingTrack from "@/components/sliding-track"
 
 export default function Home() {
-  const [route, setRoute] = useState<"gallery" | "editor">("gallery")
+  const [route, setRoute] = useState<"gallery" | "editor" | "dropzone">(
+    "dropzone"
+  )
 
   return (
     <DndProvider backend={HTML5Backend}>
       <nav className='container flex justify-center mx-auto p-4 space-y-8'>
+        <ul className='flex gap-4'>
+          <li>
+            <Button variant='outline' onClick={() => setRoute("dropzone")}>
+              Upload
+            </Button>
+          </li>
+        </ul>
         <ul className='flex gap-4'>
           <li>
             <Button variant='outline' onClick={() => setRoute("gallery")}>
@@ -32,8 +41,8 @@ export default function Home() {
 }
 
 interface RouterProps {
-  route: "gallery" | "editor"
-  setRoute: (route: "gallery" | "editor") => void
+  route: "gallery" | "editor" | "dropzone"
+  setRoute: (route: "gallery" | "editor" | "dropzone") => void
 }
 
 function Router({ route, setRoute }: RouterProps) {
@@ -96,6 +105,19 @@ function Router({ route, setRoute }: RouterProps) {
   }
 
   switch (route) {
+    case "dropzone":
+      return (
+        <div>
+          <Dropzone
+            onFilesAccepted={(files) => {
+              setImages((prev) => [...prev, ...files])
+              setSelectedImage(files[0])
+              setRoute("editor")
+            }}
+            className='rounded-md h-160'
+          />
+        </div>
+      )
     case "gallery":
       return (
         <div className='space-y-4'>
@@ -104,7 +126,12 @@ function Router({ route, setRoute }: RouterProps) {
               Upload and process your images with ease
             </p>
 
-            <Dropzone onFilesAccepted={handleFilesAccepted} />
+            <Dropzone
+              onFilesAccepted={(files) =>
+                setImages((prev) => [...prev, ...files])
+              }
+              className='rounded-md'
+            />
           </div>
 
           <div className='w-full flex flex-wrap overflow-y-auto'>
