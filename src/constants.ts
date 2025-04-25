@@ -1,4 +1,60 @@
-export const TOOL_VALUES = {
+export type ToolValueStepType = {
+  min: number
+  max: number
+  step: number
+  defaultValue: number
+}
+export type ToolValueBooleanType = {
+  defaultValue: boolean
+}
+export type ToolValueNumberType = {
+  defaultValue: number
+}
+export type ToolValueDimensionType = {
+  width: number
+  height: number
+  defaultValue: {
+    width: number
+    height: number
+  }
+}
+
+export type ToolValueTypes =
+  | ToolValueStepType
+  | ToolValueBooleanType
+  | ToolValueNumberType
+  | ToolValueDimensionType
+
+type ToolValueKeys =
+  | "brightness"
+  | "contrast"
+  | "saturation"
+  | "exposure"
+  | "hue"
+  | "temperature"
+  | "gamma"
+  | "vintage"
+  | "blur"
+  | "blurType"
+  | "blurDirection"
+  | "blurCenter"
+  | "sharpen"
+  | "invert"
+  | "sepia"
+  | "grayscale"
+  | "tint"
+  | "vibrance"
+  | "noise"
+  | "grain"
+  | "rotate"
+  | "scale"
+  | "flipVertical"
+  | "flipHorizontal"
+  | "zoom"
+  | "upscale"
+  | "resize"
+
+export const TOOL_VALUES: Record<ToolValueKeys, ToolValueTypes> = {
   brightness: {
     min: 1,
     max: 200,

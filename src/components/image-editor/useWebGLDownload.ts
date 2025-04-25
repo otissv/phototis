@@ -1,11 +1,13 @@
+"use client"
+
 import React from "react"
 
 export function useWebGLDownload(
   canvasRef: React.RefObject<HTMLCanvasElement | null>,
-  drawFnRef: React.MutableRefObject<() => void>
+  drawFnRef: React.RefObject<() => void>
 ) {
   return React.useCallback(
-    (mimeType: string) => {
+    (mimeType: string, quality = 1.0) => {
       requestAnimationFrame(() => {
         const canvas = canvasRef.current
         if (!canvas) return
@@ -51,7 +53,7 @@ export function useWebGLDownload(
             URL.revokeObjectURL(url)
           },
           mimeType,
-          1.0
+          quality
         )
       })
     },

@@ -1,15 +1,14 @@
 "use client"
 
-import { TOOL_VALUES } from "@/constants"
-import { ImageEditorButton } from "../button.image-editor"
-import SlidingTrack from "@/components/sliding-track"
-import { cn, onToolControlValueChange } from "@/lib/utils"
+import type { TOOL_VALUES } from "@/constants"
+import { cn } from "@/lib/utils"
 import type { ImageEditorFooterProps } from "./utils.tools"
 import { Input } from "@/components/ui/input"
-import { useState } from "react"
+
 import React from "react"
 import { Link2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { ImageEditorButton } from "../button.image-editor"
 
 function getImageDimensions(
   file: File
@@ -56,14 +55,8 @@ function ResizeButton({
 ResizeButton.displayName = "ResizeButton"
 
 function ResizeControls({
-  className,
-  operator,
-  selectedTool,
-  value,
-  label,
   onChange,
   image,
-  progress,
 }: Omit<ImageEditorFooterProps, "dispatch" | "onSelectedToolChange">) {
   const [width, setWidth] = React.useState<number>(0)
   const [height, setHeight] = React.useState<number>(0)

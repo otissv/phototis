@@ -2,7 +2,6 @@
 
 import * as React from "react"
 import { type SIDEBAR_TOOLS, TOOL_VALUES } from "@/constants"
-import { cn, onToolControlValueChange } from "@/lib/utils"
 
 import { ImageEditorButton } from "./button.image-editor"
 import {
@@ -15,7 +14,6 @@ import {
   CircleDot,
 } from "lucide-react"
 
-import SlidingTrack from "../sliding-track"
 import type {
   ImageEditorHeaderProps,
   ImageEditorFooterProps,
@@ -36,24 +34,31 @@ import {
 import { GammaButton, GammaControls } from "./tools/gamma.tools"
 import { VintageButton, VintageControls } from "./tools/vintage.tools"
 
-export function getEditorTools(selected: keyof typeof SIDEBAR_TOOLS) {
+export function getEditorTools(
+  selected: keyof typeof SIDEBAR_TOOLS,
+  setIsUpdating: (isUpdating: boolean) => void
+) {
   switch (selected) {
     case "finetune":
       return {
         header: (_props: ImageEditorHeaderProps) => <></>,
         footer: (props: ImageEditorFooterProps) => (
-          <FinetuneFooter {...props} />
+          <FinetuneFooter {...props} setIsUpdating={setIsUpdating} />
         ),
       }
     case "filter":
       return {
         header: (_props: ImageEditorHeaderProps) => <></>,
-        footer: (props: ImageEditorFooterProps) => <FilterFooter {...props} />,
+        footer: (props: ImageEditorFooterProps) => (
+          <FilterFooter {...props} setIsUpdating={setIsUpdating} />
+        ),
       }
     case "upscale":
       return {
         header: (_props: ImageEditorHeaderProps) => <></>,
-        footer: (props: ImageEditorFooterProps) => <UpscaleFooter {...props} />,
+        footer: (props: ImageEditorFooterProps) => (
+          <UpscaleFooter {...props} setIsUpdating={setIsUpdating} />
+        ),
       }
 
     default:
@@ -62,7 +67,7 @@ export function getEditorTools(selected: keyof typeof SIDEBAR_TOOLS) {
           <TransformHeader {...props} />
         ),
         footer: (props: ImageEditorFooterProps) => (
-          <TransformFooter {...props} />
+          <TransformFooter {...props} setIsUpdating={setIsUpdating} />
         ),
       }
   }
@@ -80,6 +85,9 @@ export function FinetuneFooter({
   toolsValues,
   progress,
   image,
+  setIsUpdating,
+  onChange: _onChange,
+  onProgress: _onProgress,
   ...props
 }: ImageEditorFooterProps) {
   const handleOnChange = (value: number) => {
@@ -115,12 +123,14 @@ export function FinetuneFooter({
     }
   }
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: <explanation>
   const Control = React.useMemo(() => {
     const controlProps = {
       image,
       value,
       progress,
       selectedTool,
+      setIsUpdating,
       label: (value: number, operator: string) => {
         if (selectedTool === "rotate") {
           return `${Math.round(value)} ${operator}`
@@ -195,33 +205,12 @@ export function FinetuneFooter({
           {toolsValues?.blurType === 2 && (
             <div className='flex flex-col gap-2'>
               <span className='text-sm text-muted-foreground'>Direction</span>
-              <SlidingTrack
-                min={TOOL_VALUES.blurDirection.min}
-                max={TOOL_VALUES.blurDirection.max}
-                step={TOOL_VALUES.blurDirection.step}
-                defaultValue={toolsValues?.blurDirection || 0}
-                operator='°'
-                onToolControlValueChange={(value) =>
-                  dispatch({ type: "blurDirection", payload: value })
-                }
-                disabled={progress}
-              />
             </div>
           )}
 
           {toolsValues?.blurType === 3 && (
             <div className='flex flex-col gap-2'>
               <span className='text-sm text-muted-foreground'>Center</span>
-              <SlidingTrack
-                min={TOOL_VALUES.blurCenter.min}
-                max={TOOL_VALUES.blurCenter.max}
-                step={TOOL_VALUES.blurCenter.step}
-                defaultValue={toolsValues?.blurCenter || 0.5}
-                onToolControlValueChange={(value) =>
-                  dispatch({ type: "blurCenter", payload: value })
-                }
-                disabled={progress}
-              />
             </div>
           )}
         </div>
@@ -321,8 +310,6 @@ export function FilterFooter({
   progress,
   ...props
 }: ImageEditorFooterProps) {
-  const [selectedPreset, setSelectedPreset] = React.useState<string>("Normal")
-
   const handleOnChange = (value: number) => {
     switch (selectedTool) {
       case "tint":
@@ -347,12 +334,7 @@ export function FilterFooter({
   }
 
   return (
-    <ImageEditorFooter
-      value={value}
-      selectedTool={selectedTool}
-      onChange={handleOnChange}
-      {...props}
-    >
+    <div>
       <ul className='flex gap-2 mt-10  justify-center'>
         <li>
           <ImageEditorButton
@@ -425,7 +407,7 @@ export function FilterFooter({
           </ImageEditorButton>
         </li>
       </ul>
-    </ImageEditorFooter>
+    </div>
   )
 }
 
@@ -522,8 +504,9 @@ export function TransformFooter({
   value,
   dispatch,
   onSelectedToolChange,
+  setIsUpdating,
   ...props
-}: ImageEditorFooterProps) {
+}: Omit<ImageEditorFooterProps, "onChange" | "onProgress">) {
   const handleOnChange = (value: number) => {
     dispatch({ type: selectedTool, payload: value })
   }
@@ -536,6 +519,7 @@ export function TransformFooter({
     operator = "%"
   }
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: handleOnChange causes infinite loop
   const Control = React.useMemo(() => {
     const controlProps = {
       image,
@@ -543,6 +527,7 @@ export function TransformFooter({
       progress,
       operator,
       selectedTool,
+      setIsUpdating,
       label: (value: number, operator: string) => {
         if (selectedTool === "rotate") {
           return `${Math.round(value)} ${operator}`
@@ -603,7 +588,7 @@ export function UpscaleFooter({
   dispatch,
   onSelectedToolChange,
   ...props
-}: ImageEditorFooterProps) {
+}: Omit<ImageEditorFooterProps, "onChange" | "onProgress">) {
   return (
     <div className='flex justify-center ' {...props}>
       <UpscaleButton
@@ -611,42 +596,6 @@ export function UpscaleFooter({
         dispatch={dispatch}
         progress={progress}
       />
-    </div>
-  )
-}
-
-export function ImageEditorFooter({
-  children,
-  className,
-  operator,
-  selectedTool,
-  value,
-  label,
-  onChange,
-  progress,
-  ...props
-}: Omit<ImageEditorFooterProps, "dispatch" | "onSelectedToolChange">) {
-  return (
-    <div {...props} className={cn("w-full max-w-lg", className)}>
-      <div className='m-4'>
-        <span className='sr-only'>{selectedTool}</span>
-
-        <SlidingTrack
-          min={TOOL_VALUES[selectedTool].min}
-          max={TOOL_VALUES[selectedTool].max}
-          step={TOOL_VALUES[selectedTool].step}
-          defaultValue={value}
-          operator={operator}
-          onToolControlValueChange={onToolControlValueChange({
-            selectedTool,
-            onChange: onChange || (() => {}),
-          })}
-          label={label}
-          disabled={progress}
-        />
-      </div>
-
-      {children}
     </div>
   )
 }

@@ -13,14 +13,16 @@ const Slider = React.forwardRef<
     onPointerUp?: (event: React.PointerEvent) => void
     onPointerMove?: (event: React.PointerEvent) => void
   }
->(({ className, children, ...props }, ref) => {
+>(({ className, children, min, max, ...props }, ref) => {
   return (
     <SliderPrimitive.Root
       ref={ref}
       className={cn(
-        "relative flex w-full touch-none select-none items-center",
+        "relative flex flex-col w-full touch-none select-none items-center",
         className
       )}
+      min={min}
+      max={max}
       {...props}
     >
       <SliderPrimitive.Track className='relative h-2 w-full grow overflow-hidden rounded-full bg-secondary'>
@@ -29,6 +31,11 @@ const Slider = React.forwardRef<
       <SliderPrimitive.Thumb className='block h-5 w-5 rounded-full border-2 border-primary bg-background ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50'>
         {children}
       </SliderPrimitive.Thumb>
+
+      <div className='flex justify-between w-full mt-3'>
+        <div>{min}</div>
+        <div>{max}</div>
+      </div>
     </SliderPrimitive.Root>
   )
 })

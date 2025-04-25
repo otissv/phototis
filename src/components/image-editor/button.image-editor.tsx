@@ -30,3 +30,4 @@ export function ImageEditorButton({
     </Button>
   )
 }
+ImageEditorButton.displayName = "ImageEditorButton"

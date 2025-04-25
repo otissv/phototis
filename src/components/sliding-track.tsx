@@ -4,10 +4,10 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { ArrowDownToLine, ChevronLeft, ChevronRight, Dot } from "lucide-react"
 import { motion, useMotionValue } from "motion/react"
-import { useEffect, useId, useRef, useState } from "react"
+import React, { useEffect, useId, useRef, useState } from "react"
 import { Input } from "./ui/input"
 
-interface SlidingTrackProps {
+export interface SlidingTrackProps extends React.ComponentProps<"div"> {
   min?: number
   max?: number
   step?: number
@@ -16,6 +16,7 @@ interface SlidingTrackProps {
   operator?: string
   sensitivity?: number
   onValueChange?: (value: number) => void
+  setIsUpdating?: (isUpdating: boolean) => void
   range?: [number, number] | [string, string]
   label?: (value: number, operator: string) => React.ReactNode
   disabled?: boolean
@@ -29,12 +30,19 @@ export default function SlidingTrack({
   value: hostValue = 50,
   defaultValue,
   onValueChange,
+  setIsUpdating,
   label,
   sensitivity = 0.04,
   disabled = false,
+  ...props
 }: SlidingTrackProps) {
   const [value, setValue] = useState(hostValue)
   const [isEditing, setIsEditing] = useState(false)
+  const [sliderWidth, setSliderWidth] = useState(0)
+  const [disableDragDirection, setDisableDragDirection] = useState<
+    "left" | "right" | null
+  >(null)
+
   const displayValue =
     label?.(value, operator) || `${operator ? `${value} ${operator}` : value}`
   const inputRef = useRef<HTMLInputElement>(null)
@@ -45,7 +53,6 @@ export default function SlidingTrack({
   const prevValueRef = useRef(value)
   const initialDragX = useRef<number | null>(null)
   const previousX = useRef<number | null>(null)
-  const [sliderWidth, setSliderWidth] = useState(0)
 
   const containerId = useId()
 
@@ -75,8 +82,8 @@ export default function SlidingTrack({
 
   useEffect(() => {
     if (defaultValue !== prevValueRef.current) {
-      setValue(defaultValue)
-      prevValueRef.current = defaultValue
+      setValue(defaultValue || 0)
+      prevValueRef.current = defaultValue || 0
     }
 
     if (containerRef.current) {
@@ -96,6 +103,8 @@ export default function SlidingTrack({
 
     if (initialDragX.current === null) {
       initialDragX.current = info.point.x
+      setIsUpdating?.(true)
+
       return
     }
 
@@ -136,9 +145,10 @@ export default function SlidingTrack({
 
   const handleDragEnd = () => {
     initialDragX.current = null
+    setIsUpdating?.(false)
   }
 
-  const dotPattern = [...Array(350)]
+  const dotPattern = React.useMemo(() => [...Array(350)].map((_, i) => i), [])
 
   const handleDirectionChange = (direction: "left" | "right") => {
     if (direction === "left") {
@@ -169,7 +179,11 @@ export default function SlidingTrack({
   }
 
   return (
-    <div data-id={containerId} className='relative flex flex-col items-center'>
+    <div
+      data-id={containerId}
+      className='relative flex flex-col items-center'
+      {...props}
+    >
       {!isEditing ? (
         <>
           <div className='grid grid-cols-[auto_1fr_auto] justify-center items-center h-10'>
@@ -199,10 +213,10 @@ export default function SlidingTrack({
                 className='flex h-10'
               >
                 <div className='flex items-center justify-center -translate-x-1/2'>
-                  {dotPattern.map((_, i) => {
+                  {dotPattern.map((key, i) => {
                     return (
                       <div
-                        key={`dot-${i}`}
+                        key={`dot-${key}`}
                         className='text-gray-400 select-none'
                       >
                         <Dot

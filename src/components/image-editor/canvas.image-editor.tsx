@@ -217,11 +217,12 @@ const fragmentShaderSource = `
   }
 `
 
-export interface ImageEditorCanvasProps extends React.ComponentProps<"canvas"> {
+export interface ImageEditorCanvasProps
+  extends Omit<React.ComponentProps<"canvas">, "onProgress"> {
   image: File
   toolsValues: ImageEditorToolsState
   onProgress?: (progress: number) => void
-  canvasRef?: React.RefObject<HTMLCanvasElement> | null
+  canvasRef?: React.RefObject<HTMLCanvasElement | null>
   onDrawReady?: (draw: () => void) => void
 }
 
@@ -229,7 +230,7 @@ export function ImageEditorCanvas({
   image,
   toolsValues,
   onProgress,
-  canvasRef = null,
+  canvasRef,
   onDrawReady,
   ...props
 }: ImageEditorCanvasProps) {
@@ -251,7 +252,7 @@ export function ImageEditorCanvas({
   // Initialize WebGL context and shaders
   React.useEffect(() => {
     // 1. Initial Checks
-    if (!canvasRef.current || !imageUrl) return
+    if (!canvasRef?.current || !imageUrl) return
 
     const canvas = canvasRef.current
     const gl = canvas.getContext("webgl2")
@@ -369,11 +370,11 @@ export function ImageEditorCanvas({
       gl.deleteBuffer(texCoordBuffer)
       gl.deleteTexture(texture)
     }
-  }, [imageUrl])
+  }, [imageUrl, canvasRef?.current])
 
   // Upscaling
   React.useEffect(() => {
-    const canvas = canvasRef.current
+    const canvas = canvasRef?.current
 
     if (!canvas || !imageUrl || !toolsValues.upscale) {
       return
@@ -457,11 +458,11 @@ export function ImageEditorCanvas({
     }
 
     upscale()
-  }, [imageUrl, toolsValues.upscale])
+  }, [imageUrl, canvasRef?.current, toolsValues.upscale, onProgress])
 
   // Resizing
   React.useEffect(() => {
-    const canvas = canvasRef.current
+    const canvas = canvasRef?.current
 
     if (
       !canvas ||
@@ -516,7 +517,12 @@ export function ImageEditorCanvas({
       }
     }
     return
-  }, [imageUrl, toolsValues.resize.width, toolsValues.resize.height])
+  }, [
+    imageUrl,
+    canvasRef?.current,
+    toolsValues.resize.width,
+    toolsValues.resize.height,
+  ])
 
   // Draw function
   // const draw = React.useCallback(() => {

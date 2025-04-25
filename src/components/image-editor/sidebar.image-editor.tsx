@@ -127,12 +127,7 @@ export function ImageEditorSidebar({
       <li>
         <Button
           variant='outline'
-          className={cn("flex flex-col rounded-md text-xs size-18", {
-            "bg-accent text-accent-foreground": selected === "resize",
-          })}
-          onClick={() => {
-            onChange("resize")
-          }}
+          className={cn("flex flex-col rounded-md text-xs size-18")}
           disabled={progress}
         >
           <Play />

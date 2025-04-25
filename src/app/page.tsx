@@ -7,7 +7,19 @@ import { Dropzone } from "@/components/Dropzone"
 import { ImageCard } from "@/components/ImageCard"
 import { Button } from "@/components/ui/button"
 import { ImageEditor } from "@/components/image-editor/image-editor"
-import SlidingTrack from "@/components/sliding-track"
+
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetClose,
+  SheetTrigger,
+} from "@/components/ui/sheet"
+import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
 
 export default function Home() {
   const [route, setRoute] = useState<"gallery" | "editor" | "dropzone">(

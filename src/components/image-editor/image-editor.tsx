@@ -21,15 +21,40 @@ import {
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu"
 import { useWebGLDownload } from "@/components/image-editor/useWebGLDownload"
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet"
+import { Slider } from "../ui/slider"
+import { Label } from "../ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select"
+import { Input } from "../ui/input"
+import { QualityOptions } from "./quaity-options.image-editor"
 
 export interface ImageEditorProps extends React.ComponentProps<"div"> {
   image: File
 }
 
 export function ImageEditor({ image, ...props }: ImageEditorProps) {
-  const canvasRef = React.useRef<HTMLCanvasElement>(null)
-  const [drawFn, setDrawFn] = React.useState<() => void>(() => {})
+  const canvasRef = React.useRef<HTMLCanvasElement | null>(null)
   const drawFnRef = React.useRef<() => void>(() => {})
+  const [isUpdating, setIsUpdating] = React.useState(false)
+
+  const [isOptionsOpen, setIsOptionsOpen] = React.useState(false)
+  const [jpegQuality, setJpegQuality] = React.useState(80)
+  const [webpQuality, setWebpQuality] = React.useState(80)
 
   const [selectedSidebar, setSelectedSidebar] =
     React.useState<keyof typeof SIDEBAR_TOOLS>("transform")
@@ -41,6 +66,10 @@ export function ImageEditor({ image, ...props }: ImageEditorProps) {
     imageEditorToolsReducer,
     initialState
   )
+
+  React.useEffect(() => {
+    console.log("isUpdating", isUpdating)
+  }, [isUpdating])
 
   const value = React.useMemo(() => {
     switch (selectedTool) {
@@ -117,7 +146,7 @@ export function ImageEditor({ image, ...props }: ImageEditorProps) {
   }
 
   const { header: Header, footer: ImageEditorFooter } = React.useMemo(
-    () => getEditorTools(selectedSidebar),
+    () => getEditorTools(selectedSidebar, setIsUpdating),
     [selectedSidebar]
   )
 
@@ -126,8 +155,20 @@ export function ImageEditor({ image, ...props }: ImageEditorProps) {
   }
   const downloadImage = useWebGLDownload(canvasRef, drawFnRef)
 
-  const handleOnDownload = (mimeType: string) => () => {
-    downloadImage(mimeType)
+  const handleOnDownload = (mimeType: string, quality?: number) => () => {
+    downloadImage(mimeType, quality ? quality / 100 : undefined)
+  }
+
+  const handleOnUndo = () => {
+    dispatch({ type: "undo" })
+  }
+
+  const handleOnRedo = () => {
+    dispatch({ type: "redo" })
+  }
+
+  const handleDrawReady = (d: () => void) => {
+    drawFnRef.current = d
   }
 
   return (
@@ -166,7 +207,7 @@ export function ImageEditor({ image, ...props }: ImageEditorProps) {
                 onProgress={handleOnProgress}
                 id='image-editor-canvas'
                 canvasRef={canvasRef}
-                onDrawReady={(d) => (drawFnRef.current = d)}
+                onDrawReady={handleDrawReady}
               />
             </div>
           </div>
@@ -183,6 +224,7 @@ export function ImageEditor({ image, ...props }: ImageEditorProps) {
         toolsValues={toolsValues}
         onProgress={handleOnProgress}
         progress={progress}
+        setIsUpdating={setIsUpdating}
       />
 
       <ZoomControls
@@ -192,6 +234,11 @@ export function ImageEditor({ image, ...props }: ImageEditorProps) {
       />
 
       <div className='col-start-3 row-start-1 row-end-3'>
+        <div className='flex gap-2'>
+          <Button onClick={handleOnUndo}>Undo</Button>
+          <Button onClick={handleOnRedo}>Redo</Button>
+        </div>
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant='outline' className='rounded-full gap-2'>
@@ -199,23 +246,40 @@ export function ImageEditor({ image, ...props }: ImageEditorProps) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent>
-            <DropdownMenuItem onClick={handleOnDownload("image/jpeg")}>
-              jpeg
-            </DropdownMenuItem>
+            <QualityOptions
+              description='Configure your download quality. These settings will affect the final file size and image quality of your download.'
+              title='JPEG Download Options'
+              isOpen={isOptionsOpen}
+              setIsOpen={setIsOptionsOpen}
+              quality={jpegQuality}
+              setQuality={setJpegQuality}
+              onClick={handleOnDownload("image/jpeg", jpegQuality)}
+            >
+              JPEG
+            </QualityOptions>
+            <QualityOptions
+              description='Configure your download quality. These settings will affect the final file size and image quality of your download.'
+              title='WebP Download Options'
+              isOpen={isOptionsOpen}
+              setIsOpen={setIsOptionsOpen}
+              quality={webpQuality}
+              setQuality={setWebpQuality}
+              onClick={handleOnDownload("image/webp", webpQuality)}
+            >
+              WebP
+            </QualityOptions>
             <DropdownMenuItem onClick={handleOnDownload("image/png")}>
-              png
+              Png
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleOnDownload("image/webp")}>
-              webp
-            </DropdownMenuItem>
+
             <DropdownMenuItem onClick={handleOnDownload("image/gif")}>
-              gif
+              Gif
             </DropdownMenuItem>
             <DropdownMenuItem onClick={handleOnDownload("image/avif")}>
-              avif
+              AVIF
             </DropdownMenuItem>
             <DropdownMenuItem onClick={handleOnDownload("image/ico")}>
-              ico
+              ICO
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

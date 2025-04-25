@@ -1,10 +1,8 @@
 "use client"
 
-import { TOOL_VALUES } from "@/constants"
+import type { TOOL_VALUES } from "@/constants"
 import { ImageEditorButton } from "../button.image-editor"
-import SlidingTrack from "@/components/sliding-track"
-import { cn, onToolControlValueChange } from "@/lib/utils"
-import type { ImageEditorFooterProps } from "./utils.tools"
+import { ImageEditorFooterSlider } from "../footer-slider.image-editor"
 
 export interface BrightnessButtonProps {
   onSelectedToolChange: (tool: keyof typeof TOOL_VALUES) => void
@@ -30,32 +28,6 @@ function BrightnessButton({
 }
 BrightnessButton.displayName = "BrightnessButton"
 
-function BrightnessControls({
-  className,
-  operator,
-  selectedTool,
-  value,
-  label,
-  onChange,
-  progress,
-}: Omit<ImageEditorFooterProps, "dispatch" | "onSelectedToolChange">) {
-  return (
-    <SlidingTrack
-      title={selectedTool}
-      className={className}
-      min={TOOL_VALUES[selectedTool].min}
-      max={TOOL_VALUES[selectedTool].max}
-      step={TOOL_VALUES[selectedTool].step}
-      defaultValue={value}
-      operator={operator}
-      onValueChange={onToolControlValueChange({
-        selectedTool,
-        onChange: onChange || (() => {}),
-      })}
-      label={label}
-      disabled={progress}
-    />
-  )
-}
-BrightnessControls.displayName = "BrightnessControls"
+const BrightnessControls = ImageEditorFooterSlider
+
 export { BrightnessButton, BrightnessControls }

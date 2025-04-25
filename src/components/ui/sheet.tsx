@@ -1,12 +1,10 @@
 "use client"
 
 import * as SheetPrimitive from "@radix-ui/react-dialog"
-import * as VisuallyHidden from "@radix-ui/react-visually-hidden"
 import { type VariantProps, cva } from "class-variance-authority"
 import { X } from "lucide-react"
 import * as React from "react"
 
-import { DialogDescription } from "@radix-ui/react-dialog"
 import { cn } from "@/lib/utils"
 
 const Sheet = SheetPrimitive.Root
@@ -205,21 +203,15 @@ const SheetContent = React.forwardRef<
     ref
   ) => {
     return (
-      <SheetPortal
-        position={position}
-        aria-describedby='Create New Collection Content'
-      >
+      <SheetPortal position={position} aria-describedby={description}>
         <SheetOverlay className={overlayClassName} onClick={onClose} />
         <SheetPrimitive.Content
           ref={ref}
           className={cn(sheetVariants({ position, size }), className)}
           onClick={(e: React.MouseEvent<HTMLDivElement>) => e.preventDefault()}
           {...props}
-          aria-describedby='Create New Collection Content'
+          aria-describedby={description}
         >
-          <DialogDescription>
-            <VisuallyHidden.Root>{description}</VisuallyHidden.Root>
-          </DialogDescription>
           {children}
           {onClose && (
             <SheetClose

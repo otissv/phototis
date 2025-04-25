@@ -6,7 +6,7 @@ import type { ImageEditorToolsActions } from "../state.image-editor"
 export interface ImageEditorHeaderProps
   extends Omit<React.ComponentProps<"ul">, "onChange" | "onProgress"> {
   selectedTool: keyof typeof TOOL_VALUES
-  toolsValues: typeof TOOL_VALUES
+  toolsValues: ImageEditorToolsState
   dispatch: React.Dispatch<ImageEditorToolsActions>
   onSelectedToolChange: (tool: keyof typeof TOOL_VALUES) => void
   onProgress?: (progress: number) => void
@@ -14,7 +14,10 @@ export interface ImageEditorHeaderProps
 }
 
 export interface ImageEditorFooterProps
-  extends Omit<React.ComponentProps<"div">, "onChange" | "onProgress"> {
+  extends Omit<
+    React.ComponentProps<"div">,
+    "onChange" | "onProgress" | "value"
+  > {
   image?: File
   operator?: string
   selectedTool: keyof typeof TOOL_VALUES
@@ -26,4 +29,8 @@ export interface ImageEditorFooterProps
   onChange?: (value: number) => void
   onProgress?: (progress: number) => void
   progress?: number
+  isUpdating?: boolean
+  setIsUpdating: (isUpdating: boolean) => void
 }
+
+// export interface FooterProps extends Omit<ImageEditorFooterProps, "dispatch"> {}

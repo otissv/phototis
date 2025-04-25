@@ -30,4 +30,4 @@ function UpscaleButton({ progress, value, dispatch }: UpscaleButtonProps) {
 }
 UpscaleButton.displayName = "UpscaleButton"
 
-export { UpscaleButton, UpscaleControls }
+export { UpscaleButton }
