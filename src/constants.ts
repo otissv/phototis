@@ -213,6 +213,7 @@ export const SIDEBAR_TOOLS = {
   transform: ["rotate", "scale", "resize", "flipVertical", "flipHorizontal"],
   upscale: ["upscale"],
   actions: ["actions"],
+  layers: ["layers"],
   finetune: [
     "brightness",
     "contrast",

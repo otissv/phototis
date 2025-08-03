@@ -42,6 +42,7 @@ import {
 } from "../ui/select"
 import { Input } from "../ui/input"
 import { QualityOptions } from "./quaity-options.image-editor"
+import { LayerSystem, type Layer } from "./layer-system"
 
 export interface ImageEditorProps extends React.ComponentProps<"div"> {
   image: File | null
@@ -61,9 +62,42 @@ export function ImageEditor({ image, ...props }: ImageEditorProps) {
     React.useState<keyof typeof TOOL_VALUES>("rotate")
   const [progress, setProgress] = React.useState(0)
 
-  const [toolsValues, dispatch] = React.useReducer(
-    imageEditorToolsReducer,
-    initialState
+  // Layer system state
+  const [layers, setLayers] = React.useState<Layer[]>(() => {
+    // Initialize with a default layer
+    const defaultLayer: Layer = {
+      id: "layer-1",
+      name: "Background",
+      visible: true,
+      locked: false,
+      filters: { ...initialState },
+      opacity: 100,
+    }
+    return [defaultLayer]
+  })
+  const [selectedLayerId, setSelectedLayerId] =
+    React.useState<string>("layer-1")
+
+  // Get the currently selected layer's filters
+  const selectedLayer = React.useMemo(() => {
+    return layers.find((layer) => layer.id === selectedLayerId) || layers[0]
+  }, [layers, selectedLayerId])
+
+  const toolsValues = React.useMemo(() => {
+    return selectedLayer?.filters || initialState
+  }, [selectedLayer])
+
+  const dispatch = React.useCallback(
+    (action: ImageEditorToolsActions) => {
+      if (!selectedLayer) return
+
+      const newFilters = imageEditorToolsReducer(selectedLayer.filters, action)
+      const newLayers = layers.map((layer) =>
+        layer.id === selectedLayerId ? { ...layer, filters: newFilters } : layer
+      )
+      setLayers(newLayers)
+    },
+    [selectedLayer, selectedLayerId, layers]
   )
 
   const value = React.useMemo(() => {
@@ -132,44 +166,75 @@ export function ImageEditor({ image, ...props }: ImageEditorProps) {
     toolsValues.grain,
   ])
 
-  const handleSelectedToolChange = (tool: keyof typeof TOOL_VALUES) => {
-    setSelectedTool(tool)
-  }
+  const handleSelectedToolChange = React.useCallback(
+    (tool: keyof typeof TOOL_VALUES) => {
+      setSelectedTool(tool)
+    },
+    []
+  )
 
-  const handleSelectedSidebarChange = (sidebar: keyof typeof SIDEBAR_TOOLS) => {
-    setSelectedSidebar(sidebar)
-  }
+  const handleSelectedSidebarChange = React.useCallback(
+    (sidebar: keyof typeof SIDEBAR_TOOLS) => {
+      setSelectedSidebar(sidebar)
+    },
+    []
+  )
 
   const { header: Header, footer: ImageEditorFooter } = React.useMemo(
     () => getEditorTools(selectedSidebar),
     [selectedSidebar]
   )
 
-  const handleOnProgress = (progress: number) => {
+  const handleOnProgress = React.useCallback((progress: number) => {
     setProgress(progress)
-  }
+  }, [])
+
   const downloadImage = useWebGLDownload(canvasRef, drawFnRef)
 
-  const handleOnDownload = (mimeType: string, quality?: number) => () => {
-    downloadImage(mimeType, quality ? quality / 100 : undefined)
-  }
+  const handleOnDownload = React.useCallback(
+    (mimeType: string, quality?: number) => () => {
+      downloadImage(mimeType, quality ? quality / 100 : undefined)
+    },
+    [downloadImage]
+  )
 
-  const handleOnUndo = () => {
+  const handleOnUndo = React.useCallback(() => {
     dispatch({ type: "undo" })
-  }
+  }, [dispatch])
 
-  const handleOnRedo = () => {
+  const handleOnRedo = React.useCallback(() => {
     dispatch({ type: "redo" })
-  }
+  }, [dispatch])
 
-  const handleDrawReady = (d: () => void) => {
+  const handleDrawReady = React.useCallback((d: () => void) => {
     drawFnRef.current = d
-  }
+  }, [])
+
+  const handleLayersChange = React.useCallback((newLayers: Layer[]) => {
+    setLayers(newLayers)
+  }, [])
+
+  const handleSelectedLayerChange = React.useCallback(
+    (layerId: string | null) => {
+      setSelectedLayerId(layerId || "")
+    },
+    []
+  )
+
+  const handleLayerFiltersChange = React.useCallback(
+    (layerId: string, filters: any) => {
+      const newLayers = layers.map((layer) =>
+        layer.id === layerId ? { ...layer, filters } : layer
+      )
+      setLayers(newLayers)
+    },
+    [layers]
+  )
 
   return (
     <div
       {...props}
-      className='grid grid-cols-[80px_1fr_100px] grid-rows-[auto_1fr_auto] gap-x-4 gap-y-2 justify-center'
+      className='grid grid-cols-[80px_1fr_256px] grid-rows-[auto_1fr_auto] gap-x-4 gap-y-2 justify-center'
     >
       <ImageEditorSidebar
         selected={selectedSidebar}
@@ -199,6 +264,7 @@ export function ImageEditor({ image, ...props }: ImageEditorProps) {
               <ImageEditorCanvas
                 image={image}
                 toolsValues={toolsValues}
+                layers={layers}
                 onProgress={handleOnProgress}
                 id='image-editor-canvas'
                 canvasRef={canvasRef}
@@ -278,6 +344,15 @@ export function ImageEditor({ image, ...props }: ImageEditorProps) {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      {/* Layer System */}
+      <LayerSystem
+        layers={layers}
+        selectedLayerId={selectedLayerId}
+        onLayersChange={handleLayersChange}
+        onSelectedLayerChange={handleSelectedLayerChange}
+        onLayerFiltersChange={handleLayerFiltersChange}
+      />
     </div>
   )
 }
@@ -291,14 +366,17 @@ function ZoomControls({
   dispatch: React.Dispatch<ImageEditorToolsActions>
   value: number
 }) {
-  const handleZoom = (operator: "plus" | "minus") => () => {
-    const payload = operator === "plus" ? value + 25 : value - 25
-    if (payload < 13) {
-      return
-    }
+  const handleZoom = React.useCallback(
+    (operator: "plus" | "minus") => () => {
+      const payload = operator === "plus" ? value + 25 : value - 25
+      if (payload < 13) {
+        return
+      }
 
-    dispatch({ type: "zoom", payload })
-  }
+      dispatch({ type: "zoom", payload })
+    },
+    [value, dispatch]
+  )
 
   return (
     <div className={cn("flex items-center ", className)}>

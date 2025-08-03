@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils"
 
 import type { ImageEditorToolsState } from "@/components/image-editor/state.image-editor"
 import { upscaleTool } from "./tools/upscaler"
+import type { Layer } from "./layer-system"
 
 // Vertex shader for rendering a full-screen quad
 const vertexShaderSource = `
@@ -66,6 +67,7 @@ const fragmentShaderSource = `
   uniform float u_noise;
   uniform float u_grain;
   uniform vec2 u_resolution;
+  uniform float u_opacity;
   varying vec2 v_texCoord;
 
   // Helper functions
@@ -213,6 +215,9 @@ const fragmentShaderSource = `
       color.rgb += grain;
     }
     
+    // Apply opacity
+    color.a *= u_opacity / 100.0;
+    
     gl_FragColor = color;
   }
 `
@@ -221,6 +226,7 @@ export interface ImageEditorCanvasProps
   extends Omit<React.ComponentProps<"canvas">, "onProgress"> {
   image: File | null
   toolsValues: ImageEditorToolsState
+  layers?: Layer[]
   onProgress?: (progress: number) => void
   canvasRef?: React.RefObject<HTMLCanvasElement | null>
   onDrawReady?: (draw: () => void) => void
@@ -229,6 +235,7 @@ export interface ImageEditorCanvasProps
 export function ImageEditorCanvas({
   image,
   toolsValues,
+  layers = [],
   onProgress,
   canvasRef,
   onDrawReady,
@@ -525,98 +532,7 @@ export function ImageEditorCanvas({
     toolsValues.resize.height,
   ])
 
-  // Draw function
-  // const draw = React.useCallback(() => {
-  //   const gl = glRef.current
-  //   const program = programRef.current
-  //   if (!gl || !program) return
-
-  //   gl.useProgram(program)
-
-  //   // Set uniforms with proper normalization
-  //   const uniforms = {
-  //     u_brightness: toolsValues.brightness || 100,
-  //     u_contrast: toolsValues.contrast || 100,
-  //     u_saturation: toolsValues.saturation || 100,
-  //     u_hue: toolsValues.hue || 0,
-  //     u_exposure: toolsValues.exposure || 0,
-  //     u_temperature: toolsValues.temperature || 0,
-  //     u_gamma: toolsValues.gamma || 1,
-  //     u_vintage: toolsValues.vintage || 0,
-  //     u_blur: toolsValues.blur || 0,
-  //     u_blurType: toolsValues.blurType || 0,
-  //     u_blurDirection: toolsValues.blurDirection || 0,
-  //     u_blurCenter: toolsValues.blurCenter || 0.5,
-  //     u_invert: toolsValues.invert || 0,
-  //     u_sepia: toolsValues.sepia || 0,
-  //     u_grayscale: toolsValues.grayscale || 0,
-  //     u_tint: toolsValues.tint || 0,
-  //     u_vibrance: toolsValues.vibrance || 0,
-  //     u_noise: toolsValues.noise || 0,
-  //     u_grain: toolsValues.grain || 0,
-  //     u_resolution: [gl.canvas.width, gl.canvas.height],
-  //     u_rotate: toolsValues.rotate || 0,
-  //     u_scale: toolsValues.scale || 1,
-  //     u_flipHorizontal: toolsValues.flipHorizontal || false,
-  //     u_flipVertical: toolsValues.flipVertical || false,
-  //   }
-
-  //   Object.entries(uniforms).forEach(([name, value]) => {
-  //     const location = gl.getUniformLocation(program, name)
-  //     if (location === null) {
-  //       console.warn(`Uniform location not found for ${name}`)
-  //       return
-  //     }
-
-  //     if (Array.isArray(value)) {
-  //       gl.uniform2f(location, value[0], value[1])
-  //     } else if (typeof value === "boolean") {
-  //       gl.uniform1i(location, value ? 1 : 0)
-  //     } else {
-  //       gl.uniform1f(location, value)
-  //     }
-  //   })
-
-  //   // Set attributes
-  //   const positionLocation = gl.getAttribLocation(program, "a_position")
-  //   const texCoordLocation = gl.getAttribLocation(program, "a_texCoord")
-
-  //   gl.bindBuffer(gl.ARRAY_BUFFER, positionBufferRef.current)
-  //   gl.enableVertexAttribArray(positionLocation)
-  //   gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0)
-
-  //   gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBufferRef.current)
-  //   gl.enableVertexAttribArray(texCoordLocation)
-  //   gl.vertexAttribPointer(texCoordLocation, 2, gl.FLOAT, false, 0, 0)
-
-  //   // Draw
-  //   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
-  // }, [
-  //   toolsValues.brightness,
-  //   toolsValues.contrast,
-  //   toolsValues.saturation,
-  //   toolsValues.hue,
-  //   toolsValues.exposure,
-  //   toolsValues.temperature,
-  //   toolsValues.gamma,
-  //   toolsValues.vintage,
-  //   toolsValues.blur,
-  //   toolsValues.blurType,
-  //   toolsValues.blurDirection,
-  //   toolsValues.blurCenter,
-  //   toolsValues.invert,
-  //   toolsValues.sepia,
-  //   toolsValues.grayscale,
-  //   toolsValues.tint,
-  //   toolsValues.vibrance,
-  //   toolsValues.noise,
-  //   toolsValues.grain,
-  //   toolsValues.rotate,
-  //   toolsValues.scale,
-  //   toolsValues.flipHorizontal,
-  //   toolsValues.flipVertical,
-  // ])
-
+  // Draw function for multi-layer rendering
   const draw = React.useCallback(() => {
     const gl = glRef.current
     const program = programRef.current
@@ -636,86 +552,79 @@ export function ImageEditorCanvas({
     gl.enableVertexAttribArray(texCoordLocation)
     gl.vertexAttribPointer(texCoordLocation, 2, gl.FLOAT, false, 0, 0)
 
-    // Set uniforms from toolsValues
-    const setUniform1f = (name: string, value: number) => {
-      const location = gl.getUniformLocation(program, name)
-      if (location) gl.uniform1f(location, value)
-    }
+    // Enable blending for multi-layer composition
+    gl.enable(gl.BLEND)
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
 
-    const setUniformBool = (name: string, value: boolean) => {
-      const location = gl.getUniformLocation(program, name)
-      if (location) gl.uniform1i(location, value ? 1 : 0)
-    }
-
-    // Example of setting values
-    setUniform1f("u_brightness", toolsValues.brightness ?? 100)
-    setUniform1f("u_contrast", toolsValues.contrast ?? 100)
-    setUniform1f("u_saturation", toolsValues.saturation ?? 100)
-    setUniform1f("u_hue", toolsValues.hue ?? 0)
-    setUniform1f("u_exposure", toolsValues.exposure ?? 0)
-    setUniform1f("u_temperature", toolsValues.temperature ?? 0)
-    setUniform1f("u_gamma", toolsValues.gamma ?? 1)
-    setUniform1f("u_vintage", toolsValues.vintage ?? 0)
-    setUniform1f("u_blur", toolsValues.blur ?? 0)
-    setUniform1f("u_blurType", toolsValues.blurType ?? 0)
-    setUniform1f("u_blurDirection", toolsValues.blurDirection ?? 0)
-    setUniform1f("u_blurCenter", toolsValues.blurCenter ?? 0)
-    setUniform1f("u_invert", toolsValues.invert ?? 0)
-    setUniform1f("u_sepia", toolsValues.sepia ?? 0)
-    setUniform1f("u_grayscale", toolsValues.grayscale ?? 0)
-    setUniform1f("u_tint", toolsValues.tint ?? 0)
-    setUniform1f("u_vibrance", toolsValues.vibrance ?? 0)
-    setUniform1f("u_noise", toolsValues.noise ?? 0)
-    setUniform1f("u_grain", toolsValues.grain ?? 0)
-    setUniform1f("u_rotate", toolsValues.rotate ?? 0)
-    setUniform1f("u_scale", toolsValues.scale ?? 1)
-    setUniformBool("u_flipHorizontal", toolsValues.flipHorizontal ?? false)
-    setUniformBool("u_flipVertical", toolsValues.flipVertical ?? false)
-
-    // Set resolution
-    const resolutionLocation = gl.getUniformLocation(program, "u_resolution")
-    if (resolutionLocation)
-      gl.uniform2f(
-        resolutionLocation,
-        gl.drawingBufferWidth,
-        gl.drawingBufferHeight
-      )
-
-    // Bind texture
-    gl.activeTexture(gl.TEXTURE0)
-    gl.bindTexture(gl.TEXTURE_2D, textureRef.current)
-    const samplerLocation = gl.getUniformLocation(program, "u_image")
-    if (samplerLocation) gl.uniform1i(samplerLocation, 0)
-
-    // Draw
+    // Clear the canvas
     gl.clear(gl.COLOR_BUFFER_BIT)
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
-  }, [
-    toolsValues.brightness,
-    toolsValues.contrast,
-    toolsValues.saturation,
-    toolsValues.hue,
-    toolsValues.exposure,
-    toolsValues.temperature,
-    toolsValues.gamma,
-    toolsValues.vintage,
-    toolsValues.blur,
-    toolsValues.blurType,
-    toolsValues.blurDirection,
-    toolsValues.blurCenter,
-    toolsValues.invert,
-    toolsValues.sepia,
-    toolsValues.grayscale,
-    toolsValues.tint,
-    toolsValues.vibrance,
-    toolsValues.noise,
-    toolsValues.grain,
-    toolsValues.rotate,
-    toolsValues.scale,
-    toolsValues.flipHorizontal,
-    toolsValues.flipVertical,
-  ])
-  draw()
+
+    // Render each visible layer from bottom to top
+    const visibleLayers = layers.filter((layer) => layer.visible)
+
+    for (const layer of visibleLayers) {
+      const setUniform1f = (name: string, value: number) => {
+        const location = gl.getUniformLocation(program, name)
+        if (location) gl.uniform1f(location, value)
+      }
+
+      const setUniformBool = (name: string, value: boolean) => {
+        const location = gl.getUniformLocation(program, name)
+        if (location) gl.uniform1i(location, value ? 1 : 0)
+      }
+
+      // Set layer-specific uniforms
+      setUniform1f("u_brightness", layer.filters.brightness ?? 100)
+      setUniform1f("u_contrast", layer.filters.contrast ?? 100)
+      setUniform1f("u_saturation", layer.filters.saturation ?? 100)
+      setUniform1f("u_hue", layer.filters.hue ?? 0)
+      setUniform1f("u_exposure", layer.filters.exposure ?? 0)
+      setUniform1f("u_temperature", layer.filters.temperature ?? 0)
+      setUniform1f("u_gamma", layer.filters.gamma ?? 1)
+      setUniform1f("u_vintage", layer.filters.vintage ?? 0)
+      setUniform1f("u_blur", layer.filters.blur ?? 0)
+      setUniform1f("u_blurType", layer.filters.blurType ?? 0)
+      setUniform1f("u_blurDirection", layer.filters.blurDirection ?? 0)
+      setUniform1f("u_blurCenter", layer.filters.blurCenter ?? 0)
+      setUniform1f("u_invert", layer.filters.invert ?? 0)
+      setUniform1f("u_sepia", layer.filters.sepia ?? 0)
+      setUniform1f("u_grayscale", layer.filters.grayscale ?? 0)
+      setUniform1f("u_tint", layer.filters.tint ?? 0)
+      setUniform1f("u_vibrance", layer.filters.vibrance ?? 0)
+      setUniform1f("u_noise", layer.filters.noise ?? 0)
+      setUniform1f("u_grain", layer.filters.grain ?? 0)
+      setUniform1f("u_rotate", layer.filters.rotate ?? 0)
+      setUniform1f("u_scale", layer.filters.scale ?? 1)
+      setUniformBool("u_flipHorizontal", layer.filters.flipHorizontal ?? false)
+      setUniformBool("u_flipVertical", layer.filters.flipVertical ?? false)
+      setUniform1f("u_opacity", layer.opacity)
+
+      // Set resolution
+      const resolutionLocation = gl.getUniformLocation(program, "u_resolution")
+      if (resolutionLocation)
+        gl.uniform2f(
+          resolutionLocation,
+          gl.drawingBufferWidth,
+          gl.drawingBufferHeight
+        )
+
+      // Bind texture
+      gl.activeTexture(gl.TEXTURE0)
+      gl.bindTexture(gl.TEXTURE_2D, textureRef.current)
+      const samplerLocation = gl.getUniformLocation(program, "u_image")
+      if (samplerLocation) gl.uniform1i(samplerLocation, 0)
+
+      // Draw the layer
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+    }
+
+    // Disable blending after rendering
+    gl.disable(gl.BLEND)
+  }, [layers])
+
+  React.useEffect(() => {
+    draw()
+  }, [draw])
 
   React.useEffect(() => {
     onDrawReady?.(draw)

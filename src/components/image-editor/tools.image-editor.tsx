@@ -53,6 +53,11 @@ export function getEditorTools(selected: keyof typeof SIDEBAR_TOOLS) {
         header: (_props: ImageEditorHeaderProps) => <></>,
         footer: (props: ImageEditorFooterProps) => <UpscaleFooter {...props} />,
       }
+    case "layers":
+      return {
+        header: (_props: ImageEditorHeaderProps) => <></>,
+        footer: (_props: ImageEditorFooterProps) => <></>,
+      }
 
     default:
       return {
@@ -517,15 +522,6 @@ export function TransformFooter({
       progress,
       operator,
       selectedTool,
-      onDragStart: (value: number) => {
-        dispatch({
-          type: "updateHistory",
-          payload: {
-            type: selectedTool,
-            value,
-          },
-        })
-      },
       label: (value: number, operator: string) => {
         if (selectedTool === "rotate") {
           return `${Math.round(value)} ${operator}`

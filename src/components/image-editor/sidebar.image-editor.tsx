@@ -6,6 +6,7 @@ import {
   SlidersHorizontal,
   History,
   Play,
+  Layers,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -103,6 +104,22 @@ export function ImageEditorSidebar({
         >
           <Blend />
           Filter
+        </Button>
+      </li>
+
+      <li>
+        <Button
+          variant='outline'
+          className={cn("flex flex-col rounded-md text-xs size-18", {
+            "bg-accent text-accent-foreground": selected === "layers",
+          })}
+          onClick={() => {
+            onChange("layers")
+          }}
+          disabled={progress}
+        >
+          <Layers />
+          Layers
         </Button>
       </li>
       <li>
