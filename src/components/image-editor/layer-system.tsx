@@ -1,7 +1,7 @@
 "use client"
 
 import React from "react"
-import { Plus, Trash2, Eye, EyeOff, Copy, Layers } from "lucide-react"
+import { Plus, Trash2, Eye, EyeOff, Copy, Layers, Lock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
@@ -15,6 +15,7 @@ export interface Layer {
   locked: boolean
   filters: ImageEditorToolsState
   opacity: number
+  isEmpty: boolean // New property to track if layer is empty/transparent
 }
 
 export interface LayerSystemProps {
@@ -43,6 +44,7 @@ export function LayerSystem({
       locked: false,
       filters: { ...initialState },
       opacity: 100,
+      isEmpty: true, // New layers are empty/transparent
     }
     onLayersChange([...layers, newLayer])
     onSelectedLayerChange(newLayer.id)
@@ -69,6 +71,7 @@ export function LayerSystem({
         ...layerToDuplicate,
         id: `layer-${Date.now()}`,
         name: `${layerToDuplicate.name} (Copy)`,
+        isEmpty: layerToDuplicate.isEmpty, // Preserve the empty state
       }
       onLayersChange([...layers, duplicatedLayer])
       onSelectedLayerChange(duplicatedLayer.id)
@@ -127,7 +130,7 @@ export function LayerSystem({
   )
 
   return (
-    <div className=' bg-background border-r border-border p-4 w-fit'>
+    <div className='bg-background  p-4 w-fit'>
       <div className='flex items-center justify-between mb-4'>
         <h3 className='text-sm font-medium flex items-center gap-2'>
           <Layers className='w-4 h-4' />
@@ -143,7 +146,7 @@ export function LayerSystem({
         </Button>
       </div>
 
-      <div className='space-y-2 '>
+      <div className='space-y-2'>
         {layers.map((layer, index) => (
           <LayerItem
             key={layer.id}
@@ -227,28 +230,29 @@ function LayerItem({
   return (
     <div
       className={cn(
-        "border rounded-md p-2 cursor-pointer transition-colors w-fit text-left",
+        "p-2 cursor-pointer transition-colors w-full text-left rounded-sm",
         isSelected
           ? "border-primary bg-primary/10"
           : "border-border hover:border-primary/50"
       )}
       onClick={onSelect}
-      onKeyDown={(e) => {
+      aria-label={`Select layer ${layer.name}`}
+      onKeyDown={(e: React.KeyboardEvent) => {
         if (e.key === "Enter") {
           onSelect()
         }
       }}
-      aria-label={`Select layer ${layer.name}`}
     >
       <div className='flex items-center gap-2 mb-2'>
         <Button
+          title='Toggle layer visibility'
           variant='ghost'
           size='sm'
-          onClick={(e) => {
+          onClick={(e: React.MouseEvent) => {
             e.stopPropagation()
             onToggleVisibility()
           }}
-          className='h-6 w-6 p-0'
+          className='h-6 w-6 p-0 rounded-sm'
         >
           {layer.visible ? (
             <Eye className='w-3 h-3' />
@@ -258,18 +262,19 @@ function LayerItem({
         </Button>
 
         <Button
+          title='Toggle layer lock'
           variant='ghost'
           size='sm'
-          onClick={(e) => {
+          onClick={(e: React.MouseEvent) => {
             e.stopPropagation()
             onToggleLock()
           }}
-          className='h-6 w-6 p-0'
+          className='h-6 w-6 p-0 rounded-sm'
         >
-          <div
+          <Lock
             className={cn(
-              "w-3 h-3 border",
-              layer.locked ? "bg-primary" : "bg-transparent"
+              "w-3 h-3",
+              layer.locked ? "text-primary" : "text-muted-foreground"
             )}
           />
         </Button>
@@ -278,19 +283,31 @@ function LayerItem({
           {isEditing ? (
             <Input
               value={editName}
-              onChange={(e) => setEditName(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                setEditName(e.target.value)
+              }
               onBlur={handleNameSubmit}
               onKeyDown={handleNameKeyDown}
-              className='h-6 text-xs'
+              className={cn(
+                "h-6 text-sm rounded-sm outline-none",
+                "focus-visible:ring-0 focus-visible:ring-transparent focus-visible:ring-offset-0"
+              )}
               autoFocus
             />
           ) : (
-            <div
-              className='text-sm truncate'
+            <Button
+              variant='ghost'
+              className={cn(
+                "text-sm truncate flex items-center gap-1 h-6 flex-1 w-full justify-start cursor-pointer rounded-sm",
+                "hover:bg-transparent"
+              )}
               onDoubleClick={() => setIsEditing(true)}
             >
-              {layer.name}
-            </div>
+              <span>{layer.name}</span>
+              {layer.isEmpty && (
+                <span className='text-xs text-muted-foreground'>(empty)</span>
+              )}
+            </Button>
           )}
         </div>
 
@@ -299,11 +316,11 @@ function LayerItem({
             <Button
               variant='ghost'
               size='sm'
-              onClick={(e) => {
+              onClick={(e: React.MouseEvent) => {
                 e.stopPropagation()
                 onMoveUp()
               }}
-              className='h-6 w-6 p-0'
+              className='h-6 w-6 p-0 rounded-sm'
             >
               ↑
             </Button>
@@ -312,11 +329,11 @@ function LayerItem({
             <Button
               variant='ghost'
               size='sm'
-              onClick={(e) => {
+              onClick={(e: React.MouseEvent) => {
                 e.stopPropagation()
                 onMoveDown()
               }}
-              className='h-6 w-6 p-0'
+              className='h-6 w-6 p-0 rounded-sm'
             >
               ↓
             </Button>
@@ -324,22 +341,22 @@ function LayerItem({
           <Button
             variant='ghost'
             size='sm'
-            onClick={(e) => {
+            onClick={(e: React.MouseEvent) => {
               e.stopPropagation()
               onDuplicate()
             }}
-            className='h-6 w-6 p-0'
+            className='h-6 w-6 p-0 rounded-sm'
           >
             <Copy className='w-3 h-3' />
           </Button>
           <Button
             variant='ghost'
             size='sm'
-            onClick={(e) => {
+            onClick={(e: React.MouseEvent) => {
               e.stopPropagation()
               onDelete()
             }}
-            className='h-6 w-6 p-0 text-destructive'
+            className='h-6 w-6 p-0 text-destructive rounded-sm'
           >
             <Trash2 className='w-3 h-3' />
           </Button>
@@ -353,10 +370,12 @@ function LayerItem({
           min='0'
           max='100'
           value={layer.opacity}
-          onChange={(e) => onOpacityChange(Number(e.target.value))}
-          onClick={(e) => e.stopPropagation()}
-          onKeyDown={(e) => e.stopPropagation()}
-          onKeyUp={(e) => e.stopPropagation()}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+            onOpacityChange(Number(e.target.value))
+          }
+          onClick={(e: React.MouseEvent) => e.stopPropagation()}
+          onKeyDown={(e: React.KeyboardEvent) => e.stopPropagation()}
+          onKeyUp={(e: React.KeyboardEvent) => e.stopPropagation()}
           className='flex-1 h-1 bg-secondary rounded-lg appearance-none cursor-pointer'
         />
         <span className='text-xs w-8'>{layer.opacity}%</span>

@@ -560,7 +560,9 @@ export function ImageEditorCanvas({
     gl.clear(gl.COLOR_BUFFER_BIT)
 
     // Render each visible layer from bottom to top
-    const visibleLayers = layers.filter((layer) => layer.visible)
+    const visibleLayers = layers.filter(
+      (layer) => layer.visible && !layer.isEmpty
+    )
 
     for (const layer of visibleLayers) {
       const setUniform1f = (name: string, value: number) => {

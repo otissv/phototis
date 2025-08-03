@@ -72,6 +72,7 @@ export function ImageEditor({ image, ...props }: ImageEditorProps) {
       locked: false,
       filters: { ...initialState },
       opacity: 100,
+      isEmpty: false, // Background layer is not empty
     }
     return [defaultLayer]
   })
