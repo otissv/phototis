@@ -127,7 +127,7 @@ export function LayerSystem({
   )
 
   return (
-    <div className='w-64 bg-background border-r border-border p-4'>
+    <div className=' bg-background border-r border-border p-4 w-fit'>
       <div className='flex items-center justify-between mb-4'>
         <h3 className='text-sm font-medium flex items-center gap-2'>
           <Layers className='w-4 h-4' />
@@ -143,7 +143,7 @@ export function LayerSystem({
         </Button>
       </div>
 
-      <div className='space-y-2'>
+      <div className='space-y-2 '>
         {layers.map((layer, index) => (
           <LayerItem
             key={layer.id}
@@ -227,7 +227,7 @@ function LayerItem({
   return (
     <div
       className={cn(
-        "border rounded-md p-2 cursor-pointer transition-colors w-full text-left",
+        "border rounded-md p-2 cursor-pointer transition-colors w-fit text-left",
         isSelected
           ? "border-primary bg-primary/10"
           : "border-border hover:border-primary/50"
