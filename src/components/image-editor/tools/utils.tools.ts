@@ -18,7 +18,7 @@ export interface ImageEditorFooterProps
     React.ComponentProps<"div">,
     "onChange" | "onProgress" | "value"
   > {
-  image?: File
+  image?: File | null
   operator?: string
   selectedTool: keyof typeof TOOL_VALUES
   toolsValues?: ImageEditorToolsState
@@ -29,8 +29,6 @@ export interface ImageEditorFooterProps
   onChange?: (value: number) => void
   onProgress?: (progress: number) => void
   progress?: number
-  isUpdating?: boolean
-  setIsUpdating: (isUpdating: boolean) => void
 }
 
 // export interface FooterProps extends Omit<ImageEditorFooterProps, "dispatch"> {}

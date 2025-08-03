@@ -61,15 +61,6 @@ function Router({ route, setRoute }: RouterProps) {
   const [images, setImages] = useState<File[]>([])
   const [selectedImage, setSelectedImage] = useState<File | null>(null)
 
-  const handleFilesAccepted = (files: File[]) => {
-    setImages((prev) => [...prev, ...files])
-  }
-
-  const handleOnImageDelete = (image: File) => {
-    const newImagesList = images.filter((img: File) => img.name !== image.name)
-    setImages(newImagesList)
-  }
-
   const handleProcess = async (file: File, options: any) => {
     const formData = new FormData()
     formData.append("file", file)
@@ -157,7 +148,6 @@ function Router({ route, setRoute }: RouterProps) {
                   image={image}
                   onProcess={handleProcess}
                   onDownload={handleDownload}
-                  onDelete={handleOnImageDelete}
                   setRoute={setRoute}
                   setSelectedImage={setSelectedImage}
                 />

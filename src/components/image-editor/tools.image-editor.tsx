@@ -34,31 +34,24 @@ import {
 import { GammaButton, GammaControls } from "./tools/gamma.tools"
 import { VintageButton, VintageControls } from "./tools/vintage.tools"
 
-export function getEditorTools(
-  selected: keyof typeof SIDEBAR_TOOLS,
-  setIsUpdating: (isUpdating: boolean) => void
-) {
+export function getEditorTools(selected: keyof typeof SIDEBAR_TOOLS) {
   switch (selected) {
     case "finetune":
       return {
         header: (_props: ImageEditorHeaderProps) => <></>,
         footer: (props: ImageEditorFooterProps) => (
-          <FinetuneFooter {...props} setIsUpdating={setIsUpdating} />
+          <FinetuneFooter {...props} />
         ),
       }
     case "filter":
       return {
         header: (_props: ImageEditorHeaderProps) => <></>,
-        footer: (props: ImageEditorFooterProps) => (
-          <FilterFooter {...props} setIsUpdating={setIsUpdating} />
-        ),
+        footer: (props: ImageEditorFooterProps) => <FilterFooter {...props} />,
       }
     case "upscale":
       return {
         header: (_props: ImageEditorHeaderProps) => <></>,
-        footer: (props: ImageEditorFooterProps) => (
-          <UpscaleFooter {...props} setIsUpdating={setIsUpdating} />
-        ),
+        footer: (props: ImageEditorFooterProps) => <UpscaleFooter {...props} />,
       }
 
     default:
@@ -67,7 +60,7 @@ export function getEditorTools(
           <TransformHeader {...props} />
         ),
         footer: (props: ImageEditorFooterProps) => (
-          <TransformFooter {...props} setIsUpdating={setIsUpdating} />
+          <TransformFooter {...props} />
         ),
       }
   }
@@ -85,7 +78,6 @@ export function FinetuneFooter({
   toolsValues,
   progress,
   image,
-  setIsUpdating,
   onChange: _onChange,
   onProgress: _onProgress,
   ...props
@@ -130,7 +122,6 @@ export function FinetuneFooter({
       value,
       progress,
       selectedTool,
-      setIsUpdating,
       label: (value: number, operator: string) => {
         if (selectedTool === "rotate") {
           return `${Math.round(value)} ${operator}`
@@ -504,7 +495,6 @@ export function TransformFooter({
   value,
   dispatch,
   onSelectedToolChange,
-  setIsUpdating,
   ...props
 }: Omit<ImageEditorFooterProps, "onChange" | "onProgress">) {
   const handleOnChange = (value: number) => {
@@ -527,7 +517,15 @@ export function TransformFooter({
       progress,
       operator,
       selectedTool,
-      setIsUpdating,
+      onDragStart: (value: number) => {
+        dispatch({
+          type: "updateHistory",
+          payload: {
+            type: selectedTool,
+            value,
+          },
+        })
+      },
       label: (value: number, operator: string) => {
         if (selectedTool === "rotate") {
           return `${Math.round(value)} ${operator}`

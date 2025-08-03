@@ -16,10 +16,11 @@ export interface SlidingTrackProps extends React.ComponentProps<"div"> {
   operator?: string
   sensitivity?: number
   onValueChange?: (value: number) => void
-  setIsUpdating?: (isUpdating: boolean) => void
   range?: [number, number] | [string, string]
   label?: (value: number, operator: string) => React.ReactNode
   disabled?: boolean
+  onDragEnd?: (value: number) => void
+  onDragStart?: (value: number) => void
 }
 
 export default function SlidingTrack({
@@ -30,18 +31,16 @@ export default function SlidingTrack({
   value: hostValue = 50,
   defaultValue,
   onValueChange,
-  setIsUpdating,
   label,
   sensitivity = 0.04,
   disabled = false,
+  onDragEnd,
+  onDragStart,
   ...props
 }: SlidingTrackProps) {
   const [value, setValue] = useState(hostValue)
   const [isEditing, setIsEditing] = useState(false)
   const [sliderWidth, setSliderWidth] = useState(0)
-  const [disableDragDirection, setDisableDragDirection] = useState<
-    "left" | "right" | null
-  >(null)
 
   const displayValue =
     label?.(value, operator) || `${operator ? `${value} ${operator}` : value}`
@@ -103,7 +102,6 @@ export default function SlidingTrack({
 
     if (initialDragX.current === null) {
       initialDragX.current = info.point.x
-      setIsUpdating?.(true)
 
       return
     }
@@ -145,7 +143,7 @@ export default function SlidingTrack({
 
   const handleDragEnd = () => {
     initialDragX.current = null
-    setIsUpdating?.(false)
+    onDragEnd?.(value)
   }
 
   const dotPattern = React.useMemo(() => [...Array(350)].map((_, i) => i), [])
@@ -208,6 +206,7 @@ export default function SlidingTrack({
                   right: sliderWidth / 2,
                 }}
                 style={{ x }}
+                onDragStart={() => onDragStart?.(value)}
                 onDrag={handleDrag}
                 onDragEnd={handleDragEnd}
                 className='flex h-10'

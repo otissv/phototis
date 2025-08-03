@@ -4,6 +4,7 @@ import {
   type ToolValueDimensionType,
   type ToolValueStepType,
 } from "@/constants"
+import React from "react"
 
 export type ImageEditorToolsAction = {
   type: keyof typeof TOOL_VALUES | "reset" | "zoom"
@@ -18,14 +19,22 @@ export type ImageEditorToolsHistoryAction = {
   type: "undo" | "redo"
 }
 
+export type ImageEditorToolsUpdateHistoryAction = {
+  type: "updateHistory"
+  payload: {
+    type: keyof typeof TOOL_VALUES
+    value: number
+  }
+}
+
 export type ImageEditorToolsActions =
   | ImageEditorToolsAction
   | ImageEditorToolsResetAction
   | ImageEditorToolsHistoryAction
-
+  | ImageEditorToolsUpdateHistoryAction
 export type HistoryToolsState = {
   history: ImageEditorToolsAction[]
-  currentIndex: number
+  historyPosition: number
 }
 
 export type TransformToolsState = {
@@ -71,7 +80,7 @@ export type ImageEditorToolsState = TransformToolsState &
 
 export const initialState: ImageEditorToolsState = {
   history: [],
-  currentIndex: 0,
+  historyPosition: 0,
   rotate: TOOL_VALUES.rotate.defaultValue as ToolValueStepType["defaultValue"],
   scale: TOOL_VALUES.scale.defaultValue as ToolValueStepType["defaultValue"],
   flipVertical: TOOL_VALUES.flipVertical
@@ -128,30 +137,17 @@ export function imageEditorToolsReducer(
     }
   }
 
+  if (action.type === "updateHistory") {
+  }
+
   if (action.type === "undo") {
-    return {
-      ...state,
-      history: state.history.slice(0, state.currentIndex),
-      currentIndex: state.currentIndex - 1,
-    }
   }
 
   if (action.type === "redo") {
-    return {
-      ...state,
-      history: state.history.slice(0, state.currentIndex + 1),
-      currentIndex: state.currentIndex + 1,
-    }
-  }
-
-  const nextState = {
-    ...state,
-    history: [...state.history, action],
-    currentIndex: state.currentIndex + 1,
   }
 
   return {
-    ...nextState,
+    ...state,
     [action.type]: (action as ImageEditorToolsAction).payload,
   } as ImageEditorToolsState
 }

@@ -44,13 +44,12 @@ import { Input } from "../ui/input"
 import { QualityOptions } from "./quaity-options.image-editor"
 
 export interface ImageEditorProps extends React.ComponentProps<"div"> {
-  image: File
+  image: File | null
 }
 
 export function ImageEditor({ image, ...props }: ImageEditorProps) {
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null)
   const drawFnRef = React.useRef<() => void>(() => {})
-  const [isUpdating, setIsUpdating] = React.useState(false)
 
   const [isOptionsOpen, setIsOptionsOpen] = React.useState(false)
   const [jpegQuality, setJpegQuality] = React.useState(80)
@@ -66,10 +65,6 @@ export function ImageEditor({ image, ...props }: ImageEditorProps) {
     imageEditorToolsReducer,
     initialState
   )
-
-  React.useEffect(() => {
-    console.log("isUpdating", isUpdating)
-  }, [isUpdating])
 
   const value = React.useMemo(() => {
     switch (selectedTool) {
@@ -146,7 +141,7 @@ export function ImageEditor({ image, ...props }: ImageEditorProps) {
   }
 
   const { header: Header, footer: ImageEditorFooter } = React.useMemo(
-    () => getEditorTools(selectedSidebar, setIsUpdating),
+    () => getEditorTools(selectedSidebar),
     [selectedSidebar]
   )
 
@@ -224,7 +219,6 @@ export function ImageEditor({ image, ...props }: ImageEditorProps) {
         toolsValues={toolsValues}
         onProgress={handleOnProgress}
         progress={progress}
-        setIsUpdating={setIsUpdating}
       />
 
       <ZoomControls

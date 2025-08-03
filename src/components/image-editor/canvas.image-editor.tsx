@@ -219,7 +219,7 @@ const fragmentShaderSource = `
 
 export interface ImageEditorCanvasProps
   extends Omit<React.ComponentProps<"canvas">, "onProgress"> {
-  image: File
+  image: File | null
   toolsValues: ImageEditorToolsState
   onProgress?: (progress: number) => void
   canvasRef?: React.RefObject<HTMLCanvasElement | null>
@@ -244,6 +244,7 @@ export function ImageEditorCanvas({
 
   // Handle image URL creation and cleanup
   React.useEffect(() => {
+    if (!image) return
     const url = URL.createObjectURL(image)
     setImageUrl(url)
     return () => URL.revokeObjectURL(url)

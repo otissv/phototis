@@ -1,5 +1,3 @@
-"use client"
-
 import { TOOL_VALUES } from "@/constants"
 import { onToolControlValueChange } from "@/lib/utils"
 import SlidingTrack from "../sliding-track"
@@ -12,7 +10,8 @@ export interface ImageEditorFooterSliderProps
   label?: (value: number, operator: string) => React.ReactNode
   onChange?: (value: number) => void
   progress?: number
-  setIsUpdating: (isUpdating: boolean) => void
+  onDragEnd?: (value: number) => void
+  onDragStart?: (value: number) => void
 }
 
 export function ImageEditorFooterSlider({
@@ -23,7 +22,8 @@ export function ImageEditorFooterSlider({
   label,
   onChange,
   progress,
-  setIsUpdating,
+  onDragEnd,
+  onDragStart,
 }: ImageEditorFooterSliderProps) {
   const disabled = Boolean(progress)
 
@@ -48,7 +48,8 @@ export function ImageEditorFooterSlider({
       })}
       label={label}
       disabled={disabled}
-      setIsUpdating={setIsUpdating}
+      onDragEnd={onDragEnd}
+      onDragStart={onDragStart}
     />
   )
 }
