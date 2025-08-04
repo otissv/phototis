@@ -17,7 +17,7 @@ function ExposureButton({
 }: ExposureButtonProps) {
   return (
     <ImageEditorButton
-      variant='outline'
+      variant='ghost'
       onClick={() => onSelectedToolChange("exposure")}
       isActive={selectedTool === "exposure"}
       disabled={progress}

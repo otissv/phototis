@@ -17,7 +17,7 @@ function BrightnessButton({
 }: BrightnessButtonProps) {
   return (
     <ImageEditorButton
-      variant='outline'
+      variant='ghost'
       onClick={() => onSelectedToolChange("brightness")}
       isActive={selectedTool === "brightness"}
       disabled={progress}

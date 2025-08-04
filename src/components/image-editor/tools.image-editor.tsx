@@ -5,17 +5,18 @@ import type { SIDEBAR_TOOLS } from "@/constants"
 
 import { ImageEditorButton } from "./button.image-editor"
 import {
+  ChevronDown,
+  CircleDot,
+  Download,
   FlipHorizontal2,
   FlipVertical2,
-  RotateCwSquare,
+  History,
   ImageIcon,
-  Square,
   MoveHorizontal,
-  CircleDot,
-  Undo,
   Redo,
-  ChevronDown,
-  Download,
+  RotateCwSquare,
+  Square,
+  Undo,
 } from "lucide-react"
 
 import type {
@@ -89,11 +90,6 @@ export function getEditorTools({
             drawFnRef={drawFnRef}
           />
         ),
-      }
-    case "layers":
-      return {
-        header: (_props: ImageEditorHeaderProps) => <></>,
-        footer: (_props: ImageEditorFooterProps) => <></>,
       }
 
     default:
@@ -528,7 +524,23 @@ export function TransformHeader({
 
   return (
     <ul className='flex gap-1 justify-center' {...props}>
+      <li>
+        <ImageEditorButton
+          title='Reset'
+          variant='ghost'
+          onClick={() => {
+            dispatch({ type: "reset" })
+          }}
+          disabled={progress}
+        >
+          <History size={16} />
+          Reset
+        </ImageEditorButton>
+      </li>
+
       <li className='flex items-center gap-1'>
+        <div className='w-[1px] h-6 bg-muted' />
+
         <ImageEditorButton
           title='Undo last action'
           variant='ghost'
@@ -587,6 +599,7 @@ export function TransformHeader({
           Flip Vertical
         </ImageEditorButton>
       </li>
+
       <li className='flex items-center gap-1'>
         <div className='w-[1px] h-6 bg-muted' />
 
@@ -595,7 +608,7 @@ export function TransformHeader({
             <Button
               title='Download image'
               variant='ghost'
-              className='rounded-sm gap-2 text-sm'
+              className='rounded-sm gap-2 text-xs'
             >
               <Download size={16} />
               Download <ChevronDown size={16} />
@@ -717,7 +730,7 @@ export function TransformFooter({
       <div className='flex justify-center'>
         <div className='max-w-lg'>{Control}</div>
       </div>
-      <ul className='flex gap-6 w-full justify-center'>
+      <ul className='flex gap-2 w-full justify-center'>
         <li>
           <RotationButton
             onSelectedToolChange={onSelectedToolChange}

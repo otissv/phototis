@@ -56,7 +56,7 @@ export function QualityOptions({
           variant='outline'
           onClick={() => setIsOpen(true)}
           className={cn(
-            "relative flex cursor-default select-none justify-start items-center rounded-sm border-0 w-full px-2 py-1.5 h-auto text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
+            "relative flex cursor-default select-none justify-start items-center rounded-sm border-0 w-full px-2 py-1.5 h-auto text-xs outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
           )}
         >
           {children}&hellip;

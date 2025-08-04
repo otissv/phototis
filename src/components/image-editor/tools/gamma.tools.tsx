@@ -17,7 +17,7 @@ function GammaButton({
 }: GammaButtonProps) {
   return (
     <ImageEditorButton
-      variant='outline'
+      variant='ghost'
       onClick={() => onSelectedToolChange("gamma")}
       isActive={selectedTool === "gamma"}
       disabled={progress}

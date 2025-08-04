@@ -17,7 +17,7 @@ function ContrastButton({
 }: ContrastButtonProps) {
   return (
     <ImageEditorButton
-      variant='outline'
+      variant='ghost'
       onClick={() => onSelectedToolChange("contrast")}
       isActive={selectedTool === "contrast"}
       disabled={progress}

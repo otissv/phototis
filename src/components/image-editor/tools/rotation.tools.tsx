@@ -19,7 +19,7 @@ function RotationButton({
 }: RotationButtonProps) {
   return (
     <ImageEditorButton
-      variant='outline'
+      variant='ghost'
       onClick={() => onSelectedToolChange("rotate")}
       isActive={selectedTool === "rotate"}
       disabled={progress}

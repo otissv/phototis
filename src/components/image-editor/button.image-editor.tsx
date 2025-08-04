@@ -20,7 +20,7 @@ export function ImageEditorButton({
       className={cn(
         "text-xs rounded-sm",
         {
-          "bg-primary text-primary-foreground": isActive,
+          "bg-muted": isActive,
         },
         className
       )}

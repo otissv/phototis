@@ -1,13 +1,28 @@
 "use client"
 
 import React from "react"
-import { Plus, Trash2, Eye, EyeOff, Copy, Layers, Lock } from "lucide-react"
+import {
+  Plus,
+  Trash2,
+  Eye,
+  EyeOff,
+  Copy,
+  Layers,
+  Lock,
+  ChevronDown,
+} from "lucide-react"
 import { useDrag, useDrop } from "react-dnd"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import type { ImageEditorToolsState } from "./state.image-editor"
 import { initialState } from "./state.image-editor"
+import {
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@radix-ui/react-dropdown-menu"
+import { DropdownMenu } from "../ui/dropdown-menu"
 
 export interface Layer extends React.ComponentProps<"div"> {
   id: string
@@ -142,6 +157,10 @@ export function LayerSystem({
     [layers, onLayersChange]
   )
 
+  const currentLayer = React.useMemo(() => {
+    return layers.find((layer) => layer.id === selectedLayerId)
+  }, [layers, selectedLayerId])
+
   return (
     <div className={cn("w-[320px]", className)}>
       <div className='border p-1 rounded-sm'>
@@ -158,6 +177,61 @@ export function LayerSystem({
           >
             <Plus className='w-4 h-4' />
           </Button>
+        </div>
+
+        <div className='flex items-center justify-between gap-2 h-12 p-2 text-xs'>
+          <div>Blending mode</div>
+          <div className='flex items-center gap-1'>
+            <span className='text-xs text-muted-foreground'>Opacity:</span>
+            <div className='flex items-center border rounded-sm h-9'>
+              <Input
+                type='number'
+                min='0'
+                max='100'
+                value={currentLayer?.opacity || 100}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  handleOpacityChange(selectedLayerId, Number(e.target.value))
+                }
+                className=' px-2 py-1 h-8 border-none'
+              />
+              <DropdownMenu>
+                <DropdownMenuTrigger>
+                  <Button
+                    variant='ghost'
+                    size='sm'
+                    className='size-8 p-0 rounded-sm'
+                  >
+                    <ChevronDown className='w-3 h-3' />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <div className='z-10 flex items-center gap-2 border rounded-sm h-10 bg-background p-2'>
+                    <input
+                      type='range'
+                      min='0'
+                      max='100'
+                      value={currentLayer?.opacity || 0}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                        handleOpacityChange(
+                          selectedLayerId,
+                          Number(e.target.value)
+                        )
+                      }
+                      onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                      onKeyDown={(e: React.KeyboardEvent) =>
+                        e.stopPropagation()
+                      }
+                      onKeyUp={(e: React.KeyboardEvent) => e.stopPropagation()}
+                      className='h-1 bg-secondary rounded-lg appearance-none cursor-pointer'
+                    />
+                    <span className='text-xs w-8'>
+                      {currentLayer?.opacity || 0}%
+                    </span>
+                  </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
         </div>
 
         <div className='space-y-2 transition-all'>
@@ -491,26 +565,6 @@ function LayerItemContent({
               <Trash2 className='w-3 h-3' />
             </Button>
           </div>
-        </div>
-      </div>
-
-      <div className='h-10 p-2'>
-        <div className='flex items-center gap-2'>
-          <span className='text-xs text-muted-foreground'>Opacity:</span>
-          <input
-            type='range'
-            min='0'
-            max='100'
-            value={layer.opacity}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-              onOpacityChange(Number(e.target.value))
-            }
-            onClick={(e: React.MouseEvent) => e.stopPropagation()}
-            onKeyDown={(e: React.KeyboardEvent) => e.stopPropagation()}
-            onKeyUp={(e: React.KeyboardEvent) => e.stopPropagation()}
-            className='flex-1 h-1 bg-secondary rounded-lg appearance-none cursor-pointer'
-          />
-          <span className='text-xs w-8'>{layer.opacity}%</span>
         </div>
       </div>
     </>

@@ -17,7 +17,7 @@ function VintageButton({
 }: VintageButtonProps) {
   return (
     <ImageEditorButton
-      variant='outline'
+      variant='ghost'
       onClick={() => onSelectedToolChange("vintage")}
       isActive={selectedTool === "vintage"}
       disabled={progress}

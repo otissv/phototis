@@ -19,7 +19,7 @@ function ScaleButton({
 }: ScaleButtonProps) {
   return (
     <ImageEditorButton
-      variant='outline'
+      variant='ghost'
       onClick={() => onSelectedToolChange("scale")}
       isActive={selectedTool === "scale"}
       disabled={progress}

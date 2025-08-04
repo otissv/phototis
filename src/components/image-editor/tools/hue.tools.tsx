@@ -17,7 +17,7 @@ function HueButton({
 }: HueButtonProps) {
   return (
     <ImageEditorButton
-      variant='outline'
+      variant='ghost'
       onClick={() => onSelectedToolChange("hue")}
       isActive={selectedTool === "hue"}
       disabled={progress}

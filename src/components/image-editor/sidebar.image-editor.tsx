@@ -6,7 +6,6 @@ import {
   SlidersHorizontal,
   History,
   Play,
-  Layers,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -33,20 +32,6 @@ export function ImageEditorSidebar({
 }: ImageEditorSidebarProps) {
   return (
     <ul className={cn("flex flex-col gap-2", className)} {...props}>
-      <li>
-        <Button
-          title='Reset'
-          variant='ghost'
-          className='flex rounded-md text-xs p-0'
-          onClick={() => {
-            dispatch({ type: "reset" })
-          }}
-          disabled={progress}
-        >
-          <History className='size-4' />
-          Reset
-        </Button>
-      </li>
       <li>
         <Button
           variant='outline'
@@ -107,21 +92,6 @@ export function ImageEditorSidebar({
         </Button>
       </li>
 
-      <li>
-        <Button
-          variant='outline'
-          className={cn("flex flex-col rounded-md text-xs size-18", {
-            "bg-accent text-accent-foreground": selected === "layers",
-          })}
-          onClick={() => {
-            onChange("layers")
-          }}
-          disabled={progress}
-        >
-          <Layers />
-          Layers
-        </Button>
-      </li>
       <li>
         <Button
           variant='outline'

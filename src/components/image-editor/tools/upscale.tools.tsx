@@ -20,7 +20,7 @@ function UpscaleButton({ progress, value, dispatch }: UpscaleButtonProps) {
 
   return (
     <ImageEditorButton
-      variant='outline'
+      variant='ghost'
       onClick={() => dispatch({ type: "upscale", payload: upscale + 1 })}
       disabled={progress}
     >

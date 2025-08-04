@@ -45,7 +45,7 @@ function ResizeButton({
 }: ResizeButtonProps) {
   return (
     <ImageEditorButton
-      variant='outline'
+      variant='ghost'
       onClick={() => onSelectedToolChange("resize")}
       isActive={selectedTool === "resize"}
       disabled={progress}

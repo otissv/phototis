@@ -17,7 +17,7 @@ function TemperatureButton({
 }: TemperatureButtonProps) {
   return (
     <ImageEditorButton
-      variant='outline'
+      variant='ghost'
       onClick={() => onSelectedToolChange("temperature")}
       isActive={selectedTool === "temperature"}
       disabled={progress}
