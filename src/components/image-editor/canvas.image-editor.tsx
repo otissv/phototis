@@ -2,8 +2,10 @@
 
 import React from "react"
 import { cn } from "@/lib/utils"
+import { motion, useMotionValue, useTransform, animate } from "motion/react"
 
 import type { ImageEditorToolsState } from "@/components/image-editor/state.image-editor"
+import { initialState } from "@/components/image-editor/state.image-editor"
 import { upscaleTool } from "./tools/upscaler"
 import type { Layer } from "./layer-system"
 
@@ -230,8 +232,13 @@ const fragmentShaderSource = `
       color.rgb += grain;
     }
     
-    // Apply opacity
+    // Apply opacity - this is crucial for layer transparency
     color.a *= u_opacity / 100.0;
+    
+    // Ensure proper alpha blending - if alpha is very low, make it transparent
+    if (color.a < 0.01) {
+      discard; // Don't render this pixel at all
+    }
     
     gl_FragColor = color;
   }
@@ -301,12 +308,22 @@ export function ImageEditorCanvas({
     height: 600,
   })
 
-  // Viewport state for handling large images
+  // Motion values for smooth viewport handling
+  const viewportX = useMotionValue(0)
+  const viewportY = useMotionValue(0)
+  const viewportScale = useMotionValue(1)
+
+  // Current viewport state for calculations
   const [viewport, setViewport] = React.useState<ViewportState>({
     x: 0,
     y: 0,
     scale: 1,
   })
+
+  // Transform values for smooth viewport updates
+  const transformX = useTransform(viewportX, (x) => `${x}px`)
+  const transformY = useTransform(viewportY, (y) => `${y}px`)
+  const transformScale = useTransform(viewportScale, (scale) => scale)
 
   // Container ref for viewport calculations
   const containerRef = React.useRef<HTMLDivElement>(null)
@@ -331,19 +348,31 @@ export function ImageEditorCanvas({
       maxHeight = Math.max(maxHeight, layerBottom)
     }
 
-    // Ensure minimum dimensions
+    // Ensure minimum dimensions and add some padding
     maxWidth = Math.max(maxWidth, 800)
     maxHeight = Math.max(maxHeight, 600)
+
+    // Add padding to ensure layers don't touch the edges
+    maxWidth += 100
+    maxHeight += 100
 
     return { width: maxWidth, height: maxHeight }
   }, [])
 
-  // Update canvas dimensions when layers change
+  // Update WebGL viewport when canvas dimensions change
   React.useEffect(() => {
-    const newDimensions = calculateOptimalCanvasSize()
-    setCanvasDimensions(newDimensions)
-    onCanvasDimensionsChange?.(newDimensions)
-  }, [calculateOptimalCanvasSize, onCanvasDimensionsChange])
+    const gl = glRef.current
+    const canvas = canvasRef?.current
+
+    if (gl && canvas) {
+      // Update canvas size
+      canvas.width = canvasDimensions.width
+      canvas.height = canvasDimensions.height
+
+      // Update WebGL viewport
+      gl.viewport(0, 0, canvasDimensions.width, canvasDimensions.height)
+    }
+  }, [canvasDimensions, canvasRef?.current])
 
   // Handle image URL creation and cleanup for the main image
   React.useEffect(() => {
@@ -364,7 +393,10 @@ export function ImageEditorCanvas({
         URL.revokeObjectURL(url)
         imageUrlCacheRef.current.delete(layerId)
         textureCacheRef.current.delete(layerId)
-        layerDimensionsRef.current.delete(layerId)
+        // Don't delete layer-1 dimensions as it's the background
+        if (layerId !== "layer-1") {
+          layerDimensionsRef.current.delete(layerId)
+        }
       }
     }
 
@@ -374,16 +406,23 @@ export function ImageEditorCanvas({
         const url = URL.createObjectURL(layer.image)
         imageUrlCacheRef.current.set(layer.id, url)
 
-        // Calculate layer dimensions
+        // Calculate layer dimensions immediately
         const img = new Image()
         img.onload = () => {
           // Get current canvas dimensions
           const currentCanvasWidth = canvasDimensions.width
           const currentCanvasHeight = canvasDimensions.height
 
-          // Center the layer on the canvas
-          const centerX = Math.max(0, (currentCanvasWidth - img.width) / 2)
-          const centerY = Math.max(0, (currentCanvasHeight - img.height) / 2)
+          // For new layers, center them on the current canvas
+          // For background layer, position at origin
+          let centerX = 0
+          let centerY = 0
+
+          if (layer.id !== "layer-1") {
+            // Center new layers on the current canvas
+            centerX = Math.max(0, (currentCanvasWidth - img.width) / 2)
+            centerY = Math.max(0, (currentCanvasHeight - img.height) / 2)
+          }
 
           const dimensions: LayerDimensions = {
             width: img.width,
@@ -393,24 +432,20 @@ export function ImageEditorCanvas({
           }
           layerDimensionsRef.current.set(layer.id, dimensions)
 
-          // Update canvas dimensions if this is the first layer or background
-          if (layer.id === "layer-1" || layers.length === 1) {
-            setCanvasDimensions({
-              width: Math.max(img.width, 800),
-              height: Math.max(img.height, 600),
-            })
-          }
+          // Update canvas dimensions to accommodate all layers
+          const newDimensions = calculateOptimalCanvasSize()
         }
         img.src = url
       }
     }
-  }, [layers, canvasDimensions])
+  }, [layers, canvasDimensions, calculateOptimalCanvasSize])
 
   // Handle viewport updates based on zoom
   React.useEffect(() => {
     const zoom = toolsValues.zoom / 100
+    viewportScale.set(zoom)
     setViewport((prev) => ({ ...prev, scale: zoom }))
-  }, [toolsValues.zoom])
+  }, [toolsValues.zoom, viewportScale])
 
   // Function to center viewport on canvas
   const centerViewport = React.useCallback(() => {
@@ -418,27 +453,35 @@ export function ImageEditorCanvas({
 
     const container = containerRef.current
     const containerRect = container.getBoundingClientRect()
+    const currentScale = viewportScale.get()
 
     const centerX =
-      (containerRect.width - canvasDimensions.width * viewport.scale) / 2
+      (containerRect.width - canvasDimensions.width * currentScale) / 2
     const centerY =
-      (containerRect.height - canvasDimensions.height * viewport.scale) / 2
+      (containerRect.height - canvasDimensions.height * currentScale) / 2
+
+    viewportX.set(centerX)
+    viewportY.set(centerY)
 
     setViewport((prev) => ({
       ...prev,
       x: centerX,
       y: centerY,
     }))
-  }, [canvasDimensions, viewport.scale])
+  }, [canvasDimensions, viewportScale, viewportX, viewportY])
 
-  // Function to reset viewport
+  // Function to reset viewport with smooth animation
   const resetViewport = React.useCallback(() => {
+    viewportX.set(0)
+    viewportY.set(0)
+    viewportScale.set(1)
+
     setViewport({
       x: 0,
       y: 0,
       scale: 1,
     })
-  }, [])
+  }, [viewportX, viewportY, viewportScale])
 
   // Center viewport when canvas dimensions change
   React.useEffect(() => {
@@ -446,51 +489,59 @@ export function ImageEditorCanvas({
   }, [centerViewport])
 
   // Mouse/touch handlers for viewport navigation
-  const [isDragging, setIsDragging] = React.useState(false)
-  const [dragStart, setDragStart] = React.useState({ x: 0, y: 0 })
+  // const [isDragging, setIsDragging] = React.useState(false)
+  // const [dragStart, setDragStart] = React.useState({ x: 0, y: 0 })
 
-  const handleMouseDown = React.useCallback(
-    (e: React.MouseEvent) => {
-      if (e.button === 0) {
-        // Left mouse button
-        setIsDragging(true)
-        setDragStart({ x: e.clientX - viewport.x, y: e.clientY - viewport.y })
-      }
-    },
-    [viewport.x, viewport.y]
-  )
+  // const handleMouseDown = React.useCallback(
+  //   (e: React.MouseEvent) => {
+  //     if (e.button === 0) {
+  //       // Left mouse button
+  //       setIsDragging(true)
+  //       setDragStart({ x: e.clientX - viewport.x, y: e.clientY - viewport.y })
+  //     }
+  //   },
+  //   [viewport.x, viewport.y]
+  // )
 
-  const handleMouseMove = React.useCallback(
-    (e: React.MouseEvent) => {
-      if (isDragging) {
-        setViewport((prev) => ({
-          ...prev,
-          x: e.clientX - dragStart.x,
-          y: e.clientY - dragStart.y,
-        }))
-      }
-    },
-    [isDragging, dragStart]
-  )
+  // const handleMouseMove = React.useCallback(
+  //   (e: React.MouseEvent) => {
+  //     if (isDragging) {
+  //       setViewport((prev) => ({
+  //         ...prev,
+  //         x: e.clientX - dragStart.x,
+  //         y: e.clientY - dragStart.y,
+  //       }))
+  //     }
+  //   },
+  //   [isDragging, dragStart]
+  // )
 
-  const handleMouseUp = React.useCallback(() => {
-    setIsDragging(false)
-  }, [])
+  // const handleMouseUp = React.useCallback(() => {
+  //   setIsDragging(false)
+  // }, [])
 
   const handleWheel = React.useCallback(
     (e: React.WheelEvent) => {
       e.preventDefault()
       const delta = e.deltaY > 0 ? 0.9 : 1.1
-      const newScale = Math.max(0.1, Math.min(5, viewport.scale * delta))
+      const currentScale = viewportScale.get()
+      const newScale = Math.max(0.1, Math.min(5, currentScale * delta))
 
       // Zoom towards mouse position
       const rect = e.currentTarget.getBoundingClientRect()
       const mouseX = e.clientX - rect.left
       const mouseY = e.clientY - rect.top
 
-      const scaleRatio = newScale / viewport.scale
-      const newX = mouseX - (mouseX - viewport.x) * scaleRatio
-      const newY = mouseY - (mouseY - viewport.y) * scaleRatio
+      const currentX = viewportX.get()
+      const currentY = viewportY.get()
+      const scaleRatio = newScale / currentScale
+      const newX = mouseX - (mouseX - currentX) * scaleRatio
+      const newY = mouseY - (mouseY - currentY) * scaleRatio
+
+      // Smoothly animate to new values
+      viewportX.set(newX)
+      viewportY.set(newY)
+      viewportScale.set(newScale)
 
       setViewport({
         x: newX,
@@ -498,7 +549,7 @@ export function ImageEditorCanvas({
         scale: newScale,
       })
     },
-    [viewport]
+    [viewportX, viewportY, viewportScale]
   )
 
   // Double-click to reset viewport
@@ -512,7 +563,12 @@ export function ImageEditorCanvas({
     if (!canvasRef?.current || !imageUrl) return
 
     const canvas = canvasRef.current
-    const gl = canvas.getContext("webgl2")
+    const gl = canvas.getContext("webgl2", {
+      alpha: true,
+      premultipliedAlpha: false,
+      preserveDrawingBuffer: false,
+      antialias: true,
+    })
     if (!gl) {
       console.error("WebGL2 not supported")
       return
@@ -775,6 +831,11 @@ export function ImageEditorCanvas({
       const gl = glRef.current
       if (!gl) return null
 
+      // Check if we already have a cached texture for this layer
+      if (textureCacheRef.current.has(layer.id)) {
+        return textureCacheRef.current.get(layer.id) || null
+      }
+
       // If layer has its own image, use that
       if (layer.image && imageUrlCacheRef.current.has(layer.id)) {
         const imageUrl = imageUrlCacheRef.current.get(layer.id)
@@ -840,8 +901,10 @@ export function ImageEditorCanvas({
     // Enable blending for multi-layer composition
     gl.enable(gl.BLEND)
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
+    gl.blendEquation(gl.FUNC_ADD)
 
-    // Clear the canvas
+    // Clear the canvas with transparent background
+    gl.clearColor(0, 0, 0, 0)
     gl.clear(gl.COLOR_BUFFER_BIT)
 
     // Get canvas dimensions
@@ -856,10 +919,37 @@ export function ImageEditorCanvas({
       (layer) => layer.visible && (!layer.isEmpty || layer.image)
     )
 
-    // Reverse the layers so that the top layer in the panel appears on top of the canvas
-    const reversedLayers = [...visibleLayers].reverse()
+    // Always ensure the background layer (layer-1) is rendered if it has dimensions
+    const backgroundLayerDimensions = layerDimensionsRef.current.get("layer-1")
+    const hasBackgroundLayer = backgroundLayerDimensions && imageUrl
 
-    for (const layer of reversedLayers) {
+    // Create a complete list of layers to render
+    const allLayersToRender = [...visibleLayers]
+
+    // Add background layer if it exists and isn't already in the list
+    if (
+      hasBackgroundLayer &&
+      !allLayersToRender.find((layer) => layer.id === "layer-1")
+    ) {
+      // Create a background layer object for rendering
+      const backgroundLayer = {
+        id: "layer-1",
+        name: "Background",
+        visible: true,
+        locked: false,
+        isEmpty: false,
+        image: null, // Background uses main image
+        opacity: 100,
+        filters: initialState,
+      }
+      allLayersToRender.push(backgroundLayer)
+    }
+
+    // Render layers in reverse order (last layer at bottom, first layer at top)
+    // This allows proper transparency - bottom layers show through top layers
+    // Since new layers are added to the beginning of the array, we need to render in reverse
+    for (let i = allLayersToRender.length - 1; i >= 0; i--) {
+      const layer = allLayersToRender[i]
       const setUniform1f = (name: string, value: number) => {
         const location = gl.getUniformLocation(program, name)
         if (location) gl.uniform1f(location, value)
@@ -877,7 +967,10 @@ export function ImageEditorCanvas({
 
       // Get layer dimensions
       const layerDimensions = layerDimensionsRef.current.get(layer.id)
-      if (!layerDimensions) continue
+      if (!layerDimensions) {
+        console.log(`Layer ${layer.id} dimensions not available yet, skipping`)
+        continue
+      }
 
       // Set layer-specific uniforms
       setUniform1f("u_brightness", layer.filters.brightness ?? 100)
@@ -934,10 +1027,19 @@ export function ImageEditorCanvas({
 
     // Disable blending after rendering
     gl.disable(gl.BLEND)
-  }, [layers, loadLayerTexture, canvasRef?.current])
+  }, [layers, loadLayerTexture, canvasRef?.current, imageUrl])
 
   React.useEffect(() => {
     draw()
+  }, [draw])
+
+  // Trigger redraw when layers change (for new dropped images)
+  React.useEffect(() => {
+    // Small delay to ensure layer dimensions are calculated
+    const timer = setTimeout(() => {
+      draw()
+    }, 100)
+    return () => clearTimeout(timer)
   }, [draw])
 
   React.useEffect(() => {
@@ -977,9 +1079,6 @@ export function ImageEditorCanvas({
       const files = Array.from(e.dataTransfer.files)
       const imageFiles = files.filter((file) => file.type.startsWith("image/"))
 
-      console.log("Dropped files:", files)
-      console.log("Image files:", imageFiles)
-
       if (imageFiles.length > 0 && onImageDrop) {
         // Use the first image file
         console.log("Calling onImageDrop with:", imageFiles[0])
@@ -992,18 +1091,19 @@ export function ImageEditorCanvas({
   return (
     <div
       ref={containerRef}
-      className='relative w-full h-full overflow-auto'
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
+      className='relative  h-full overflow-hidden'
+      // onMouseMove={handleMouseMove}
+      // onMouseUp={handleMouseUp}
+      // onMouseLeave={handleMouseUp}
       onWheel={handleWheel}
       onDoubleClick={handleDoubleClick}
     >
-      <div
+      <motion.div
         className='relative'
         style={{
-          transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})`,
+          x: transformX,
+          y: transformY,
+          scale: transformScale,
           transformOrigin: "0 0",
           width: canvasDimensions.width,
           height: canvasDimensions.height,
@@ -1017,6 +1117,8 @@ export function ImageEditorCanvas({
           style={{
             width: canvasDimensions.width,
             height: canvasDimensions.height,
+            backgroundColor: "transparent",
+            display: "block",
           }}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
@@ -1025,7 +1127,7 @@ export function ImageEditorCanvas({
           {...props}
           id='image-editor-canvas'
         />
-      </div>
+      </motion.div>
       {processing > 0 && (
         <div className='absolute inset-0 flex items-center justify-center'>
           <div className='text-sm '>Upscaling {processing}%</div>
@@ -1035,6 +1137,10 @@ export function ImageEditorCanvas({
       <div
         className='absolute inset-0 pointer-events-none flex items-center justify-center opacity-0 transition-opacity duration-200'
         id='drag-overlay'
+        style={{
+          width: canvasDimensions.width,
+          height: canvasDimensions.height,
+        }}
       >
         <div className='bg-blue-500/20 border-2 border-dashed border-blue-500 rounded-lg p-8 text-center backdrop-blur-sm'>
           <div className='text-blue-600 font-medium text-lg'>
