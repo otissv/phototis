@@ -18,7 +18,7 @@ export function ImageEditorButton({
     <Button
       size='sm'
       className={cn(
-        "text-xs rounded-full",
+        "text-xs rounded-sm",
         {
           "bg-primary text-primary-foreground": isActive,
         },

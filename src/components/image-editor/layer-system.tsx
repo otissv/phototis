@@ -2,13 +2,14 @@
 
 import React from "react"
 import { Plus, Trash2, Eye, EyeOff, Copy, Layers, Lock } from "lucide-react"
+import { useDrag, useDrop } from "react-dnd"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import type { ImageEditorToolsState } from "./state.image-editor"
 import { initialState } from "./state.image-editor"
 
-export interface Layer {
+export interface Layer extends React.ComponentProps<"div"> {
   id: string
   name: string
   visible: boolean
@@ -18,7 +19,7 @@ export interface Layer {
   isEmpty: boolean // New property to track if layer is empty/transparent
 }
 
-export interface LayerSystemProps {
+export interface LayerSystemProps extends React.ComponentProps<"div"> {
   layers: Layer[]
   selectedLayerId: string | null
   onLayersChange: (layers: Layer[]) => void
@@ -29,7 +30,19 @@ export interface LayerSystemProps {
   ) => void
 }
 
+// Drag item type for react-dnd
+const ItemTypes = {
+  LAYER: "layer",
+}
+
+interface DragItem {
+  id: string
+  index: number
+  type: string
+}
+
 export function LayerSystem({
+  className,
   layers,
   selectedLayerId,
   onLayersChange,
@@ -46,7 +59,7 @@ export function LayerSystem({
       opacity: 100,
       isEmpty: true, // New layers are empty/transparent
     }
-    onLayersChange([...layers, newLayer])
+    onLayersChange([newLayer, ...layers])
     onSelectedLayerChange(newLayer.id)
   }, [layers, onLayersChange, onSelectedLayerChange])
 
@@ -130,48 +143,178 @@ export function LayerSystem({
   )
 
   return (
-    <div className='bg-background  p-4 w-fit'>
-      <div className='flex items-center justify-between mb-4'>
-        <h3 className='text-sm font-medium flex items-center gap-2'>
-          <Layers className='w-4 h-4' />
-          Layers
-        </h3>
-        <Button
-          variant='ghost'
-          size='sm'
-          onClick={handleAddLayer}
-          className='h-8 w-8 p-0'
-        >
-          <Plus className='w-4 h-4' />
-        </Button>
-      </div>
+    <div className={cn("w-[320px]", className)}>
+      <div className='border p-1 rounded-sm'>
+        <div className='flex items-center justify-between h-10 px-2'>
+          <h3 className='text-sm font-medium flex items-center gap-2'>
+            <Layers className='w-4 h-4' />
+            Layers
+          </h3>
+          <Button
+            variant='ghost'
+            size='sm'
+            onClick={handleAddLayer}
+            className='h-8 w-8 p-0'
+          >
+            <Plus className='w-4 h-4' />
+          </Button>
+        </div>
 
-      <div className='space-y-2'>
-        {layers.map((layer, index) => (
-          <LayerItem
-            key={layer.id}
-            layer={layer}
-            isSelected={selectedLayerId === layer.id}
-            onSelect={() => onSelectedLayerChange(layer.id)}
-            onDelete={() => handleDeleteLayer(layer.id)}
-            onDuplicate={() => handleDuplicateLayer(layer.id)}
-            onToggleVisibility={() => handleToggleVisibility(layer.id)}
-            onToggleLock={() => handleToggleLock(layer.id)}
-            onNameChange={(name) => handleLayerNameChange(layer.id, name)}
-            onOpacityChange={(opacity) =>
-              handleOpacityChange(layer.id, opacity)
-            }
-            onMoveUp={
-              index > 0 ? () => handleMoveLayer(index, index - 1) : undefined
-            }
-            onMoveDown={
-              index < layers.length - 1
-                ? () => handleMoveLayer(index, index + 1)
-                : undefined
-            }
-          />
-        ))}
+        <div className='space-y-2 transition-all'>
+          {layers.map((layer, index) => (
+            <DraggableLayerItem
+              key={layer.id}
+              layer={layer}
+              index={index}
+              isSelected={selectedLayerId === layer.id}
+              onSelect={() => onSelectedLayerChange(layer.id)}
+              onDelete={() => handleDeleteLayer(layer.id)}
+              onDuplicate={() => handleDuplicateLayer(layer.id)}
+              onToggleVisibility={() => handleToggleVisibility(layer.id)}
+              onToggleLock={() => handleToggleLock(layer.id)}
+              onNameChange={(name) => handleLayerNameChange(layer.id, name)}
+              onOpacityChange={(opacity) =>
+                handleOpacityChange(layer.id, opacity)
+              }
+              onMoveLayer={handleMoveLayer}
+            />
+          ))}
+        </div>
       </div>
+    </div>
+  )
+}
+
+interface DraggableLayerItemProps {
+  layer: Layer
+  index: number
+  isSelected: boolean
+  onSelect: () => void
+  onDelete: () => void
+  onDuplicate: () => void
+  onToggleVisibility: () => void
+  onToggleLock: () => void
+  onNameChange: (name: string) => void
+  onOpacityChange: (opacity: number) => void
+  onMoveLayer: (fromIndex: number, toIndex: number) => void
+}
+
+function DraggableLayerItem({
+  layer,
+  index,
+  isSelected,
+  onSelect,
+  onDelete,
+  onDuplicate,
+  onToggleVisibility,
+  onToggleLock,
+  onNameChange,
+  onOpacityChange,
+  onMoveLayer,
+}: DraggableLayerItemProps) {
+  const [{ isDragging }, drag] = useDrag({
+    type: ItemTypes.LAYER,
+    item: { id: layer.id, index, type: ItemTypes.LAYER },
+    collect: (monitor) => ({
+      isDragging: monitor.isDragging(),
+    }),
+  })
+
+  const [{ isOver }, drop] = useDrop({
+    accept: ItemTypes.LAYER,
+    hover: (item: DragItem, monitor) => {
+      if (!item || item.id === layer.id) {
+        return
+      }
+
+      const dragIndex = item.index
+      const hoverIndex = index
+
+      // Don't replace items with themselves
+      if (dragIndex === hoverIndex) {
+        return
+      }
+
+      // Determine rectangle on screen
+      const hoverBoundingRect = ref.current?.getBoundingClientRect()
+      if (!hoverBoundingRect) {
+        return
+      }
+
+      // Get vertical middle
+      const hoverMiddleY =
+        (hoverBoundingRect.bottom - hoverBoundingRect.top) / 2
+
+      // Determine mouse position
+      const clientOffset = monitor.getClientOffset()
+      if (!clientOffset) {
+        return
+      }
+
+      // Get pixels to the top
+      const hoverClientY = clientOffset.y - hoverBoundingRect.top
+
+      // Only perform the move when the mouse has crossed half of the items height
+      // When dragging downwards, only move when the cursor is below 50% of the item height
+      // When dragging upwards, only move when the cursor is above 50% of the item height
+
+      // Dragging downwards
+      if (dragIndex < hoverIndex && hoverClientY < hoverMiddleY) {
+        return
+      }
+
+      // Dragging upwards
+      if (dragIndex > hoverIndex && hoverClientY > hoverMiddleY) {
+        return
+      }
+
+      // Time to actually perform the action
+      onMoveLayer(dragIndex, hoverIndex)
+
+      // Note: we're mutating the monitor item here!
+      // Generally it's better to avoid mutations,
+      // but it's good here for the sake of performance
+      // to avoid expensive index searches.
+      item.index = hoverIndex
+    },
+    collect: (monitor) => ({
+      isOver: monitor.isOver(),
+    }),
+  })
+
+  const ref = React.useRef<HTMLDivElement>(null)
+  drag(drop(ref))
+
+  return (
+    <div
+      ref={ref}
+      className={cn(
+        "cursor-pointer transition-colors w-full text-left rounded-sm space-y-1",
+        isSelected
+          ? "border-primary bg-primary/10"
+          : "border-border hover:border-primary/50",
+        isDragging && "opacity-50",
+        isOver && "border-primary/30"
+      )}
+      onClick={onSelect}
+      aria-label={`Select layer ${layer.name}`}
+      onKeyDown={(e: React.KeyboardEvent) => {
+        if (e.key === "Enter") {
+          onSelect()
+        }
+      }}
+    >
+      <LayerItemContent
+        layer={layer}
+        isSelected={isSelected}
+        onSelect={onSelect}
+        onDelete={onDelete}
+        onDuplicate={onDuplicate}
+        onToggleVisibility={onToggleVisibility}
+        onToggleLock={onToggleLock}
+        onNameChange={onNameChange}
+        onOpacityChange={onOpacityChange}
+      />
     </div>
   )
 }
@@ -190,7 +333,7 @@ interface LayerItemProps {
   onMoveDown?: () => void
 }
 
-function LayerItem({
+function LayerItemContent({
   layer,
   isSelected,
   onSelect,
@@ -228,158 +371,148 @@ function LayerItem({
   }, [layer.name])
 
   return (
-    <div
-      className={cn(
-        "p-2 cursor-pointer transition-colors w-full text-left rounded-sm",
-        isSelected
-          ? "border-primary bg-primary/10"
-          : "border-border hover:border-primary/50"
-      )}
-      onClick={onSelect}
-      aria-label={`Select layer ${layer.name}`}
-      onKeyDown={(e: React.KeyboardEvent) => {
-        if (e.key === "Enter") {
-          onSelect()
-        }
-      }}
-    >
-      <div className='flex items-center gap-2 mb-2'>
-        <Button
-          title='Toggle layer visibility'
-          variant='ghost'
-          size='sm'
-          onClick={(e: React.MouseEvent) => {
-            e.stopPropagation()
-            onToggleVisibility()
-          }}
-          className='h-6 w-6 p-0 rounded-sm'
-        >
-          {layer.visible ? (
-            <Eye className='w-3 h-3' />
-          ) : (
-            <EyeOff className='w-3 h-3' />
-          )}
-        </Button>
-
-        <Button
-          title='Toggle layer lock'
-          variant='ghost'
-          size='sm'
-          onClick={(e: React.MouseEvent) => {
-            e.stopPropagation()
-            onToggleLock()
-          }}
-          className='h-6 w-6 p-0 rounded-sm'
-        >
-          <Lock
-            className={cn(
-              "w-3 h-3",
-              layer.locked ? "text-primary" : "text-muted-foreground"
+    <>
+      <div className='flex flex-col items-center justify-between'>
+        <div className='flex items-center'>
+          <Button
+            title='Toggle layer visibility'
+            variant='ghost'
+            size='sm'
+            className='w-10 p-0 rounded-l-sm '
+            onClick={(e: React.MouseEvent) => {
+              e.stopPropagation()
+              onToggleVisibility()
+            }}
+          >
+            {layer.visible ? (
+              <Eye className='w-3 h-3' />
+            ) : (
+              <EyeOff className='w-3 h-3' />
             )}
-          />
-        </Button>
+          </Button>
 
-        <div className='flex-1 min-w-0'>
-          {isEditing ? (
-            <Input
-              value={editName}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                setEditName(e.target.value)
-              }
-              onBlur={handleNameSubmit}
-              onKeyDown={handleNameKeyDown}
+          <Button
+            title='Toggle layer lock'
+            variant='ghost'
+            size='sm'
+            onClick={(e: React.MouseEvent) => {
+              e.stopPropagation()
+              onToggleLock()
+            }}
+            className='size-10 p-0 rounded-sm'
+          >
+            <Lock
               className={cn(
-                "h-6 text-sm rounded-sm outline-none",
-                "focus-visible:ring-0 focus-visible:ring-transparent focus-visible:ring-offset-0"
+                "w-3 h-3",
+                layer.locked ? "text-primary" : "text-muted-foreground"
               )}
-              autoFocus
             />
-          ) : (
-            <Button
-              variant='ghost'
-              className={cn(
-                "text-sm truncate flex items-center gap-1 h-6 flex-1 w-full justify-start cursor-pointer rounded-sm",
-                "hover:bg-transparent"
-              )}
-              onDoubleClick={() => setIsEditing(true)}
-            >
-              <span>{layer.name}</span>
-              {layer.isEmpty && (
-                <span className='text-xs text-muted-foreground'>(empty)</span>
-              )}
-            </Button>
-          )}
-        </div>
+          </Button>
 
-        <div className='flex gap-1'>
-          {onMoveUp && (
+          <div className='flex-1 w-32'>
+            {isEditing ? (
+              <Input
+                value={editName}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setEditName(e.target.value)
+                }
+                onBlur={handleNameSubmit}
+                onKeyDown={handleNameKeyDown}
+                className={cn(
+                  "h-6 text-sm rounded-sm outline-none px-1",
+                  "focus-visible:ring-0 focus-visible:ring-transparent focus-visible:ring-offset-0"
+                )}
+                autoFocus
+              />
+            ) : (
+              <Button
+                variant='ghost'
+                className={cn(
+                  "text-sm truncate flex items-center gap-1 h-6 flex-1 w-full justify-start px-1cursor-pointer rounded-sm",
+                  "hover:bg-transparent"
+                )}
+                onDoubleClick={() => setIsEditing(true)}
+              >
+                <span>{layer.name}</span>
+                {layer.isEmpty && (
+                  <span className='text-xs text-muted-foreground'>(empty)</span>
+                )}
+              </Button>
+            )}
+          </div>
+
+          <div className='flex gap-1'>
+            {onMoveUp && (
+              <Button
+                variant='ghost'
+                size='sm'
+                onClick={(e: React.MouseEvent) => {
+                  e.stopPropagation()
+                  onMoveUp()
+                }}
+                className='size-10 p-0 rounded-sm'
+              >
+                ↑
+              </Button>
+            )}
+            {onMoveDown && (
+              <Button
+                variant='ghost'
+                size='sm'
+                onClick={(e: React.MouseEvent) => {
+                  e.stopPropagation()
+                  onMoveDown()
+                }}
+                className='size-10 p-0 rounded-sm'
+              >
+                ↓
+              </Button>
+            )}
             <Button
               variant='ghost'
               size='sm'
               onClick={(e: React.MouseEvent) => {
                 e.stopPropagation()
-                onMoveUp()
+                onDuplicate()
               }}
-              className='h-6 w-6 p-0 rounded-sm'
+              className='size-10 p-0 rounded-sm'
             >
-              ↑
+              <Copy className='w-3 h-3' />
             </Button>
-          )}
-          {onMoveDown && (
             <Button
               variant='ghost'
               size='sm'
               onClick={(e: React.MouseEvent) => {
                 e.stopPropagation()
-                onMoveDown()
+                onDelete()
               }}
-              className='h-6 w-6 p-0 rounded-sm'
+              className='size-10 p-0 text-destructive rounded-sm'
             >
-              ↓
+              <Trash2 className='w-3 h-3' />
             </Button>
-          )}
-          <Button
-            variant='ghost'
-            size='sm'
-            onClick={(e: React.MouseEvent) => {
-              e.stopPropagation()
-              onDuplicate()
-            }}
-            className='h-6 w-6 p-0 rounded-sm'
-          >
-            <Copy className='w-3 h-3' />
-          </Button>
-          <Button
-            variant='ghost'
-            size='sm'
-            onClick={(e: React.MouseEvent) => {
-              e.stopPropagation()
-              onDelete()
-            }}
-            className='h-6 w-6 p-0 text-destructive rounded-sm'
-          >
-            <Trash2 className='w-3 h-3' />
-          </Button>
+          </div>
         </div>
       </div>
 
-      <div className='flex items-center gap-2'>
-        <span className='text-xs text-muted-foreground'>Opacity:</span>
-        <input
-          type='range'
-          min='0'
-          max='100'
-          value={layer.opacity}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            onOpacityChange(Number(e.target.value))
-          }
-          onClick={(e: React.MouseEvent) => e.stopPropagation()}
-          onKeyDown={(e: React.KeyboardEvent) => e.stopPropagation()}
-          onKeyUp={(e: React.KeyboardEvent) => e.stopPropagation()}
-          className='flex-1 h-1 bg-secondary rounded-lg appearance-none cursor-pointer'
-        />
-        <span className='text-xs w-8'>{layer.opacity}%</span>
+      <div className='h-10 p-2'>
+        <div className='flex items-center gap-2'>
+          <span className='text-xs text-muted-foreground'>Opacity:</span>
+          <input
+            type='range'
+            min='0'
+            max='100'
+            value={layer.opacity}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+              onOpacityChange(Number(e.target.value))
+            }
+            onClick={(e: React.MouseEvent) => e.stopPropagation()}
+            onKeyDown={(e: React.KeyboardEvent) => e.stopPropagation()}
+            onKeyUp={(e: React.KeyboardEvent) => e.stopPropagation()}
+            className='flex-1 h-1 bg-secondary rounded-lg appearance-none cursor-pointer'
+          />
+          <span className='text-xs w-8'>{layer.opacity}%</span>
+        </div>
       </div>
-    </div>
+    </>
   )
 }

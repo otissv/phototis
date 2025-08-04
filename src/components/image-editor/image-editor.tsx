@@ -52,10 +52,6 @@ export function ImageEditor({ image, ...props }: ImageEditorProps) {
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null)
   const drawFnRef = React.useRef<() => void>(() => {})
 
-  const [isOptionsOpen, setIsOptionsOpen] = React.useState(false)
-  const [jpegQuality, setJpegQuality] = React.useState(80)
-  const [webpQuality, setWebpQuality] = React.useState(80)
-
   const [selectedSidebar, setSelectedSidebar] =
     React.useState<keyof typeof SIDEBAR_TOOLS>("transform")
   const [selectedTool, setSelectedTool] =
@@ -182,30 +178,18 @@ export function ImageEditor({ image, ...props }: ImageEditorProps) {
   )
 
   const { header: Header, footer: ImageEditorFooter } = React.useMemo(
-    () => getEditorTools(selectedSidebar),
+    () =>
+      getEditorTools({
+        selectedSidebar,
+        canvasRef,
+        drawFnRef,
+      }),
     [selectedSidebar]
   )
 
   const handleOnProgress = React.useCallback((progress: number) => {
     setProgress(progress)
   }, [])
-
-  const downloadImage = useWebGLDownload(canvasRef, drawFnRef)
-
-  const handleOnDownload = React.useCallback(
-    (mimeType: string, quality?: number) => () => {
-      downloadImage(mimeType, quality ? quality / 100 : undefined)
-    },
-    [downloadImage]
-  )
-
-  const handleOnUndo = React.useCallback(() => {
-    dispatch({ type: "undo" })
-  }, [dispatch])
-
-  const handleOnRedo = React.useCallback(() => {
-    dispatch({ type: "redo" })
-  }, [dispatch])
 
   const handleDrawReady = React.useCallback((d: () => void) => {
     drawFnRef.current = d
@@ -235,7 +219,7 @@ export function ImageEditor({ image, ...props }: ImageEditorProps) {
   return (
     <div
       {...props}
-      className='grid grid-cols-[80px_1fr_256px] grid-rows-[auto_1fr_auto] gap-x-4 gap-y-2 justify-center'
+      className='grid grid-cols-[80px_1fr_auto] grid-rows-[auto_1fr_auto]  justify-center'
     >
       <ImageEditorSidebar
         selected={selectedSidebar}
@@ -254,6 +238,8 @@ export function ImageEditor({ image, ...props }: ImageEditorProps) {
             onSelectedToolChange={handleSelectedToolChange}
             toolsValues={toolsValues}
             progress={progress}
+            canvasRef={canvasRef}
+            drawFnRef={drawFnRef}
           />
         </div>
       </div>
@@ -286,6 +272,8 @@ export function ImageEditor({ image, ...props }: ImageEditorProps) {
         toolsValues={toolsValues}
         onProgress={handleOnProgress}
         progress={progress}
+        canvasRef={canvasRef}
+        drawFnRef={drawFnRef}
       />
 
       <ZoomControls
@@ -294,58 +282,6 @@ export function ImageEditor({ image, ...props }: ImageEditorProps) {
         value={toolsValues.zoom}
       />
 
-      <div className='col-start-3 row-start-1 row-end-3'>
-        <div className='flex gap-2'>
-          <Button onClick={handleOnUndo}>Undo</Button>
-          <Button onClick={handleOnRedo}>Redo</Button>
-        </div>
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant='outline' className='rounded-full gap-2'>
-              Download <ChevronDown className='w-4 h-4' />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            <QualityOptions
-              description='Configure your download quality. These settings will affect the final file size and image quality of your download.'
-              title='JPEG Download Options'
-              isOpen={isOptionsOpen}
-              setIsOpen={setIsOptionsOpen}
-              quality={jpegQuality}
-              setQuality={setJpegQuality}
-              onClick={handleOnDownload("image/jpeg", jpegQuality)}
-            >
-              JPEG
-            </QualityOptions>
-            <QualityOptions
-              description='Configure your download quality. These settings will affect the final file size and image quality of your download.'
-              title='WebP Download Options'
-              isOpen={isOptionsOpen}
-              setIsOpen={setIsOptionsOpen}
-              quality={webpQuality}
-              setQuality={setWebpQuality}
-              onClick={handleOnDownload("image/webp", webpQuality)}
-            >
-              WebP
-            </QualityOptions>
-            <DropdownMenuItem onClick={handleOnDownload("image/png")}>
-              Png
-            </DropdownMenuItem>
-
-            <DropdownMenuItem onClick={handleOnDownload("image/gif")}>
-              Gif
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleOnDownload("image/avif")}>
-              AVIF
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleOnDownload("image/ico")}>
-              ICO
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-
       {/* Layer System */}
       <LayerSystem
         layers={layers}
@@ -353,6 +289,7 @@ export function ImageEditor({ image, ...props }: ImageEditorProps) {
         onLayersChange={handleLayersChange}
         onSelectedLayerChange={handleSelectedLayerChange}
         onLayerFiltersChange={handleLayerFiltersChange}
+        className='row-span-3'
       />
     </div>
   )

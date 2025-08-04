@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { type SIDEBAR_TOOLS, TOOL_VALUES } from "@/constants"
+import type { SIDEBAR_TOOLS } from "@/constants"
 
 import { ImageEditorButton } from "./button.image-editor"
 import {
@@ -12,6 +12,10 @@ import {
   Square,
   MoveHorizontal,
   CircleDot,
+  Undo,
+  Redo,
+  ChevronDown,
+  Download,
 } from "lucide-react"
 
 import type {
@@ -33,25 +37,58 @@ import {
 } from "./tools/temperature.tools"
 import { GammaButton, GammaControls } from "./tools/gamma.tools"
 import { VintageButton, VintageControls } from "./tools/vintage.tools"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu"
+import { useWebGLDownload } from "@/components/image-editor/useWebGLDownload"
+import { Button } from "../ui/button"
+import { QualityOptions } from "./quaity-options.image-editor"
 
-export function getEditorTools(selected: keyof typeof SIDEBAR_TOOLS) {
-  switch (selected) {
+export function getEditorTools({
+  selectedSidebar,
+  canvasRef,
+  drawFnRef,
+}: {
+  selectedSidebar: keyof typeof SIDEBAR_TOOLS
+  canvasRef: React.RefObject<HTMLCanvasElement | null>
+  drawFnRef: React.RefObject<() => void>
+}) {
+  switch (selectedSidebar) {
     case "finetune":
       return {
         header: (_props: ImageEditorHeaderProps) => <></>,
         footer: (props: ImageEditorFooterProps) => (
-          <FinetuneFooter {...props} />
+          <FinetuneFooter
+            {...props}
+            canvasRef={canvasRef}
+            drawFnRef={drawFnRef}
+          />
         ),
       }
     case "filter":
       return {
         header: (_props: ImageEditorHeaderProps) => <></>,
-        footer: (props: ImageEditorFooterProps) => <FilterFooter {...props} />,
+        footer: (props: ImageEditorFooterProps) => (
+          <FilterFooter
+            {...props}
+            canvasRef={canvasRef}
+            drawFnRef={drawFnRef}
+          />
+        ),
       }
     case "upscale":
       return {
         header: (_props: ImageEditorHeaderProps) => <></>,
-        footer: (props: ImageEditorFooterProps) => <UpscaleFooter {...props} />,
+        footer: (props: ImageEditorFooterProps) => (
+          <UpscaleFooter
+            {...props}
+            canvasRef={canvasRef}
+            drawFnRef={drawFnRef}
+          />
+        ),
       }
     case "layers":
       return {
@@ -62,10 +99,18 @@ export function getEditorTools(selected: keyof typeof SIDEBAR_TOOLS) {
     default:
       return {
         header: (props: ImageEditorHeaderProps) => (
-          <TransformHeader {...props} />
+          <TransformHeader
+            {...props}
+            canvasRef={canvasRef}
+            drawFnRef={drawFnRef}
+          />
         ),
         footer: (props: ImageEditorFooterProps) => (
-          <TransformFooter {...props} />
+          <TransformFooter
+            {...props}
+            canvasRef={canvasRef}
+            drawFnRef={drawFnRef}
+          />
         ),
       }
   }
@@ -85,6 +130,8 @@ export function FinetuneFooter({
   image,
   onChange: _onChange,
   onProgress: _onProgress,
+  canvasRef,
+  drawFnRef,
   ...props
 }: ImageEditorFooterProps) {
   const handleOnChange = (value: number) => {
@@ -220,7 +267,7 @@ export function FinetuneFooter({
       <div className='flex justify-center'>
         <div className='max-w-lg'>{Control}</div>
       </div>
-      <ul className='flex gap-6 mt-10 w-full justify-center'>
+      <ul className='flex gap-6 w-full justify-center'>
         <li>
           <BrightnessButton
             onSelectedToolChange={onSelectedToolChange}
@@ -418,8 +465,23 @@ export function TransformHeader({
   dispatch,
   progress,
   onProgress,
+  canvasRef,
+  drawFnRef,
   ...props
 }: ImageEditorHeaderProps) {
+  const [isOptionsOpen, setIsOptionsOpen] = React.useState(false)
+  const [jpegQuality, setJpegQuality] = React.useState(80)
+  const [webpQuality, setWebpQuality] = React.useState(80)
+
+  const downloadImage = useWebGLDownload(canvasRef, drawFnRef)
+
+  const handleOnDownload = React.useCallback(
+    (mimeType: string, quality?: number) => () => {
+      downloadImage(mimeType, quality ? quality / 100 : undefined)
+    },
+    [downloadImage]
+  )
+
   const handleRotateLeft = () => {
     const currentRotation =
       typeof toolsValues.rotate === "number" ? toolsValues.rotate : 0
@@ -456,10 +518,43 @@ export function TransformHeader({
     })
   }
 
+  const handleOnUndo = React.useCallback(() => {
+    dispatch({ type: "undo" })
+  }, [dispatch])
+
+  const handleOnRedo = React.useCallback(() => {
+    dispatch({ type: "redo" })
+  }, [dispatch])
+
   return (
-    <ul className='flex gap-2 justify-center' {...props}>
-      <li>
+    <ul className='flex gap-1 justify-center' {...props}>
+      <li className='flex items-center gap-1'>
         <ImageEditorButton
+          title='Undo last action'
+          variant='ghost'
+          onClick={handleOnUndo}
+          disabled={progress}
+        >
+          <Undo size={16} className='mr-1' />
+          Undo
+        </ImageEditorButton>
+      </li>
+      <li className='flex items-center gap-1'>
+        <ImageEditorButton
+          title='Redo last action'
+          variant='ghost'
+          onClick={handleOnRedo}
+          disabled={progress}
+        >
+          <Redo size={16} className='mr-1' />
+          Redo
+        </ImageEditorButton>
+      </li>
+      <li className='flex items-center gap-1'>
+        <div className='w-[1px] h-6 bg-muted' />
+
+        <ImageEditorButton
+          title='Rotate image 90°'
           variant='ghost'
           onClick={handleRotateLeft}
           disabled={progress}
@@ -468,8 +563,11 @@ export function TransformHeader({
           Rotate 90°
         </ImageEditorButton>
       </li>
-      <li>
+      <li className='flex items-center gap-1'>
+        <div className='w-[1px] h-6 bg-muted' />
+
         <ImageEditorButton
+          title='Flip image horizontally'
           variant='ghost'
           onClick={handleFlipHorizontal}
           disabled={progress}
@@ -478,8 +576,9 @@ export function TransformHeader({
           Flip Horizontal
         </ImageEditorButton>
       </li>
-      <li>
+      <li className='flex items-center gap-1'>
         <ImageEditorButton
+          title='Flip image vertically'
           variant='ghost'
           onClick={handleFlipVertical}
           disabled={progress}
@@ -487,6 +586,71 @@ export function TransformHeader({
           <FlipVertical2 size={16} className='mr-1' />
           Flip Vertical
         </ImageEditorButton>
+      </li>
+      <li className='flex items-center gap-1'>
+        <div className='w-[1px] h-6 bg-muted' />
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              title='Download image'
+              variant='ghost'
+              className='rounded-sm gap-2 text-sm'
+            >
+              <Download size={16} />
+              Download <ChevronDown size={16} />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <QualityOptions
+              description='Configure your download quality. These settings will affect the final file size and image quality of your download.'
+              title='JPEG Download Options'
+              isOpen={isOptionsOpen}
+              setIsOpen={setIsOptionsOpen}
+              quality={jpegQuality}
+              setQuality={setJpegQuality}
+              onClick={handleOnDownload("image/jpeg", jpegQuality)}
+            >
+              JPEG
+            </QualityOptions>
+            <QualityOptions
+              description='Configure your download quality. These settings will affect the final file size and image quality of your download.'
+              title='WebP Download Options'
+              isOpen={isOptionsOpen}
+              setIsOpen={setIsOptionsOpen}
+              quality={webpQuality}
+              setQuality={setWebpQuality}
+              onClick={handleOnDownload("image/webp", webpQuality)}
+            >
+              WebP
+            </QualityOptions>
+            <DropdownMenuItem
+              title='Download as PNG'
+              onClick={handleOnDownload("image/png")}
+            >
+              Png
+            </DropdownMenuItem>
+
+            <DropdownMenuItem
+              title='Download as GIF'
+              onClick={handleOnDownload("image/gif")}
+            >
+              GIF
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              title='Download as AVIF'
+              onClick={handleOnDownload("image/avif")}
+            >
+              AVIF
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              title='Download as ICO'
+              onClick={handleOnDownload("image/ico")}
+            >
+              ICO
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </li>
     </ul>
   )
@@ -500,6 +664,8 @@ export function TransformFooter({
   value,
   dispatch,
   onSelectedToolChange,
+  canvasRef,
+  drawFnRef,
   ...props
 }: Omit<ImageEditorFooterProps, "onChange" | "onProgress">) {
   const handleOnChange = (value: number) => {
@@ -536,7 +702,13 @@ export function TransformFooter({
       case "scale":
         return <ScaleControls {...controlProps} />
       case "resize":
-        return <ResizeControls {...controlProps} />
+        return (
+          <ResizeControls
+            {...controlProps}
+            canvasRef={canvasRef}
+            drawFnRef={drawFnRef}
+          />
+        )
     }
   }, [selectedTool, value, operator, progress])
 
@@ -545,12 +717,14 @@ export function TransformFooter({
       <div className='flex justify-center'>
         <div className='max-w-lg'>{Control}</div>
       </div>
-      <ul className='flex gap-6 mt-10 w-full justify-center'>
+      <ul className='flex gap-6 w-full justify-center'>
         <li>
           <RotationButton
             onSelectedToolChange={onSelectedToolChange}
             selectedTool={selectedTool}
             progress={progress}
+            canvasRef={canvasRef}
+            drawFnRef={drawFnRef}
           />
         </li>
         <li>
@@ -558,11 +732,15 @@ export function TransformFooter({
             onSelectedToolChange={onSelectedToolChange}
             selectedTool={selectedTool}
             progress={progress}
+            canvasRef={canvasRef}
+            drawFnRef={drawFnRef}
           />
         </li>
 
         <li>
           <ResizeButton
+            canvasRef={canvasRef}
+            drawFnRef={drawFnRef}
             onSelectedToolChange={onSelectedToolChange}
             selectedTool={selectedTool}
             progress={progress}

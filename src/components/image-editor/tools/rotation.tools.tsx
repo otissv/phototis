@@ -8,6 +8,8 @@ export interface RotationButtonProps {
   onSelectedToolChange: (tool: keyof typeof TOOL_VALUES) => void
   selectedTool: keyof typeof TOOL_VALUES
   progress?: number
+  canvasRef: React.RefObject<HTMLCanvasElement | null>
+  drawFnRef: React.RefObject<() => void>
 }
 
 function RotationButton({
