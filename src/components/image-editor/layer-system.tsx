@@ -32,6 +32,7 @@ export interface Layer extends React.ComponentProps<"div"> {
   filters: ImageEditorToolsState
   opacity: number
   isEmpty: boolean // New property to track if layer is empty/transparent
+  image?: File | null // Optional image data for the layer
 }
 
 export interface LayerSystemProps extends React.ComponentProps<"div"> {
@@ -74,7 +75,7 @@ export function LayerSystem({
       opacity: 100,
       isEmpty: true, // New layers are empty/transparent
     }
-    onLayersChange([newLayer, ...layers])
+    onLayersChange([...layers, newLayer])
     onSelectedLayerChange(newLayer.id)
   }, [layers, onLayersChange, onSelectedLayerChange])
 
@@ -190,12 +191,15 @@ export function LayerSystem({
                 max='100'
                 value={currentLayer?.opacity || 100}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  handleOpacityChange(selectedLayerId, Number(e.target.value))
+                  handleOpacityChange(
+                    selectedLayerId as string,
+                    Number(e.target.value)
+                  )
                 }
                 className=' px-2 py-1 h-8 border-none'
               />
               <DropdownMenu>
-                <DropdownMenuTrigger>
+                <DropdownMenuTrigger asChild>
                   <Button
                     variant='ghost'
                     size='sm'
@@ -213,7 +217,7 @@ export function LayerSystem({
                       value={currentLayer?.opacity || 0}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                         handleOpacityChange(
-                          selectedLayerId,
+                          selectedLayerId as string,
                           Number(e.target.value)
                         )
                       }
@@ -452,7 +456,7 @@ function LayerItemContent({
             title='Toggle layer visibility'
             variant='ghost'
             size='sm'
-            className='w-10 p-0 rounded-l-sm '
+            className='w-10 p-0 rounded-l-sm cursor-pointer'
             onClick={(e: React.MouseEvent) => {
               e.stopPropagation()
               onToggleVisibility()
@@ -473,7 +477,7 @@ function LayerItemContent({
               e.stopPropagation()
               onToggleLock()
             }}
-            className='size-10 p-0 rounded-sm'
+            className='size-10 p-0 rounded-sm cursor-pointer'
           >
             <Lock
               className={cn(
@@ -502,12 +506,14 @@ function LayerItemContent({
               <Button
                 variant='ghost'
                 className={cn(
-                  "text-sm truncate flex items-center gap-1 h-6 flex-1 w-full justify-start px-1cursor-pointer rounded-sm",
+                  "text-sm truncate flex items-center gap-1 h-6 flex-1 w-full justify-start px-1cursor-pointer rounded-sm cursor-grab",
                   "hover:bg-transparent"
                 )}
                 onDoubleClick={() => setIsEditing(true)}
               >
-                <span>{layer.name}</span>
+                <span className='text-xs whitespace-nowrap truncate'>
+                  {layer.name}
+                </span>
                 {layer.isEmpty && (
                   <span className='text-xs text-muted-foreground'>(empty)</span>
                 )}
@@ -516,32 +522,6 @@ function LayerItemContent({
           </div>
 
           <div className='flex gap-1'>
-            {onMoveUp && (
-              <Button
-                variant='ghost'
-                size='sm'
-                onClick={(e: React.MouseEvent) => {
-                  e.stopPropagation()
-                  onMoveUp()
-                }}
-                className='size-10 p-0 rounded-sm'
-              >
-                ↑
-              </Button>
-            )}
-            {onMoveDown && (
-              <Button
-                variant='ghost'
-                size='sm'
-                onClick={(e: React.MouseEvent) => {
-                  e.stopPropagation()
-                  onMoveDown()
-                }}
-                className='size-10 p-0 rounded-sm'
-              >
-                ↓
-              </Button>
-            )}
             <Button
               variant='ghost'
               size='sm'
@@ -549,7 +529,7 @@ function LayerItemContent({
                 e.stopPropagation()
                 onDuplicate()
               }}
-              className='size-10 p-0 rounded-sm'
+              className='size-10 p-0 rounded-sm cursor-pointer'
             >
               <Copy className='w-3 h-3' />
             </Button>
@@ -560,7 +540,7 @@ function LayerItemContent({
                 e.stopPropagation()
                 onDelete()
               }}
-              className='size-10 p-0 text-destructive rounded-sm'
+              className='size-10 p-0 text-destructive rounded-sm cursor-pointer'
             >
               <Trash2 className='w-3 h-3' />
             </Button>

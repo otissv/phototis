@@ -46,9 +46,14 @@ import { LayerSystem, type Layer } from "./layer-system"
 
 export interface ImageEditorProps extends React.ComponentProps<"div"> {
   image: File | null
+  onImageDrop?: (file: File) => void
 }
 
-export function ImageEditor({ image, ...props }: ImageEditorProps) {
+export function ImageEditor({
+  image,
+  onImageDrop,
+  ...props
+}: ImageEditorProps) {
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null)
   const drawFnRef = React.useRef<() => void>(() => {})
 
@@ -216,6 +221,39 @@ export function ImageEditor({ image, ...props }: ImageEditorProps) {
     [layers]
   )
 
+  const handleImageDrop = React.useCallback(
+    (file: File) => {
+      console.log(
+        "ImageEditor: Creating new layer for dropped image:",
+        file.name
+      )
+
+      // Create a new layer with the dropped image
+      const newLayer: Layer = {
+        id: `layer-${Date.now()}`,
+        name: file.name || `Layer ${layers.length + 1}`,
+        visible: true,
+        locked: false,
+        filters: { ...initialState },
+        opacity: 100,
+        isEmpty: false, // Layer has image content
+        image: file, // Attach the image to this layer
+      }
+
+      console.log("ImageEditor: New layer created:", newLayer)
+
+      // Add the new layer to the top of the stack
+      const newLayers = [newLayer, ...layers]
+      setLayers(newLayers)
+
+      // Select the new layer
+      setSelectedLayerId(newLayer.id)
+
+      console.log("ImageEditor: Updated layers:", newLayers)
+    },
+    [layers]
+  )
+
   return (
     <div
       {...props}
@@ -256,6 +294,7 @@ export function ImageEditor({ image, ...props }: ImageEditorProps) {
                 id='image-editor-canvas'
                 canvasRef={canvasRef}
                 onDrawReady={handleDrawReady}
+                onImageDrop={handleImageDrop}
               />
             </div>
           </div>

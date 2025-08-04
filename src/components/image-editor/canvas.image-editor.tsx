@@ -230,6 +230,7 @@ export interface ImageEditorCanvasProps
   onProgress?: (progress: number) => void
   canvasRef?: React.RefObject<HTMLCanvasElement | null>
   onDrawReady?: (draw: () => void) => void
+  onImageDrop?: (file: File) => void
 }
 
 export function ImageEditorCanvas({
@@ -239,6 +240,7 @@ export function ImageEditorCanvas({
   onProgress,
   canvasRef,
   onDrawReady,
+  onImageDrop,
   ...props
 }: ImageEditorCanvasProps) {
   const [imageUrl, setImageUrl] = React.useState<string>("")
@@ -249,13 +251,40 @@ export function ImageEditorCanvas({
   const texCoordBufferRef = React.useRef<WebGLBuffer | null>(null)
   const [processing, setProcessing] = React.useState(0)
 
-  // Handle image URL creation and cleanup
+  // Texture cache for layer-specific images
+  const textureCacheRef = React.useRef<Map<string, WebGLTexture>>(new Map())
+  const imageUrlCacheRef = React.useRef<Map<string, string>>(new Map())
+
+  // Handle image URL creation and cleanup for the main image
   React.useEffect(() => {
     if (!image) return
     const url = URL.createObjectURL(image)
     setImageUrl(url)
     return () => URL.revokeObjectURL(url)
   }, [image])
+
+  // Handle layer-specific image URLs
+  React.useEffect(() => {
+    // Clean up old URLs
+    const currentLayerIds = new Set(layers.map((layer) => layer.id))
+    const oldUrls = new Map(imageUrlCacheRef.current)
+
+    for (const [layerId, url] of oldUrls) {
+      if (!currentLayerIds.has(layerId)) {
+        URL.revokeObjectURL(url)
+        imageUrlCacheRef.current.delete(layerId)
+        textureCacheRef.current.delete(layerId)
+      }
+    }
+
+    // Create URLs for new layer images
+    for (const layer of layers) {
+      if (layer.image && !imageUrlCacheRef.current.has(layer.id)) {
+        const url = URL.createObjectURL(layer.image)
+        imageUrlCacheRef.current.set(layer.id, url)
+      }
+    }
+  }, [layers])
 
   // Initialize WebGL context and shaders
   React.useEffect(() => {
@@ -532,8 +561,56 @@ export function ImageEditorCanvas({
     toolsValues.resize.height,
   ])
 
+  // Helper function to load texture for a layer
+  const loadLayerTexture = React.useCallback(
+    async (layer: Layer): Promise<WebGLTexture | null> => {
+      const gl = glRef.current
+      if (!gl) return null
+
+      // If layer has its own image, use that
+      if (layer.image && imageUrlCacheRef.current.has(layer.id)) {
+        const imageUrl = imageUrlCacheRef.current.get(layer.id)
+        if (!imageUrl) return null
+
+        return new Promise((resolve) => {
+          const img = new Image()
+          img.crossOrigin = "anonymous"
+          img.onload = () => {
+            const texture = gl.createTexture()
+            if (!texture) {
+              resolve(null)
+              return
+            }
+
+            gl.bindTexture(gl.TEXTURE_2D, texture)
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+            gl.texImage2D(
+              gl.TEXTURE_2D,
+              0,
+              gl.RGBA,
+              gl.RGBA,
+              gl.UNSIGNED_BYTE,
+              img
+            )
+
+            textureCacheRef.current.set(layer.id, texture)
+            resolve(texture)
+          }
+          img.src = imageUrl
+        })
+      }
+
+      // Otherwise use the main texture
+      return textureRef.current
+    },
+    []
+  )
+
   // Draw function for multi-layer rendering
-  const draw = React.useCallback(() => {
+  const draw = React.useCallback(async () => {
     const gl = glRef.current
     const program = programRef.current
     if (!gl || !program) return
@@ -561,10 +638,13 @@ export function ImageEditorCanvas({
 
     // Render each visible layer from bottom to top
     const visibleLayers = layers.filter(
-      (layer) => layer.visible && !layer.isEmpty
+      (layer) => layer.visible && (!layer.isEmpty || layer.image)
     )
 
-    for (const layer of visibleLayers) {
+    // Reverse the layers so that the top layer in the panel appears on top of the canvas
+    const reversedLayers = [...visibleLayers].reverse()
+
+    for (const layer of reversedLayers) {
       const setUniform1f = (name: string, value: number) => {
         const location = gl.getUniformLocation(program, name)
         if (location) gl.uniform1f(location, value)
@@ -610,40 +690,92 @@ export function ImageEditorCanvas({
           gl.drawingBufferHeight
         )
 
-      // Bind texture
-      gl.activeTexture(gl.TEXTURE0)
-      gl.bindTexture(gl.TEXTURE_2D, textureRef.current)
-      const samplerLocation = gl.getUniformLocation(program, "u_image")
-      if (samplerLocation) gl.uniform1i(samplerLocation, 0)
+      // Load and bind texture for this layer
+      const layerTexture = await loadLayerTexture(layer)
+      if (layerTexture) {
+        gl.activeTexture(gl.TEXTURE0)
+        gl.bindTexture(gl.TEXTURE_2D, layerTexture)
+        const samplerLocation = gl.getUniformLocation(program, "u_image")
+        if (samplerLocation) gl.uniform1i(samplerLocation, 0)
 
-      // Draw the layer
-      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+        // Draw the layer
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+      }
     }
 
     // Disable blending after rendering
     gl.disable(gl.BLEND)
-  }, [layers])
+  }, [layers, loadLayerTexture])
 
   React.useEffect(() => {
     draw()
   }, [draw])
 
   React.useEffect(() => {
-    onDrawReady?.(draw)
+    onDrawReady?.(() => draw())
   }, [draw, onDrawReady])
+
+  // Drag and drop handlers
+  const handleDragOver = React.useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const canvas = e.currentTarget as HTMLCanvasElement
+    canvas.style.border = "2px dashed #3b82f6"
+    canvas.style.backgroundColor = "rgba(59, 130, 246, 0.1)"
+    document.getElementById("drag-overlay")?.classList.remove("opacity-0")
+  }, [])
+
+  const handleDragLeave = React.useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const canvas = e.currentTarget as HTMLCanvasElement
+    canvas.style.border = ""
+    canvas.style.backgroundColor = ""
+    document.getElementById("drag-overlay")?.classList.add("opacity-0")
+  }, [])
+
+  const handleDrop = React.useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+
+      // Reset visual feedback
+      const canvas = e.currentTarget as HTMLCanvasElement
+      canvas.style.border = ""
+      canvas.style.backgroundColor = ""
+      document.getElementById("drag-overlay")?.classList.add("opacity-0")
+
+      const files = Array.from(e.dataTransfer.files)
+      const imageFiles = files.filter((file) => file.type.startsWith("image/"))
+
+      console.log("Dropped files:", files)
+      console.log("Image files:", imageFiles)
+
+      if (imageFiles.length > 0 && onImageDrop) {
+        // Use the first image file
+        console.log("Calling onImageDrop with:", imageFiles[0])
+        onImageDrop(imageFiles[0])
+      }
+    },
+    [onImageDrop]
+  )
 
   return (
     <div className='relative'>
       <canvas
         ref={canvasRef}
         className={cn(
-          "max-w-full max-h-full object-contain"
+          "max-w-full max-h-full object-contain cursor-pointer transition-all duration-200"
           // processing && "opacity-30"
         )}
         style={{
           transform: `scale(${toolsValues.zoom / 100})`,
           transformOrigin: "center",
         }}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        title='Drop image files here to add them as new layers'
         {...props}
         id='image-editor-canvas'
       />
@@ -652,6 +784,20 @@ export function ImageEditorCanvas({
           <div className='text-sm '>Upscaling {processing}%</div>
         </div>
       )}
+      {/* Drag overlay indicator */}
+      <div
+        className='absolute inset-0 pointer-events-none flex items-center justify-center opacity-0 transition-opacity duration-200'
+        id='drag-overlay'
+      >
+        <div className='bg-blue-500/20 border-2 border-dashed border-blue-500 rounded-lg p-8 text-center backdrop-blur-sm'>
+          <div className='text-blue-600 font-medium text-lg'>
+            Drop image to add as new layer
+          </div>
+          <div className='text-blue-500 text-sm mt-2'>
+            Supports: JPG, PNG, GIF, WebP
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
