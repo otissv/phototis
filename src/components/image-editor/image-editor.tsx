@@ -254,6 +254,14 @@ export function ImageEditor({
     [layers]
   )
 
+  const handleCanvasDimensionsChange = React.useCallback(
+    (dimensions: { width: number; height: number }) => {
+      console.log("Canvas dimensions changed:", dimensions)
+      // You can add additional logic here if needed
+    },
+    []
+  )
+
   return (
     <div
       {...props}
@@ -284,19 +292,18 @@ export function ImageEditor({
 
       <div className='col-start-2 row-start-2 flex flex-col items-center overflow-hidden'>
         <div className='flex justify-center items-center w-full overflow-hidden h-[calc(100vh-300px)]'>
-          <div className='relative w-full h-full overflow-auto'>
-            <div className='absolute inset-0 flex items-center justify-center'>
-              <ImageEditorCanvas
-                image={image}
-                toolsValues={toolsValues}
-                layers={layers}
-                onProgress={handleOnProgress}
-                id='image-editor-canvas'
-                canvasRef={canvasRef}
-                onDrawReady={handleDrawReady}
-                onImageDrop={handleImageDrop}
-              />
-            </div>
+          <div className='relative w-full h-full'>
+            <ImageEditorCanvas
+              image={image}
+              toolsValues={toolsValues}
+              layers={layers}
+              onProgress={handleOnProgress}
+              id='image-editor-canvas'
+              canvasRef={canvasRef}
+              onDrawReady={handleDrawReady}
+              onImageDrop={handleImageDrop}
+              onCanvasDimensionsChange={handleCanvasDimensionsChange}
+            />
           </div>
         </div>
       </div>
