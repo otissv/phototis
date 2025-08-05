@@ -233,11 +233,6 @@ export function ImageEditor({
 
   const handleImageDrop = React.useCallback(
     (file: File) => {
-      console.log(
-        "ImageEditor: Creating new layer for dropped image:",
-        file.name
-      )
-
       // Create a new layer with the dropped image
       const newLayer: Layer = {
         id: `layer-${Date.now()}`,
@@ -250,26 +245,14 @@ export function ImageEditor({
         image: file, // Attach the image to this layer
       }
 
-      console.log("ImageEditor: New layer created:", newLayer)
-
       // Add the new layer to the top of the stack
       const newLayers = [newLayer, ...layers]
       setLayers(newLayers)
 
       // Select the new layer
       setSelectedLayerId(newLayer.id)
-
-      console.log("ImageEditor: Updated layers:", newLayers)
     },
     [layers]
-  )
-
-  const handleCanvasDimensionsChange = React.useCallback(
-    (dimensions: { width: number; height: number }) => {
-      console.log("Canvas dimensions changed:", dimensions)
-      // You can add additional logic here if needed
-    },
-    []
   )
 
   // Update background layer when initial image is provided
@@ -330,8 +313,8 @@ export function ImageEditor({
               canvasRef={canvasRef}
               onDrawReady={handleDrawReady}
               onImageDrop={handleImageDrop}
-              onCanvasDimensionsChange={handleCanvasDimensionsChange}
               isDragActive={isDragActive}
+              selectedLayerId={selectedLayerId}
             />
           </div>
         </div>

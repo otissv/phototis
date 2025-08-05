@@ -4,10 +4,12 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { ArrowDownToLine, ChevronLeft, ChevronRight, Dot } from "lucide-react"
 import { motion, useMotionValue } from "motion/react"
-import React, { useEffect, useId, useRef, useState } from "react"
+import type React from "react"
+import { useEffect, useId, useRef, useState, useCallback, useMemo } from "react"
 import { Input } from "./ui/input"
 
-export interface SlidingTrackProps extends React.ComponentProps<"div"> {
+export interface SlidingTrackProps
+  extends Omit<React.ComponentProps<"div">, "onDragEnd" | "onDragStart"> {
   min?: number
   max?: number
   step?: number
@@ -42,18 +44,37 @@ export default function SlidingTrack({
   const [isEditing, setIsEditing] = useState(false)
   const [sliderWidth, setSliderWidth] = useState(0)
 
-  const displayValue =
-    label?.(value, operator) || `${operator ? `${value} ${operator}` : value}`
-  const inputRef = useRef<HTMLInputElement>(null)
+  // Memoize display value to prevent unnecessary recalculations
+  const displayValue = useMemo(
+    () =>
+      label?.(value, operator) ||
+      `${operator ? `${value} ${operator}` : value}`,
+    [value, operator, label]
+  )
 
+  const inputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const x = useMotionValue(0)
   const trackWidth = useRef(0)
   const prevValueRef = useRef(value)
   const initialDragX = useRef<number | null>(null)
   const previousX = useRef<number | null>(null)
+  const lastChangeTime = useRef(0)
 
   const containerId = useId()
+
+  // Throttle value changes to prevent excessive updates
+  const throttledOnValueChange = useCallback(
+    (newValue: number) => {
+      const now = Date.now()
+      if (now - lastChangeTime.current > 16) {
+        // ~60fps throttling
+        onValueChange?.(newValue)
+        lastChangeTime.current = now
+      }
+    },
+    [onValueChange]
+  )
 
   useEffect(() => {
     const slider = document.querySelector(
@@ -97,84 +118,104 @@ export default function SlidingTrack({
     }
   }, [defaultValue, value, min, max, x])
 
-  const handleDrag = (_event: any, info: { point: { x: number } }) => {
-    if (disabled) return
+  const handleDrag = useCallback(
+    (_event: any, info: { point: { x: number } }) => {
+      if (disabled) return
 
-    if (initialDragX.current === null) {
-      initialDragX.current = info.point.x
+      if (initialDragX.current === null) {
+        initialDragX.current = info.point.x
+        onDragStart?.(value)
+        return
+      }
 
-      return
-    }
+      if (previousX.current === info.point.x) {
+        return
+      }
 
-    if (previousX.current === info.point.x) {
-      return
-    }
+      const dragDelta = info.point.x - initialDragX.current
+      const sensitivityFactor = sensitivity
+      const percent =
+        (dragDelta * sensitivityFactor) / (trackWidth.current || 1)
 
-    const dragDelta = info.point.x - initialDragX.current
-    const sensitivityFactor = sensitivity
-    const percent = (dragDelta * sensitivityFactor) / (trackWidth.current || 1)
+      // Calculate the new value based on the previous value and drag delta
+      const previousValuePercent = (value - min) / (max - min)
+      const newValuePercent = Math.max(
+        0,
+        Math.min(1, previousValuePercent - percent)
+      )
+      const rawValue = newValuePercent * (max - min) + min
 
-    // Calculate the new value based on the previous value and drag delta
-    const previousValuePercent = (value - min) / (max - min)
-    const newValuePercent = Math.max(
-      0,
-      Math.min(1, previousValuePercent - percent)
-    )
-    const rawValue = newValuePercent * (max - min) + min
+      const newValue =
+        Math.round(Math.min(Math.max(rawValue, min), max) / step) * step
 
-    const newValue =
-      Math.round(Math.min(Math.max(rawValue, min), max) / step) * step
+      previousX.current = info.point.x
 
-    previousX.current = info.point.x
+      if (newValue === value) return
 
-    if (newValue === value) return
+      if (newValue > max) {
+        setValue(max)
+        throttledOnValueChange(max)
+      } else if (newValue < min) {
+        setValue(min)
+        throttledOnValueChange(min)
+      } else {
+        setValue(newValue)
+        throttledOnValueChange(newValue)
+      }
+    },
+    [
+      disabled,
+      value,
+      min,
+      max,
+      step,
+      sensitivity,
+      throttledOnValueChange,
+      onDragStart,
+    ]
+  )
 
-    if (newValue > max) {
-      setValue(max)
-      onValueChange?.(max)
-    } else if (newValue < min) {
-      setValue(min)
-      onValueChange?.(min)
-    } else {
-      setValue(newValue)
-      onValueChange?.(newValue)
-    }
-  }
-
-  const handleDragEnd = () => {
+  const handleDragEnd = useCallback(() => {
     initialDragX.current = null
     onDragEnd?.(value)
-  }
+  }, [value, onDragEnd])
 
-  const dotPattern = React.useMemo(() => [...Array(350)].map((_, i) => i), [])
+  // Memoize dot pattern to prevent recreation on every render
+  const dotPattern = useMemo(() => [...Array(350)].map((_, i) => i), [])
 
-  const handleDirectionChange = (direction: "left" | "right") => {
-    if (direction === "left") {
-      let newValue = value - step
-      newValue = newValue < min ? min : newValue
+  const handleDirectionChange = useCallback(
+    (direction: "left" | "right") => {
+      if (direction === "left") {
+        let newValue = value - step
+        newValue = newValue < min ? min : newValue
 
-      if (newValue === value) return
+        if (newValue === value) return
+
+        setValue(newValue)
+        throttledOnValueChange(newValue)
+      } else {
+        let newValue = value + step
+        newValue = newValue > max ? max : newValue
+
+        if (newValue === value) return
+
+        setValue(newValue)
+        throttledOnValueChange(newValue)
+      }
+    },
+    [value, step, min, max, throttledOnValueChange]
+  )
+
+  const handleOnInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const newValue =
+        e.target.value.trim() === "" ? 0 : Number.parseInt(e.target.value)
 
       setValue(newValue)
-      onValueChange?.(newValue)
-    } else {
-      let newValue = value + step
-      newValue = newValue > max ? max : newValue
-
-      if (newValue === value) return
-
-      setValue(newValue)
-      onValueChange?.(newValue)
-    }
-  }
-
-  const handleOnInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newValue =
-      e.target.value.trim() === "" ? 0 : Number.parseInt(e.target.value)
-
-    setValue(newValue)
-    onValueChange?.(newValue)
-  }
+      throttledOnValueChange(newValue)
+    },
+    [throttledOnValueChange]
+  )
 
   return (
     <div
@@ -200,16 +241,19 @@ export default function SlidingTrack({
               className=' h-10 overflow-hidden cursor-grab flex items-center '
             >
               <motion.div
+                className='relative w-full h-full flex items-center justify-center'
+                style={{ x }}
                 drag='x'
                 dragConstraints={{
-                  left: -sliderWidth / 2,
-                  right: sliderWidth / 2,
+                  left: -trackWidth.current / 2,
+                  right: trackWidth.current / 2,
                 }}
-                style={{ x }}
-                onDragStart={() => onDragStart?.(value)}
+                dragElastic={0}
+                dragMomentum={false}
                 onDrag={handleDrag}
                 onDragEnd={handleDragEnd}
-                className='flex h-10'
+                onDragStart={() => onDragStart?.(value)}
+                transition={{ duration: 0.2, ease: "easeOut" }}
               >
                 <div className='flex items-center justify-center -translate-x-1/2'>
                   {dotPattern.map((key, i) => {

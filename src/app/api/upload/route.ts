@@ -8,7 +8,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "No file provided" }, { status: 400 })
   }
 
-  console.log("file", file)
-
   return NextResponse.json({ message: "File uploaded" })
 }

@@ -14,24 +14,6 @@ export async function POST(request: Request) {
     const buffer = Buffer.from(await file.arrayBuffer())
     let image = sharp(buffer)
 
-    // Apply transformations
-    // if (options.width || options.height) {
-    //   image = image.resize(options.width, options.height, {
-    //     fit: "inside",
-    //     withoutEnlargement: true,
-    //   })
-    // }
-
-    // if (options.rotate) {
-    //   image = image.rotate(options.rotate)
-    // }
-
-    // if (options.flip) {
-    //   image = image.flip()
-    // }
-
-    console.log(options)
-
     // Get the base filename without extension
 
     if (options.format) {

@@ -8,6 +8,8 @@ export class ShaderManager {
   private gl: WebGL2RenderingContext | null = null
   private program: WebGLProgram | null = null
   private plugins: ShaderPlugin[] = []
+  private uniformLocations: Map<string, WebGLUniformLocation | null> = new Map()
+  private lastUniformValues: Map<string, any> = new Map()
 
   constructor() {
     // Initialize all plugins
@@ -21,6 +23,8 @@ export class ShaderManager {
 
   initialize(gl: WebGL2RenderingContext): boolean {
     this.gl = gl
+    this.uniformLocations.clear()
+    this.lastUniformValues.clear()
     return this.compileProgram()
   }
 
@@ -282,7 +286,19 @@ export class ShaderManager {
     const allUniforms = this.getAllUniforms()
 
     Object.entries(allUniforms).forEach(([name, value]) => {
-      const location = gl.getUniformLocation(program, name)
+      // Check if the uniform value has changed
+      const lastValue = this.lastUniformValues.get(name)
+      if (lastValue === value) {
+        return // Skip if value hasn't changed
+      }
+
+      // Get or cache uniform location
+      let location = this.uniformLocations.get(name)
+      if (location === undefined) {
+        location = gl.getUniformLocation(program, name)
+        this.uniformLocations.set(name, location)
+      }
+
       if (location !== null) {
         if (typeof value === "number") {
           gl.uniform1f(location, value)
@@ -291,6 +307,9 @@ export class ShaderManager {
         } else if (Array.isArray(value) && value.length === 2) {
           gl.uniform2f(location, value[0], value[1])
         }
+
+        // Cache the new value
+        this.lastUniformValues.set(name, value)
       }
     })
   }
@@ -300,5 +319,12 @@ export class ShaderManager {
       this.gl.deleteProgram(this.program)
       this.program = null
     }
+    this.uniformLocations.clear()
+    this.lastUniformValues.clear()
+  }
+
+  clearUniformCache(): void {
+    this.uniformLocations.clear()
+    this.lastUniformValues.clear()
   }
 }

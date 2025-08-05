@@ -130,38 +130,41 @@ export function FinetuneFooter({
   drawFnRef,
   ...props
 }: ImageEditorFooterProps) {
-  const handleOnChange = (value: number) => {
-    switch (selectedTool) {
-      case "brightness":
-        return dispatch({ type: "brightness", payload: value })
-      case "contrast":
-        return dispatch({ type: "contrast", payload: value })
-      case "hue":
-        return dispatch({ type: "hue", payload: value })
-      case "saturation":
-        return dispatch({ type: "saturation", payload: value })
-      case "exposure":
-        return dispatch({ type: "exposure", payload: value })
-      case "temperature":
-        return dispatch({ type: "temperature", payload: value })
-      case "gamma":
-        return dispatch({ type: "gamma", payload: value })
-      case "vintage":
-        return dispatch({ type: "vintage", payload: value })
-      case "sharpen":
-        return dispatch({ type: "sharpen", payload: value })
-      case "blur":
-        return dispatch({ type: "blur", payload: value })
-      case "blurType":
-        return dispatch({ type: "blurType", payload: value })
-      case "blurDirection":
-        return dispatch({ type: "blurDirection", payload: value })
-      case "blurCenter":
-        return dispatch({ type: "blurCenter", payload: value })
-      default:
-        return () => {}
-    }
-  }
+  const handleOnChange = React.useCallback(
+    (value: number) => {
+      switch (selectedTool) {
+        case "brightness":
+          return dispatch({ type: "brightness", payload: value })
+        case "contrast":
+          return dispatch({ type: "contrast", payload: value })
+        case "hue":
+          return dispatch({ type: "hue", payload: value })
+        case "saturation":
+          return dispatch({ type: "saturation", payload: value })
+        case "exposure":
+          return dispatch({ type: "exposure", payload: value })
+        case "temperature":
+          return dispatch({ type: "temperature", payload: value })
+        case "gamma":
+          return dispatch({ type: "gamma", payload: value })
+        case "vintage":
+          return dispatch({ type: "vintage", payload: value })
+        case "sharpen":
+          return dispatch({ type: "sharpen", payload: value })
+        case "blur":
+          return dispatch({ type: "blur", payload: value })
+        case "blurType":
+          return dispatch({ type: "blurType", payload: value })
+        case "blurDirection":
+          return dispatch({ type: "blurDirection", payload: value })
+        case "blurCenter":
+          return dispatch({ type: "blurCenter", payload: value })
+        default:
+          return () => {}
+      }
+    },
+    [dispatch, selectedTool]
+  )
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: <explanation>
   const Control = React.useMemo(() => {
@@ -196,7 +199,7 @@ export function FinetuneFooter({
       case "vintage":
         return <VintageControls {...controlProps} />
     }
-  }, [selectedTool, value, progress])
+  }, [selectedTool, value, progress, handleOnChange, image])
 
   const renderBlurControls = () => {
     if (selectedTool === "blur") {
@@ -349,28 +352,31 @@ export function FilterFooter({
   progress,
   ...props
 }: ImageEditorFooterProps) {
-  const handleOnChange = (value: number) => {
-    switch (selectedTool) {
-      case "tint":
-        return dispatch({ type: "tint", payload: value })
-      case "vibrance":
-        return dispatch({ type: "vibrance", payload: value })
-      case "noise":
-        return dispatch({ type: "noise", payload: value })
-      case "grain":
-        return dispatch({ type: "grain", payload: value })
-      case "sharpen":
-        return dispatch({ type: "sharpen", payload: value })
-      case "invert":
-        return dispatch({ type: "invert", payload: value })
-      case "sepia":
-        return dispatch({ type: "sepia", payload: value })
-      case "grayscale":
-        return dispatch({ type: "grayscale", payload: value })
-      default:
-        return () => {}
-    }
-  }
+  const handleOnChange = React.useCallback(
+    (value: number) => {
+      switch (selectedTool) {
+        case "tint":
+          return dispatch({ type: "tint", payload: value })
+        case "vibrance":
+          return dispatch({ type: "vibrance", payload: value })
+        case "noise":
+          return dispatch({ type: "noise", payload: value })
+        case "grain":
+          return dispatch({ type: "grain", payload: value })
+        case "sharpen":
+          return dispatch({ type: "sharpen", payload: value })
+        case "invert":
+          return dispatch({ type: "invert", payload: value })
+        case "sepia":
+          return dispatch({ type: "sepia", payload: value })
+        case "grayscale":
+          return dispatch({ type: "grayscale", payload: value })
+        default:
+          return () => {}
+      }
+    },
+    [dispatch, selectedTool]
+  )
 
   return (
     <div>
@@ -681,9 +687,12 @@ export function TransformFooter({
   drawFnRef,
   ...props
 }: Omit<ImageEditorFooterProps, "onChange" | "onProgress">) {
-  const handleOnChange = (value: number) => {
-    dispatch({ type: selectedTool, payload: value })
-  }
+  const handleOnChange = React.useCallback(
+    (value: number) => {
+      dispatch({ type: selectedTool, payload: value })
+    },
+    [dispatch, selectedTool]
+  )
 
   let operator = ""
 
@@ -723,7 +732,7 @@ export function TransformFooter({
           />
         )
     }
-  }, [selectedTool, value, operator, progress])
+  }, [selectedTool, value, operator, progress, handleOnChange, image])
 
   return (
     <div {...props}>
