@@ -148,11 +148,15 @@ export function ImageEditorCanvas({
 
   // Handle image URL creation and cleanup for the main image
   React.useEffect(() => {
-    if (!image) return
-    const url = URL.createObjectURL(image)
+    // Find the background layer (layer-1) to get its image
+    const backgroundLayer = layers.find((layer) => layer.id === "layer-1")
+    const imageToUse = backgroundLayer?.image || image
+
+    if (!imageToUse) return
+    const url = URL.createObjectURL(imageToUse)
     setImageUrl(url)
     return () => URL.revokeObjectURL(url)
-  }, [image])
+  }, [image, layers])
 
   // Handle layer-specific image URLs and dimensions
   React.useEffect(() => {
@@ -337,6 +341,10 @@ export function ImageEditorCanvas({
     // 1. Initial Checks
     if (!canvasRef?.current || !imageUrl) return
 
+    // Only initialize if background layer has an image
+    const backgroundLayer = layers.find((layer) => layer.id === "layer-1")
+    if (!backgroundLayer || backgroundLayer.isEmpty) return
+
     const canvas = canvasRef.current
     const gl = canvas.getContext("webgl2", {
       alpha: true,
@@ -428,8 +436,11 @@ export function ImageEditorCanvas({
         height: img.height,
       })
 
-      // Initial render
-      draw()
+      // Only render if there are visible layers
+      const hasVisibleLayers = layers.some((layer) => layer.visible)
+      if (hasVisibleLayers) {
+        draw()
+      }
     }
     img.src = imageUrl
 
@@ -440,13 +451,19 @@ export function ImageEditorCanvas({
       gl.deleteBuffer(texCoordBuffer)
       gl.deleteTexture(texture)
     }
-  }, [imageUrl, canvasRef?.current])
+  }, [imageUrl, canvasRef?.current, layers])
 
   // Upscaling
   React.useEffect(() => {
     const canvas = canvasRef?.current
 
     if (!canvas || !imageUrl || !toolsValues.upscale) {
+      return
+    }
+
+    // Only apply upscaling to the background layer if it's selected
+    const backgroundLayer = layers.find((layer) => layer.id === "layer-1")
+    if (!backgroundLayer || backgroundLayer.isEmpty) {
       return
     }
 
@@ -513,8 +530,11 @@ export function ImageEditorCanvas({
             // Reset processing state
             setProcessing(0)
 
-            // Trigger redraw
-            draw()
+            // Only redraw if there are visible layers
+            const hasVisibleLayers = layers.some((layer) => layer.visible)
+            if (hasVisibleLayers) {
+              draw()
+            }
           }
         }
       } catch (error) {
@@ -524,7 +544,7 @@ export function ImageEditorCanvas({
     }
 
     upscale()
-  }, [imageUrl, canvasRef?.current, toolsValues.upscale, onProgress])
+  }, [imageUrl, canvasRef?.current, toolsValues.upscale, onProgress, layers])
 
   // Resizing
   React.useEffect(() => {
@@ -536,6 +556,12 @@ export function ImageEditorCanvas({
       !toolsValues.resize.width ||
       !toolsValues.resize.height
     ) {
+      return
+    }
+
+    // Only apply resizing to the background layer if it's selected
+    const backgroundLayer = layers.find((layer) => layer.id === "layer-1")
+    if (!backgroundLayer || backgroundLayer.isEmpty) {
       return
     }
 
@@ -574,8 +600,11 @@ export function ImageEditorCanvas({
         // Reset processing state
         setProcessing(0)
 
-        // Trigger redraw
-        draw()
+        // Only redraw if there are visible layers
+        const hasVisibleLayers = layers.some((layer) => layer.visible)
+        if (hasVisibleLayers) {
+          draw()
+        }
       }
     }
     return
@@ -584,6 +613,7 @@ export function ImageEditorCanvas({
     canvasRef?.current,
     toolsValues.resize.width,
     toolsValues.resize.height,
+    layers,
   ])
 
   // Helper function to load texture for a layer
@@ -690,23 +720,21 @@ export function ImageEditorCanvas({
     // Create a complete list of layers to render
     const allLayersToRender = [...visibleLayers]
 
-    // Add background layer if it exists and isn't already in the list
+    // Add background layer if it exists, is visible, and isn't already in the list
     if (
       hasBackgroundLayer &&
       !allLayersToRender.find((layer) => layer.id === "layer-1")
     ) {
-      // Create a background layer object for rendering
-      const backgroundLayer = {
-        id: "layer-1",
-        name: "Background",
-        visible: true,
-        locked: false,
-        isEmpty: false,
-        image: null, // Background uses main image
-        opacity: 100,
-        filters: initialState,
+      // Find the actual background layer from the layer system
+      const backgroundLayerFromSystem = layers.find(
+        (layer) => layer.id === "layer-1"
+      )
+
+      if (backgroundLayerFromSystem?.visible) {
+        // Use the actual background layer from the layer system only if it's visible
+        allLayersToRender.push(backgroundLayerFromSystem)
       }
-      allLayersToRender.push(backgroundLayer)
+      // No fallback - background layer should always exist in the layer system
     }
 
     // Render layers in reverse order (last layer at bottom, first layer at top)
@@ -799,8 +827,12 @@ export function ImageEditorCanvas({
   }, [layers, loadLayerTexture, canvasRef?.current, imageUrl, isDragActive])
 
   React.useEffect(() => {
-    draw()
-  }, [draw])
+    // Only draw if there are visible layers
+    const hasVisibleLayers = layers.some((layer) => layer.visible)
+    if (hasVisibleLayers) {
+      draw()
+    }
+  }, [draw, layers])
 
   // Trigger redraw when layers change (for new dropped images)
   React.useEffect(() => {
@@ -809,10 +841,14 @@ export function ImageEditorCanvas({
 
     // Small delay to ensure layer dimensions are calculated
     const timer = setTimeout(() => {
-      draw()
+      // Only draw if there are visible layers
+      const hasVisibleLayers = layers.some((layer) => layer.visible)
+      if (hasVisibleLayers) {
+        draw()
+      }
     }, 100)
     return () => clearTimeout(timer)
-  }, [draw, isDragActive])
+  }, [draw, isDragActive, layers])
 
   React.useEffect(() => {
     onDrawReady?.(() => draw())

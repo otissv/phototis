@@ -99,6 +99,12 @@ export function LayerSystem({
   const handleDeleteLayer = React.useCallback(
     (layerId: string) => {
       if (isDragActive || isGlobalDragActive) return
+
+      // Prevent deletion of the background layer (layer-1)
+      if (layerId === "layer-1") {
+        return
+      }
+
       const newLayers = layers.filter((layer) => layer.id !== layerId)
       onLayersChange(newLayers)
 
@@ -118,6 +124,12 @@ export function LayerSystem({
   const handleDuplicateLayer = React.useCallback(
     (layerId: string) => {
       if (isDragActive || isGlobalDragActive) return
+
+      // Prevent duplication of the background layer (layer-1)
+      if (layerId === "layer-1") {
+        return
+      }
+
       const layerToDuplicate = layers.find((layer) => layer.id === layerId)
       if (!layerToDuplicate) return
 
@@ -147,6 +159,12 @@ export function LayerSystem({
   const handleToggleLock = React.useCallback(
     (layerId: string) => {
       if (isDragActive || isGlobalDragActive) return
+
+      // Prevent locking the background layer (layer-1)
+      if (layerId === "layer-1") {
+        return
+      }
+
       const newLayers = layers.map((layer) =>
         layer.id === layerId ? { ...layer, locked: !layer.locked } : layer
       )
@@ -158,6 +176,12 @@ export function LayerSystem({
   const handleLayerNameChange = React.useCallback(
     (layerId: string, name: string) => {
       if (isDragActive || isGlobalDragActive) return
+
+      // Prevent renaming the background layer (layer-1)
+      if (layerId === "layer-1") {
+        return
+      }
+
       const newLayers = layers.map((layer) =>
         layer.id === layerId ? { ...layer, name } : layer
       )
@@ -536,7 +560,11 @@ function LayerItemContent({
           </Button>
 
           <Button
-            title='Toggle layer lock'
+            title={
+              layer.id === "layer-1"
+                ? "Cannot lock background layer"
+                : "Toggle layer lock"
+            }
             variant='ghost'
             size='sm'
             onClick={(e: React.MouseEvent) => {
@@ -544,12 +572,13 @@ function LayerItemContent({
               onToggleLock()
             }}
             className='size-10 p-0 rounded-sm cursor-pointer'
-            disabled={isDragActive}
+            disabled={isDragActive || layer.id === "layer-1"}
           >
             <Lock
               className={cn(
                 "w-3 h-3",
-                layer.locked ? "text-primary" : "text-muted-foreground"
+                layer.locked ? "text-primary" : "text-muted-foreground",
+                layer.id === "layer-1" && "text-muted-foreground"
               )}
             />
           </Button>
@@ -568,7 +597,7 @@ function LayerItemContent({
                   "focus-visible:ring-0 focus-visible:ring-transparent focus-visible:ring-offset-0"
                 )}
                 autoFocus
-                disabled={isDragActive}
+                disabled={isDragActive || layer.id === "layer-1"}
               />
             ) : (
               <Button
@@ -577,7 +606,9 @@ function LayerItemContent({
                   "text-sm truncate flex items-center gap-1 h-6 flex-1 w-full justify-start px-1cursor-pointer rounded-sm cursor-grab",
                   "hover:bg-transparent"
                 )}
-                onDoubleClick={() => !isDragActive && setIsEditing(true)}
+                onDoubleClick={() =>
+                  !isDragActive && layer.id !== "layer-1" && setIsEditing(true)
+                }
                 disabled={isDragActive}
               >
                 <span className='text-xs whitespace-nowrap truncate'>
@@ -599,9 +630,19 @@ function LayerItemContent({
                 onDuplicate()
               }}
               className='size-10 p-0 rounded-sm cursor-pointer'
-              disabled={isDragActive}
+              disabled={isDragActive || layer.id === "layer-1"}
+              title={
+                layer.id === "layer-1"
+                  ? "Cannot duplicate background layer"
+                  : "Duplicate layer"
+              }
             >
-              <Copy className='w-3 h-3' />
+              <Copy
+                className={cn(
+                  "w-3 h-3",
+                  layer.id === "layer-1" && "text-muted-foreground"
+                )}
+              />
             </Button>
             <Button
               variant='ghost'
@@ -611,9 +652,19 @@ function LayerItemContent({
                 onDelete()
               }}
               className='size-10 p-0 text-destructive rounded-sm cursor-pointer'
-              disabled={isDragActive}
+              disabled={isDragActive || layer.id === "layer-1"}
+              title={
+                layer.id === "layer-1"
+                  ? "Cannot delete background layer"
+                  : "Delete layer"
+              }
             >
-              <Trash2 className='w-3 h-3' />
+              <Trash2
+                className={cn(
+                  "w-3 h-3",
+                  layer.id === "layer-1" && "text-muted-foreground"
+                )}
+              />
             </Button>
           </div>
         </div>

@@ -75,7 +75,7 @@ export function ImageEditor({
       locked: false,
       filters: { ...initialState },
       opacity: 100,
-      isEmpty: false, // Background layer is not empty
+      isEmpty: true, // Background layer starts empty until image is loaded
     }
     return [defaultLayer]
   })
@@ -271,6 +271,24 @@ export function ImageEditor({
     },
     []
   )
+
+  // Update background layer when initial image is provided
+  React.useEffect(() => {
+    if (image) {
+      setLayers((prevLayers) => {
+        const updatedLayers = prevLayers.map((layer) =>
+          layer.id === "layer-1"
+            ? {
+                ...layer,
+                isEmpty: false, // Background layer now has content
+                image: image, // Attach the initial image to background layer
+              }
+            : layer
+        )
+        return updatedLayers
+      })
+    }
+  }, [image])
 
   return (
     <div
