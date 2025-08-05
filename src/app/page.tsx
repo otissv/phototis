@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useCallback } from "react"
 import { DndProvider } from "react-dnd"
 import { HTML5Backend } from "react-dnd-html5-backend"
 import { Dropzone } from "@/components/Dropzone"
@@ -21,9 +21,24 @@ import {
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 
+// Global drag state to prevent conflicts
+let globalDragActive = false
+
+// Function to update global drag state
+const setGlobalDragActive = (active: boolean) => {
+  globalDragActive = active
+}
+
 export default function Home() {
   const [route, setRoute] = useState<"gallery" | "editor" | "dropzone">(
     "dropzone"
+  )
+
+  const handleRouteChange = useCallback(
+    (newRoute: "gallery" | "editor" | "dropzone") => {
+      setRoute(newRoute)
+    },
+    []
   )
 
   return (
@@ -31,14 +46,20 @@ export default function Home() {
       <nav className='container flex justify-center mx-auto p-4 space-y-8'>
         <ul className='flex gap-4'>
           <li>
-            <Button variant='outline' onClick={() => setRoute("dropzone")}>
+            <Button
+              variant='outline'
+              onClick={() => handleRouteChange("dropzone")}
+            >
               Upload
             </Button>
           </li>
         </ul>
         <ul className='flex gap-4'>
           <li>
-            <Button variant='outline' onClick={() => setRoute("gallery")}>
+            <Button
+              variant='outline'
+              onClick={() => handleRouteChange("gallery")}
+            >
               Gallery
             </Button>
           </li>
@@ -46,7 +67,7 @@ export default function Home() {
       </nav>
 
       <main className='container mx-auto px-4 space-y-8'>
-        <Router route={route} setRoute={setRoute} />
+        <Router route={route} setRoute={handleRouteChange} />
       </main>
     </DndProvider>
   )
@@ -118,6 +139,7 @@ function Router({ route, setRoute }: RouterProps) {
               setRoute("editor")
             }}
             className='rounded-md h-160'
+            onDragStateChange={setGlobalDragActive}
           />
         </div>
       )
@@ -157,6 +179,11 @@ function Router({ route, setRoute }: RouterProps) {
         </div>
       )
     case "editor":
-      return <ImageEditor image={selectedImage} />
+      return (
+        <ImageEditor
+          image={selectedImage}
+          onDragStateChange={setGlobalDragActive}
+        />
+      )
   }
 }

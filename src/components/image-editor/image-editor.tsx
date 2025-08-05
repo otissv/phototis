@@ -47,11 +47,13 @@ import { LayerSystem, type Layer } from "./layer-system"
 export interface ImageEditorProps extends React.ComponentProps<"div"> {
   image: File | null
   onImageDrop?: (file: File) => void
+  onDragStateChange?: (isDragging: boolean) => void
 }
 
 export function ImageEditor({
   image,
   onImageDrop,
+  onDragStateChange,
   ...props
 }: ImageEditorProps) {
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null)
@@ -79,6 +81,9 @@ export function ImageEditor({
   })
   const [selectedLayerId, setSelectedLayerId] =
     React.useState<string>("layer-1")
+
+  // Track drag state to prevent canvas updates during drag
+  const [isDragActive, setIsDragActive] = React.useState(false)
 
   // Get the currently selected layer's filters
   const selectedLayer = React.useMemo(() => {
@@ -200,9 +205,14 @@ export function ImageEditor({
     drawFnRef.current = d
   }, [])
 
-  const handleLayersChange = React.useCallback((newLayers: Layer[]) => {
-    setLayers(newLayers)
-  }, [])
+  const handleLayersChange = React.useCallback(
+    (newLayers: Layer[]) => {
+      // Prevent layer updates during drag operations
+      if (isDragActive) return
+      setLayers(newLayers)
+    },
+    [isDragActive]
+  )
 
   const handleSelectedLayerChange = React.useCallback(
     (layerId: string | null) => {
@@ -303,6 +313,7 @@ export function ImageEditor({
               onDrawReady={handleDrawReady}
               onImageDrop={handleImageDrop}
               onCanvasDimensionsChange={handleCanvasDimensionsChange}
+              isDragActive={isDragActive}
             />
           </div>
         </div>
@@ -336,6 +347,10 @@ export function ImageEditor({
         onSelectedLayerChange={handleSelectedLayerChange}
         onLayerFiltersChange={handleLayerFiltersChange}
         className='row-span-3'
+        onDragStateChange={(isDragging) => {
+          setIsDragActive(isDragging)
+          onDragStateChange?.(isDragging)
+        }}
       />
     </div>
   )

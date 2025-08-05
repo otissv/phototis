@@ -170,6 +170,9 @@ importers:
       react-tweet:
         specifier: ^3.2.1
         version: 3.2.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      regl:
+        specifier: ^2.1.1
+        version: 2.1.1
       sharp:
         specifier: ^0.34.1
         version: 0.34.1
@@ -1921,6 +1924,9 @@ packages:
 
   regenerator-runtime@0.14.1:
     resolution: {integrity: sha512-dYnhHh0nJoMfnkZs6GmmhFknAGRrLznOu5nc9ML+EJxGvrx6H7teuevqVqCuPcPK//3eDrrjQhehXVx9cnkGdw==}
+
+  regl@2.1.1:
+    resolution: {integrity: sha512-+IOGrxl3FZ8ZM9ixCWQZzFRiRn7Rzn9bu3iFHwg/yz4tlOUQgbO4PHLgG+1ZT60zcIV8tief6Qrmyl8qcoJP0g==}
 
   require-directory@2.1.1:
     resolution: {integrity: sha512-fGxEI7+wsG9xrvdjsrlmL22OMTTiHRwAMroiEeMgq8gzoLC/PQr7RsRDSTLUg/bZAZtF+TVIkHc6/4RIKrui+Q==}
@@ -3766,6 +3772,8 @@ snapshots:
   regenerator-runtime@0.13.11: {}
 
   regenerator-runtime@0.14.1: {}
+
+  regl@2.1.1: {}
 
   require-directory@2.1.1: {}
 

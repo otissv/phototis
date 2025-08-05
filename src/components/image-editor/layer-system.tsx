@@ -44,6 +44,7 @@ export interface LayerSystemProps extends React.ComponentProps<"div"> {
     layerId: string,
     filters: ImageEditorToolsState
   ) => void
+  onDragStateChange?: (isDragging: boolean) => void
 }
 
 // Drag item type for react-dnd
@@ -57,6 +58,9 @@ interface DragItem {
   type: string
 }
 
+// Global drag state to prevent updates during drag
+let isGlobalDragActive = false
+
 export function LayerSystem({
   className,
   layers,
@@ -64,8 +68,21 @@ export function LayerSystem({
   onLayersChange,
   onSelectedLayerChange,
   onLayerFiltersChange,
+  onDragStateChange,
 }: LayerSystemProps) {
+  // Track if any drag operation is active
+  const [isDragActive, setIsDragActive] = React.useState(false)
+
+  // Cleanup on unmount to prevent React DnD issues
+  React.useEffect(() => {
+    return () => {
+      setIsDragActive(false)
+      isGlobalDragActive = false
+    }
+  }, [])
+
   const handleAddLayer = React.useCallback(() => {
+    if (isDragActive || isGlobalDragActive) return
     const newLayer: Layer = {
       id: `layer-${Date.now()}`,
       name: `Layer ${layers.length + 1}`,
@@ -77,10 +94,11 @@ export function LayerSystem({
     }
     onLayersChange([...layers, newLayer])
     onSelectedLayerChange(newLayer.id)
-  }, [layers, onLayersChange, onSelectedLayerChange])
+  }, [layers, onLayersChange, onSelectedLayerChange, isDragActive])
 
   const handleDeleteLayer = React.useCallback(
     (layerId: string) => {
+      if (isDragActive || isGlobalDragActive) return
       const newLayers = layers.filter((layer) => layer.id !== layerId)
       onLayersChange(newLayers)
 
@@ -88,11 +106,18 @@ export function LayerSystem({
         onSelectedLayerChange(newLayers.length > 0 ? newLayers[0].id : null)
       }
     },
-    [layers, selectedLayerId, onLayersChange, onSelectedLayerChange]
+    [
+      layers,
+      selectedLayerId,
+      onLayersChange,
+      onSelectedLayerChange,
+      isDragActive,
+    ]
   )
 
   const handleDuplicateLayer = React.useCallback(
     (layerId: string) => {
+      if (isDragActive || isGlobalDragActive) return
       const layerToDuplicate = layers.find((layer) => layer.id === layerId)
       if (!layerToDuplicate) return
 
@@ -105,51 +130,56 @@ export function LayerSystem({
       onLayersChange([...layers, duplicatedLayer])
       onSelectedLayerChange(duplicatedLayer.id)
     },
-    [layers, onLayersChange, onSelectedLayerChange]
+    [layers, onLayersChange, onSelectedLayerChange, isDragActive]
   )
 
   const handleToggleVisibility = React.useCallback(
     (layerId: string) => {
+      if (isDragActive || isGlobalDragActive) return
       const newLayers = layers.map((layer) =>
         layer.id === layerId ? { ...layer, visible: !layer.visible } : layer
       )
       onLayersChange(newLayers)
     },
-    [layers, onLayersChange]
+    [layers, onLayersChange, isDragActive]
   )
 
   const handleToggleLock = React.useCallback(
     (layerId: string) => {
+      if (isDragActive || isGlobalDragActive) return
       const newLayers = layers.map((layer) =>
         layer.id === layerId ? { ...layer, locked: !layer.locked } : layer
       )
       onLayersChange(newLayers)
     },
-    [layers, onLayersChange]
+    [layers, onLayersChange, isDragActive]
   )
 
   const handleLayerNameChange = React.useCallback(
     (layerId: string, name: string) => {
+      if (isDragActive || isGlobalDragActive) return
       const newLayers = layers.map((layer) =>
         layer.id === layerId ? { ...layer, name } : layer
       )
       onLayersChange(newLayers)
     },
-    [layers, onLayersChange]
+    [layers, onLayersChange, isDragActive]
   )
 
   const handleOpacityChange = React.useCallback(
     (layerId: string, opacity: number) => {
+      if (isDragActive || isGlobalDragActive) return
       const newLayers = layers.map((layer) =>
         layer.id === layerId ? { ...layer, opacity } : layer
       )
       onLayersChange(newLayers)
     },
-    [layers, onLayersChange]
+    [layers, onLayersChange, isDragActive]
   )
 
   const handleMoveLayer = React.useCallback(
     (fromIndex: number, toIndex: number) => {
+      // Allow layer movement during drag operations
       const newLayers = [...layers]
       const [movedLayer] = newLayers.splice(fromIndex, 1)
       newLayers.splice(toIndex, 0, movedLayer)
@@ -175,6 +205,7 @@ export function LayerSystem({
             size='sm'
             onClick={handleAddLayer}
             className='h-8 w-8 p-0'
+            disabled={isDragActive || isGlobalDragActive}
           >
             <Plus className='w-4 h-4' />
           </Button>
@@ -197,6 +228,7 @@ export function LayerSystem({
                   )
                 }
                 className=' px-2 py-1 h-8 border-none'
+                disabled={isDragActive || isGlobalDragActive}
               />
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -204,6 +236,7 @@ export function LayerSystem({
                     variant='ghost'
                     size='sm'
                     className='size-8 p-0 rounded-sm'
+                    disabled={isDragActive || isGlobalDragActive}
                   >
                     <ChevronDown className='w-3 h-3' />
                   </Button>
@@ -227,6 +260,7 @@ export function LayerSystem({
                       }
                       onKeyUp={(e: React.KeyboardEvent) => e.stopPropagation()}
                       className='h-1 bg-secondary rounded-lg appearance-none cursor-pointer'
+                      disabled={isDragActive || isGlobalDragActive}
                     />
                     <span className='text-xs w-8'>
                       {currentLayer?.opacity || 0}%
@@ -255,6 +289,7 @@ export function LayerSystem({
                 handleOpacityChange(layer.id, opacity)
               }
               onMoveLayer={handleMoveLayer}
+              onDragStateChange={onDragStateChange || (() => {})}
             />
           ))}
         </div>
@@ -275,6 +310,7 @@ interface DraggableLayerItemProps {
   onNameChange: (name: string) => void
   onOpacityChange: (opacity: number) => void
   onMoveLayer: (fromIndex: number, toIndex: number) => void
+  onDragStateChange: (isDragging: boolean) => void
 }
 
 function DraggableLayerItem({
@@ -289,8 +325,13 @@ function DraggableLayerItem({
   onNameChange,
   onOpacityChange,
   onMoveLayer,
+  onDragStateChange,
 }: DraggableLayerItemProps) {
-  const [{ isDragging }, drag] = useDrag({
+  const [{ isDragging }, drag] = useDrag<
+    DragItem,
+    void,
+    { isDragging: boolean }
+  >({
     type: ItemTypes.LAYER,
     item: { id: layer.id, index, type: ItemTypes.LAYER },
     collect: (monitor) => ({
@@ -298,66 +339,86 @@ function DraggableLayerItem({
     }),
   })
 
+  // Track drag state changes
+  React.useEffect(() => {
+    if (isDragging) {
+      isGlobalDragActive = true
+      onDragStateChange(true)
+    } else {
+      isGlobalDragActive = false
+      onDragStateChange(false)
+    }
+  }, [isDragging, onDragStateChange])
+
   const [{ isOver }, drop] = useDrop({
     accept: ItemTypes.LAYER,
     hover: (item: DragItem, monitor) => {
-      if (!item || item.id === layer.id) {
-        return
+      try {
+        if (!item || item.id === layer.id) {
+          return
+        }
+
+        const dragIndex = item.index
+        const hoverIndex = index
+
+        // Don't replace items with themselves
+        if (dragIndex === hoverIndex) {
+          return
+        }
+
+        // Determine rectangle on screen
+        const hoverBoundingRect = ref.current?.getBoundingClientRect()
+        if (!hoverBoundingRect) {
+          return
+        }
+
+        // Get vertical middle
+        const hoverMiddleY =
+          (hoverBoundingRect.bottom - hoverBoundingRect.top) / 2
+
+        // Determine mouse position
+        const clientOffset = monitor.getClientOffset()
+        if (!clientOffset) {
+          return
+        }
+
+        // Get pixels to the top
+        const hoverClientY = clientOffset.y - hoverBoundingRect.top
+
+        // Only perform the move when the mouse has crossed half of the items height
+        // When dragging downwards, only move when the cursor is below 50% of the item height
+        // When dragging upwards, only move when the cursor is above 50% of the item height
+
+        // Dragging downwards
+        if (dragIndex < hoverIndex && hoverClientY < hoverMiddleY) {
+          return
+        }
+
+        // Dragging upwards
+        if (dragIndex > hoverIndex && hoverClientY > hoverMiddleY) {
+          return
+        }
+
+        // Time to actually perform the action
+        onMoveLayer(dragIndex, hoverIndex)
+
+        // Note: we're mutating the monitor item here!
+        // Generally it's better to avoid mutations,
+        // but it's good here for the sake of performance
+        // to avoid expensive index searches.
+        item.index = hoverIndex
+      } catch (error) {
+        // Silently handle React DnD errors during drag operations
+        console.warn("React DnD hover error:", error)
       }
-
-      const dragIndex = item.index
-      const hoverIndex = index
-
-      // Don't replace items with themselves
-      if (dragIndex === hoverIndex) {
-        return
-      }
-
-      // Determine rectangle on screen
-      const hoverBoundingRect = ref.current?.getBoundingClientRect()
-      if (!hoverBoundingRect) {
-        return
-      }
-
-      // Get vertical middle
-      const hoverMiddleY =
-        (hoverBoundingRect.bottom - hoverBoundingRect.top) / 2
-
-      // Determine mouse position
-      const clientOffset = monitor.getClientOffset()
-      if (!clientOffset) {
-        return
-      }
-
-      // Get pixels to the top
-      const hoverClientY = clientOffset.y - hoverBoundingRect.top
-
-      // Only perform the move when the mouse has crossed half of the items height
-      // When dragging downwards, only move when the cursor is below 50% of the item height
-      // When dragging upwards, only move when the cursor is above 50% of the item height
-
-      // Dragging downwards
-      if (dragIndex < hoverIndex && hoverClientY < hoverMiddleY) {
-        return
-      }
-
-      // Dragging upwards
-      if (dragIndex > hoverIndex && hoverClientY > hoverMiddleY) {
-        return
-      }
-
-      // Time to actually perform the action
-      onMoveLayer(dragIndex, hoverIndex)
-
-      // Note: we're mutating the monitor item here!
-      // Generally it's better to avoid mutations,
-      // but it's good here for the sake of performance
-      // to avoid expensive index searches.
-      item.index = hoverIndex
     },
     collect: (monitor) => ({
       isOver: monitor.isOver(),
     }),
+    canDrop: () => {
+      // Prevent drops during navigation or other drag operations
+      return !isGlobalDragActive
+    },
   })
 
   const ref = React.useRef<HTMLDivElement>(null)
@@ -392,6 +453,7 @@ function DraggableLayerItem({
         onToggleLock={onToggleLock}
         onNameChange={onNameChange}
         onOpacityChange={onOpacityChange}
+        isDragActive={isDragging || isGlobalDragActive}
       />
     </div>
   )
@@ -409,6 +471,7 @@ interface LayerItemProps {
   onOpacityChange: (opacity: number) => void
   onMoveUp?: () => void
   onMoveDown?: () => void
+  isDragActive?: boolean
 }
 
 function LayerItemContent({
@@ -423,14 +486,16 @@ function LayerItemContent({
   onOpacityChange,
   onMoveUp,
   onMoveDown,
+  isDragActive = false,
 }: LayerItemProps) {
   const [isEditing, setIsEditing] = React.useState(false)
   const [editName, setEditName] = React.useState(layer.name)
 
   const handleNameSubmit = React.useCallback(() => {
+    if (isDragActive) return
     onNameChange(editName)
     setIsEditing(false)
-  }, [editName, onNameChange])
+  }, [editName, onNameChange, isDragActive])
 
   const handleNameKeyDown = React.useCallback(
     (e: React.KeyboardEvent) => {
@@ -461,6 +526,7 @@ function LayerItemContent({
               e.stopPropagation()
               onToggleVisibility()
             }}
+            disabled={isDragActive}
           >
             {layer.visible ? (
               <Eye className='w-3 h-3' />
@@ -478,6 +544,7 @@ function LayerItemContent({
               onToggleLock()
             }}
             className='size-10 p-0 rounded-sm cursor-pointer'
+            disabled={isDragActive}
           >
             <Lock
               className={cn(
@@ -501,6 +568,7 @@ function LayerItemContent({
                   "focus-visible:ring-0 focus-visible:ring-transparent focus-visible:ring-offset-0"
                 )}
                 autoFocus
+                disabled={isDragActive}
               />
             ) : (
               <Button
@@ -509,7 +577,8 @@ function LayerItemContent({
                   "text-sm truncate flex items-center gap-1 h-6 flex-1 w-full justify-start px-1cursor-pointer rounded-sm cursor-grab",
                   "hover:bg-transparent"
                 )}
-                onDoubleClick={() => setIsEditing(true)}
+                onDoubleClick={() => !isDragActive && setIsEditing(true)}
+                disabled={isDragActive}
               >
                 <span className='text-xs whitespace-nowrap truncate'>
                   {layer.name}
@@ -530,6 +599,7 @@ function LayerItemContent({
                 onDuplicate()
               }}
               className='size-10 p-0 rounded-sm cursor-pointer'
+              disabled={isDragActive}
             >
               <Copy className='w-3 h-3' />
             </Button>
@@ -541,6 +611,7 @@ function LayerItemContent({
                 onDelete()
               }}
               className='size-10 p-0 text-destructive rounded-sm cursor-pointer'
+              disabled={isDragActive}
             >
               <Trash2 className='w-3 h-3' />
             </Button>

@@ -257,6 +257,7 @@ export interface ImageEditorCanvasProps
     width: number
     height: number
   }) => void
+  isDragActive?: boolean // Add drag state prop
 }
 
 // Interface for layer dimensions and positioning
@@ -283,6 +284,7 @@ export function ImageEditorCanvas({
   onDrawReady,
   onImageDrop,
   onCanvasDimensionsChange,
+  isDragActive,
   ...props
 }: ImageEditorCanvasProps) {
   const [imageUrl, setImageUrl] = React.useState<string>("")
@@ -385,6 +387,9 @@ export function ImageEditorCanvas({
 
   // Handle layer-specific image URLs and dimensions
   React.useEffect(() => {
+    // Prevent updates during drag operations
+    if (isDragActive) return
+
     // Clean up old URLs
     const currentLayerIds = new Set(layers.map((layer) => layer.id))
     const oldUrls = new Map(imageUrlCacheRef.current)
@@ -439,7 +444,7 @@ export function ImageEditorCanvas({
         img.src = url
       }
     }
-  }, [layers, canvasDimensions, calculateOptimalCanvasSize])
+  }, [layers, canvasDimensions, calculateOptimalCanvasSize, isDragActive])
 
   // Handle viewport updates based on zoom
   React.useEffect(() => {
@@ -881,6 +886,9 @@ export function ImageEditorCanvas({
 
   // Draw function for multi-layer rendering with independent dimensions
   const draw = React.useCallback(async () => {
+    // Prevent drawing during drag operations
+    if (isDragActive) return
+
     const gl = glRef.current
     const program = programRef.current
     if (!gl || !program) return
@@ -1028,7 +1036,7 @@ export function ImageEditorCanvas({
 
     // Disable blending after rendering
     gl.disable(gl.BLEND)
-  }, [layers, loadLayerTexture, canvasRef?.current, imageUrl])
+  }, [layers, loadLayerTexture, canvasRef?.current, imageUrl, isDragActive])
 
   React.useEffect(() => {
     draw()
@@ -1036,12 +1044,15 @@ export function ImageEditorCanvas({
 
   // Trigger redraw when layers change (for new dropped images)
   React.useEffect(() => {
+    // Prevent updates during drag operations
+    if (isDragActive) return
+
     // Small delay to ensure layer dimensions are calculated
     const timer = setTimeout(() => {
       draw()
     }, 100)
     return () => clearTimeout(timer)
-  }, [draw])
+  }, [draw, isDragActive])
 
   React.useEffect(() => {
     onDrawReady?.(() => draw())
@@ -1094,7 +1105,6 @@ export function ImageEditorCanvas({
         console.log("Calling onImageDrop with:", imageFiles[0])
         onImageDrop(imageFiles[0])
       }
-      setIsElementDragging(false)
     },
     [onImageDrop, isElementDragging]
   )
@@ -1119,9 +1129,7 @@ export function ImageEditorCanvas({
       >
         <canvas
           ref={canvasRef}
-          className={cn(
-            "cursor-grab active:cursor-grabbing transition-all duration-200"
-          )}
+          className={cn("transition-all duration-200")}
           style={{
             width: canvasDimensions.width,
             height: canvasDimensions.height,
