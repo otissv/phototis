@@ -1,0 +1,6 @@
+export { ShaderManager } from "./shader-manager"
+export { VertexShaderPlugin } from "./vertex-shader"
+export { ColorAdjustmentsPlugin } from "./color-adjustments"
+export { BlurEffectsPlugin } from "./blur-effects"
+export { VintageEffectsPlugin } from "./vintage-effects"
+export type { ShaderPlugin, ShaderUniforms } from "./base-shader" 

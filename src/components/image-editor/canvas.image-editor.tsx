@@ -8,241 +8,10 @@ import type { ImageEditorToolsState } from "@/components/image-editor/state.imag
 import { initialState } from "@/components/image-editor/state.image-editor"
 import { upscaleTool } from "./tools/upscaler"
 import type { Layer } from "./layer-system"
+import { ShaderManager } from "@/lib/shaders"
 
-// Vertex shader for rendering a full-screen quad
-const vertexShaderSource = `
-  attribute vec2 a_position;
-  attribute vec2 a_texCoord;
-  varying vec2 v_texCoord;
-  uniform float u_rotate;
-  uniform float u_scale;
-  uniform bool u_flipHorizontal;
-  uniform bool u_flipVertical;
-  uniform vec2 u_layerSize;
-  uniform vec2 u_canvasSize;
-  uniform vec2 u_layerPosition;
-  
-  void main() {
-    // Calculate normalized position within the layer
-    vec2 layerPos = a_position * u_layerSize;
-    
-    // Apply rotation around layer center
-    float angle = u_rotate * 3.14159 / 180.0;
-    float cosA = cos(angle);
-    float sinA = sin(angle);
-    vec2 rotatedPos = vec2(
-      layerPos.x * cosA - layerPos.y * sinA,
-      layerPos.x * sinA + layerPos.y * cosA
-    );
-    
-    // Apply scale
-    rotatedPos *= u_scale;
-    
-    // Apply flips
-    if (u_flipHorizontal) {
-      rotatedPos.x = -rotatedPos.x;
-    }
-    if (u_flipVertical) {
-      rotatedPos.y = -rotatedPos.y;
-    }
-    
-    // Add layer position offset
-    rotatedPos += u_layerPosition;
-    
-    // Convert to normalized device coordinates
-    vec2 ndcPos = rotatedPos / u_canvasSize;
-    
-    gl_Position = vec4(ndcPos, 0, 1);
-    v_texCoord = a_texCoord;
-  }
-`
-
-// Fragment shader for image processing
-const fragmentShaderSource = `
-  precision highp float;
-  uniform sampler2D u_image;
-  uniform float u_brightness;
-  uniform float u_contrast;
-  uniform float u_saturation;
-  uniform float u_hue;
-  uniform float u_exposure;
-  uniform float u_temperature;
-  uniform float u_gamma;
-  uniform float u_vintage;
-  uniform float u_blur;
-  uniform float u_blurType;
-  uniform float u_blurDirection;
-  uniform float u_blurCenter;
-  uniform float u_invert;
-  uniform float u_sepia;
-  uniform float u_grayscale;
-  uniform float u_tint;
-  uniform float u_vibrance;
-  uniform float u_noise;
-  uniform float u_grain;
-  uniform vec2 u_resolution;
-  uniform float u_opacity;
-  uniform vec2 u_layerSize;
-  uniform vec2 u_canvasSize;
-  uniform vec2 u_layerPosition;
-  varying vec2 v_texCoord;
-
-  // Helper functions
-  vec3 rgb2hsv(vec3 c) {
-    vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
-    vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
-    vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
-    float d = q.x - min(q.w, q.y);
-    float e = 1.0e-10;
-    return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
-  }
-
-  vec3 hsv2rgb(vec3 c) {
-    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
-    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
-    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
-  }
-
-  // Noise function
-  float random(vec2 st) {
-    return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
-  }
-
-  void main() {
-    vec2 uv = v_texCoord;
-    vec4 color = texture2D(u_image, uv);
-    
-    // Apply brightness (normalized to 0-2 range)
-    color.rgb *= (u_brightness / 100.0);
-    
-    // Apply contrast (normalized to 0-2 range)
-    color.rgb = ((color.rgb - 0.5) * (u_contrast / 100.0)) + 0.5;
-    
-    // Convert to HSV for hue and saturation adjustments
-    vec3 hsv = rgb2hsv(color.rgb);
-    
-    // Apply hue rotation (normalized to 0-1 range)
-    hsv.x = mod(hsv.x + (u_hue / 360.0), 1.0);
-    
-    // Apply saturation (normalized to 0-2 range)
-    hsv.y *= (u_saturation / 100.0);
-    
-    // Convert back to RGB
-    color.rgb = hsv2rgb(hsv);
-    
-    // Apply exposure (normalized to -1 to 1 range)
-    color.rgb *= pow(2.0, u_exposure / 100.0);
-    
-    // Apply temperature (normalized to -1 to 1 range)
-    color.rgb += vec3(u_temperature / 100.0, 0.0, -u_temperature / 100.0);
-    
-    // Apply gamma (normalized to 0.1-3.0 range)
-    color.rgb = pow(color.rgb, vec3(1.0 / u_gamma));
-    
-    // Apply vintage effect (vignette)
-    float vignette = 1.0 - length(uv - 0.5) * (u_vintage / 100.0);
-    color.rgb *= vignette;
-    
-    // Apply blur with different types
-    if (u_blur > 0.0) {
-      float blurAmount = u_blur / 100.0;
-      vec2 blurSize = vec2(blurAmount * 0.2) / u_resolution;
-      vec4 blurColor = vec4(0.0);
-      float total = 0.0;
-      
-      if (u_blurType < 0.5) { // Gaussian Blur
-        for (float x = -8.0; x <= 8.0; x++) {
-          for (float y = -8.0; y <= 8.0; y++) {
-            float weight = exp(-(x*x + y*y) / (8.0 * blurAmount * blurAmount));
-            blurColor += texture2D(u_image, uv + vec2(x, y) * blurSize) * weight;
-            total += weight;
-          }
-        }
-      } else if (u_blurType < 1.5) { // Box Blur
-        for (float x = -6.0; x <= 6.0; x++) {
-          for (float y = -6.0; y <= 6.0; y++) {
-            blurColor += texture2D(u_image, uv + vec2(x, y) * blurSize);
-            total += 1.0;
-          }
-        }
-      } else if (u_blurType < 2.5) { // Motion Blur
-        float angle = u_blurDirection * 3.14159 / 180.0;
-        vec2 direction = vec2(cos(angle), sin(angle));
-        for (float i = -12.0; i <= 12.0; i++) {
-          blurColor += texture2D(u_image, uv + direction * i * blurSize * 3.0);
-          total += 1.0;
-        }
-      } else { // Radial Blur
-        vec2 center = vec2(0.5 + u_blurCenter * 0.5, 0.5);
-        vec2 dir = uv - center;
-        float dist = length(dir);
-        for (float i = -12.0; i <= 12.0; i++) {
-          vec2 offset = dir * i * blurSize * 3.0;
-          blurColor += texture2D(u_image, uv + offset);
-          total += 1.0;
-        }
-      }
-      
-      color = mix(color, blurColor / total, blurAmount * 2.0);
-    }
-    
-    // Apply invert (normalized to 0-1 range)
-    if (u_invert > 0.0) {
-      color.rgb = mix(color.rgb, 1.0 - color.rgb, u_invert / 100.0);
-    }
-    
-    // Apply sepia (normalized to 0-1 range)
-    if (u_sepia > 0.0) {
-      vec3 sepia = vec3(
-        dot(color.rgb, vec3(0.393, 0.769, 0.189)),
-        dot(color.rgb, vec3(0.349, 0.686, 0.168)),
-        dot(color.rgb, vec3(0.272, 0.534, 0.131))
-      );
-      color.rgb = mix(color.rgb, sepia, u_sepia / 100.0);
-    }
-    
-    // Apply grayscale (normalized to 0-1 range)
-    if (u_grayscale > 0.0) {
-      float gray = dot(color.rgb, vec3(0.299, 0.587, 0.114));
-      color.rgb = mix(color.rgb, vec3(gray), u_grayscale / 100.0);
-    }
-    
-    // Apply tint (normalized to -1 to 1 range)
-    if (u_tint > 0.0) {
-      color.rgb += vec3(u_tint / 100.0, 0.0, 0.0);
-    }
-    
-    // Apply vibrance (normalized to -1 to 1 range)
-    if (u_vibrance > 0.0) {
-      float maxChannel = max(max(color.r, color.g), color.b);
-      float minChannel = min(min(color.r, color.g), color.b);
-      float saturation = (maxChannel - minChannel) / maxChannel;
-      color.rgb = mix(color.rgb, color.rgb * (1.0 + u_vibrance / 100.0), saturation);
-    }
-    
-    // Apply noise (normalized to 0-0.5 range)
-    if (u_noise > 0.0) {
-      float noise = random(uv) * (u_noise / 100.0);
-      color.rgb += noise;
-    }
-    
-    // Apply grain (normalized to 0-0.5 range)
-    if (u_grain > 0.0) {
-      float grain = random(uv * 100.0) * (u_grain / 100.0);
-      color.rgb += grain;
-    }
-    
-    // Apply opacity - this is crucial for layer transparency
-    color.a *= u_opacity / 100.0;
-    
-    // Ensure proper alpha blending - if alpha is very low, make it transparent
-    if (color.a < 0.01) {
-      discard; // Don't render this pixel at all
-    }
-    
-    gl_FragColor = color;
-  }
-`
+// Shader manager instance
+const shaderManager = new ShaderManager()
 
 export interface ImageEditorCanvasProps
   extends Omit<React.ComponentProps<"canvas">, "onProgress"> {
@@ -581,32 +350,20 @@ export function ImageEditorCanvas({
     }
     glRef.current = gl
 
-    // 2. Shader Creation and Compilation
-    const vertexShader = gl.createShader(gl.VERTEX_SHADER)
-    if (!vertexShader) return
-    gl.shaderSource(vertexShader, vertexShaderSource)
-    gl.compileShader(vertexShader)
+    // 2. Initialize Shader Manager
+    if (!shaderManager.initialize(gl)) {
+      console.error("Failed to initialize shader manager")
+      return
+    }
 
-    const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER)
-    if (!fragmentShader) return
-    gl.shaderSource(fragmentShader, fragmentShaderSource)
-    gl.compileShader(fragmentShader)
-
-    // 3. WebGL Program Creation
-    const program = gl.createProgram()
-    if (!program) return
-    gl.attachShader(program, vertexShader)
-    gl.attachShader(program, fragmentShader)
-    gl.linkProgram(program)
-
-    // Program linking check
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      console.error("Failed to link program:", gl.getProgramInfoLog(program))
+    const program = shaderManager.getProgram()
+    if (!program) {
+      console.error("Failed to get shader program")
       return
     }
     programRef.current = program
 
-    // 4. Buffer Creation and Setup
+    // 3. Buffer Creation and Setup
     // Position Buffer
     const positionBuffer = gl.createBuffer()
     if (!positionBuffer) return
@@ -629,7 +386,7 @@ export function ImageEditorCanvas({
     )
     texCoordBufferRef.current = texCoordBuffer
 
-    // 5. Texture Creation and Setup
+    // 4. Texture Creation and Setup
     const texture = gl.createTexture()
     if (!texture) return
     gl.bindTexture(gl.TEXTURE_2D, texture)
@@ -641,7 +398,7 @@ export function ImageEditorCanvas({
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
     textureRef.current = texture
 
-    // 6. Image Loading and Canvas Setup
+    // 5. Image Loading and Canvas Setup
     const img = new Image()
     img.crossOrigin = "anonymous"
     img.onload = () => {
@@ -676,11 +433,9 @@ export function ImageEditorCanvas({
     }
     img.src = imageUrl
 
-    // 7. Cleanup Function
+    // 6. Cleanup Function
     return () => {
-      gl.deleteProgram(program)
-      gl.deleteShader(vertexShader)
-      gl.deleteShader(fragmentShader)
+      shaderManager.cleanup()
       gl.deleteBuffer(positionBuffer)
       gl.deleteBuffer(texCoordBuffer)
       gl.deleteTexture(texture)
@@ -959,20 +714,6 @@ export function ImageEditorCanvas({
     // Since new layers are added to the beginning of the array, we need to render in reverse
     for (let i = allLayersToRender.length - 1; i >= 0; i--) {
       const layer = allLayersToRender[i]
-      const setUniform1f = (name: string, value: number) => {
-        const location = gl.getUniformLocation(program, name)
-        if (location) gl.uniform1f(location, value)
-      }
-
-      const setUniformBool = (name: string, value: boolean) => {
-        const location = gl.getUniformLocation(program, name)
-        if (location) gl.uniform1i(location, value ? 1 : 0)
-      }
-
-      const setUniform2f = (name: string, x: number, y: number) => {
-        const location = gl.getUniformLocation(program, name)
-        if (location) gl.uniform2f(location, x, y)
-      }
 
       // Get layer dimensions
       const layerDimensions = layerDimensionsRef.current.get(layer.id)
@@ -981,45 +722,64 @@ export function ImageEditorCanvas({
         continue
       }
 
-      // Set layer-specific uniforms
-      setUniform1f("u_brightness", layer.filters.brightness ?? 100)
-      setUniform1f("u_contrast", layer.filters.contrast ?? 100)
-      setUniform1f("u_saturation", layer.filters.saturation ?? 100)
-      setUniform1f("u_hue", layer.filters.hue ?? 0)
-      setUniform1f("u_exposure", layer.filters.exposure ?? 0)
-      setUniform1f("u_temperature", layer.filters.temperature ?? 0)
-      setUniform1f("u_gamma", layer.filters.gamma ?? 1)
-      setUniform1f("u_vintage", layer.filters.vintage ?? 0)
-      setUniform1f("u_blur", layer.filters.blur ?? 0)
-      setUniform1f("u_blurType", layer.filters.blurType ?? 0)
-      setUniform1f("u_blurDirection", layer.filters.blurDirection ?? 0)
-      setUniform1f("u_blurCenter", layer.filters.blurCenter ?? 0)
-      setUniform1f("u_invert", layer.filters.invert ?? 0)
-      setUniform1f("u_sepia", layer.filters.sepia ?? 0)
-      setUniform1f("u_grayscale", layer.filters.grayscale ?? 0)
-      setUniform1f("u_tint", layer.filters.tint ?? 0)
-      setUniform1f("u_vibrance", layer.filters.vibrance ?? 0)
-      setUniform1f("u_noise", layer.filters.noise ?? 0)
-      setUniform1f("u_grain", layer.filters.grain ?? 0)
-      setUniform1f("u_rotate", layer.filters.rotate ?? 0)
-      setUniform1f("u_scale", layer.filters.scale ?? 1)
-      setUniformBool("u_flipHorizontal", layer.filters.flipHorizontal ?? false)
-      setUniformBool("u_flipVertical", layer.filters.flipVertical ?? false)
-      setUniform1f("u_opacity", layer.opacity)
+      // Update shader manager with layer-specific values
+      shaderManager.updateUniforms({
+        // Color adjustments
+        brightness: layer.filters.brightness ?? 100,
+        contrast: layer.filters.contrast ?? 100,
+        saturation: layer.filters.saturation ?? 100,
+        hue: layer.filters.hue ?? 0,
+        exposure: layer.filters.exposure ?? 0,
+        temperature: layer.filters.temperature ?? 0,
+        gamma: layer.filters.gamma ?? 1,
 
-      // Set layer dimensions and position
-      setUniform2f("u_layerSize", layerDimensions.width, layerDimensions.height)
-      setUniform2f("u_canvasSize", canvasWidth, canvasHeight)
-      setUniform2f("u_layerPosition", layerDimensions.x, layerDimensions.y)
+        // Blur effects
+        blur: layer.filters.blur ?? 0,
+        blurType: layer.filters.blurType ?? 0,
+        blurDirection: layer.filters.blurDirection ?? 0,
+        blurCenter: layer.filters.blurCenter ?? 0,
+
+        // Artistic effects
+        vintage: layer.filters.vintage ?? 0,
+        invert: layer.filters.invert ?? 0,
+        sepia: layer.filters.sepia ?? 0,
+        grayscale: layer.filters.grayscale ?? 0,
+        tint: layer.filters.tint ?? 0,
+        vibrance: layer.filters.vibrance ?? 0,
+        noise: layer.filters.noise ?? 0,
+        grain: layer.filters.grain ?? 0,
+
+        // Transformations
+        rotate: layer.filters.rotate ?? 0,
+        scale: layer.filters.scale ?? 1,
+        flipHorizontal: layer.filters.flipHorizontal ?? false,
+        flipVertical: layer.filters.flipVertical ?? false,
+        opacity: layer.opacity,
+
+        // Layer positioning
+        layerSize: [layerDimensions.width, layerDimensions.height] as [
+          number,
+          number,
+        ],
+        canvasSize: [canvasWidth, canvasHeight] as [number, number],
+        layerPosition: [layerDimensions.x, layerDimensions.y] as [
+          number,
+          number,
+        ],
+      })
+
+      // Set all uniforms using the shader manager
+      shaderManager.setUniforms(gl, program)
 
       // Set resolution
       const resolutionLocation = gl.getUniformLocation(program, "u_resolution")
-      if (resolutionLocation)
+      if (resolutionLocation) {
         gl.uniform2f(
           resolutionLocation,
           gl.drawingBufferWidth,
           gl.drawingBufferHeight
         )
+      }
 
       // Load and bind texture for this layer
       const layerTexture = await loadLayerTexture(layer)
