@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss"
+import plugin from "tailwindcss/plugin"
 
 const config: Config = {
   darkMode: ["class"],
@@ -80,9 +81,28 @@ const config: Config = {
         "slide-in-from-right": "slide-in-from-right 0.3s ease-out",
         "slide-out-to-right": "slide-out-to-right 0.3s ease-out",
       },
+      ringWidth: {
+        1: "1px", // Ensure 1px ring if you're using `ring-1`
+      },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [require("tailwindcss-animate"), ringStylePlugin()],
+}
+
+export function ringStylePlugin() {
+  return plugin(({ addUtilities }) => {
+    addUtilities({
+      ".ring-dashed": {
+        "--tw-ring-style": "dashed",
+      },
+      ".ring-dotted": {
+        "--tw-ring-style": "dotted",
+      },
+      ".ring-double": {
+        "--tw-ring-style": "double",
+      },
+    })
+  })
 }
 
 export default config

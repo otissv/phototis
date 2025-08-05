@@ -292,6 +292,7 @@ export function ImageEditorCanvas({
   const positionBufferRef = React.useRef<WebGLBuffer | null>(null)
   const texCoordBufferRef = React.useRef<WebGLBuffer | null>(null)
   const [processing, setProcessing] = React.useState(0)
+  const [isElementDragging, setIsElementDragging] = React.useState(false)
 
   // Texture cache for layer-specific images
   const textureCacheRef = React.useRef<Map<string, WebGLTexture>>(new Map())
@@ -1047,26 +1048,35 @@ export function ImageEditorCanvas({
   }, [draw, onDrawReady])
 
   // Drag and drop handlers
-  const handleDragOver = React.useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    const canvas = e.currentTarget as HTMLCanvasElement
-    canvas.style.border = "2px dashed #3b82f6"
-    canvas.style.backgroundColor = "rgba(59, 130, 246, 0.1)"
-    document.getElementById("drag-overlay")?.classList.remove("opacity-0")
-  }, [])
+  const handleDragOver = React.useCallback(
+    (e: React.DragEvent) => {
+      if (isElementDragging) return
+      e.preventDefault()
+      e.stopPropagation()
+      const canvas = e.currentTarget as HTMLCanvasElement
+      canvas.style.border = "2px dashed #3b82f6"
+      canvas.style.backgroundColor = "rgba(59, 130, 246, 0.1)"
+      document.getElementById("drag-overlay")?.classList.remove("opacity-0")
+    },
+    [isElementDragging]
+  )
 
-  const handleDragLeave = React.useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    const canvas = e.currentTarget as HTMLCanvasElement
-    canvas.style.border = ""
-    canvas.style.backgroundColor = ""
-    document.getElementById("drag-overlay")?.classList.add("opacity-0")
-  }, [])
+  const handleDragLeave = React.useCallback(
+    (e: React.DragEvent) => {
+      if (isElementDragging) return
+      e.preventDefault()
+      e.stopPropagation()
+      const canvas = e.currentTarget as HTMLCanvasElement
+      canvas.style.border = ""
+      canvas.style.backgroundColor = ""
+      document.getElementById("drag-overlay")?.classList.add("opacity-0")
+    },
+    [isElementDragging]
+  )
 
   const handleDrop = React.useCallback(
     (e: React.DragEvent) => {
+      if (isElementDragging) return
       e.preventDefault()
       e.stopPropagation()
 
@@ -1084,17 +1094,15 @@ export function ImageEditorCanvas({
         console.log("Calling onImageDrop with:", imageFiles[0])
         onImageDrop(imageFiles[0])
       }
+      setIsElementDragging(false)
     },
-    [onImageDrop]
+    [onImageDrop, isElementDragging]
   )
 
   return (
     <div
       ref={containerRef}
       className='relative  h-full overflow-hidden'
-      // onMouseMove={handleMouseMove}
-      // onMouseUp={handleMouseUp}
-      // onMouseLeave={handleMouseUp}
       onWheel={handleWheel}
       onDoubleClick={handleDoubleClick}
     >
@@ -1127,30 +1135,25 @@ export function ImageEditorCanvas({
           {...props}
           id='image-editor-canvas'
         />
+        {/* Drag overlay indicator */}
+        <div
+          className={cn(
+            "absolute inset-0 pointer-events-none flex items-center justify-center opacity-0 transition-opacity duration-200",
+            "bg-blue-500/20 border-dashed border-blue-500 backdrop-blur-sm",
+            "ring-inset ring-1 ring-blue-500"
+          )}
+          id='drag-overlay'
+          style={{
+            width: canvasDimensions.width,
+            height: canvasDimensions.height,
+          }}
+        />
       </motion.div>
       {processing > 0 && (
         <div className='absolute inset-0 flex items-center justify-center'>
           <div className='text-sm '>Upscaling {processing}%</div>
         </div>
       )}
-      {/* Drag overlay indicator */}
-      <div
-        className='absolute inset-0 pointer-events-none flex items-center justify-center opacity-0 transition-opacity duration-200'
-        id='drag-overlay'
-        style={{
-          width: canvasDimensions.width,
-          height: canvasDimensions.height,
-        }}
-      >
-        <div className='bg-blue-500/20 border-2 border-dashed border-blue-500 rounded-lg p-8 text-center backdrop-blur-sm'>
-          <div className='text-blue-600 font-medium text-lg'>
-            Drop image to add as new layer
-          </div>
-          <div className='text-blue-500 text-sm mt-2'>
-            Supports: JPG, PNG, GIF, WebP
-          </div>
-        </div>
-      </div>
     </div>
   )
 }
