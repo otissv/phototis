@@ -51,6 +51,12 @@ export const LAYER_RENDER_FRAGMENT_SHADER = `
   uniform vec2 u_resolution;
   uniform float u_opacity;
   
+  // Layer positioning and dimensions (optional - defaults to full canvas if not provided)
+  uniform float u_layerWidth;
+  uniform float u_layerHeight;
+  uniform float u_layerX;
+  uniform float u_layerY;
+  
   // Color adjustments
   uniform float u_brightness;
   uniform float u_contrast;
@@ -105,7 +111,60 @@ export const LAYER_RENDER_FRAGMENT_SHADER = `
   }
   
   void main() {
-    vec2 uv = v_texCoord;
+    // Calculate layer positioning and scaling
+    vec2 canvasCoord = gl_FragCoord.xy;
+    
+    // Use layer dimensions if provided, otherwise use full canvas
+    vec2 layerPos = vec2(u_layerX, u_layerY);
+    vec2 layerSize = vec2(u_layerWidth, u_layerHeight);
+    
+    // If layer dimensions are not set (uniforms are 0), use full canvas
+    if (layerSize.x <= 0.0 || layerSize.y <= 0.0) {
+      layerSize = u_resolution;
+      layerPos = vec2(0.0, 0.0);
+    }
+    
+    // Check if current pixel is within the layer bounds
+    vec2 localCoord = canvasCoord - layerPos;
+    if (localCoord.x < 0.0 || localCoord.x >= layerSize.x || 
+        localCoord.y < 0.0 || localCoord.y >= layerSize.y) {
+      discard; // Outside layer bounds
+    }
+    
+    // Convert to texture coordinates (0-1 range)
+    vec2 uv = localCoord / layerSize;
+    
+    // Apply flip transformations
+    if (u_flipHorizontal) {
+      uv.x = 1.0 - uv.x;
+    }
+    if (u_flipVertical) {
+      uv.y = 1.0 - uv.y;
+    }
+    
+    // Apply rotation
+    if (u_rotate != 0.0) {
+      float angle = u_rotate * 3.14159 / 180.0;
+      vec2 center = vec2(0.5, 0.5);
+      vec2 rotated = uv - center;
+      float cosA = cos(angle);
+      float sinA = sin(angle);
+      rotated = vec2(
+        rotated.x * cosA - rotated.y * sinA,
+        rotated.x * sinA + rotated.y * cosA
+      );
+      uv = rotated + center;
+    }
+    
+    // Apply scale
+    if (u_scale != 1.0) {
+      vec2 center = vec2(0.5, 0.5);
+      uv = (uv - center) * u_scale + center;
+    }
+    
+    // Clamp texture coordinates to prevent sampling outside texture
+    uv = clamp(uv, 0.0, 1.0);
+    
     vec4 color = texture2D(u_image, uv);
     
     // Apply color adjustments
@@ -216,4 +275,4 @@ export const LAYER_RENDER_FRAGMENT_SHADER = `
     
     gl_FragColor = color;
   }
-` 
+`

@@ -170,7 +170,8 @@ export class HybridRenderer {
     layerTexture: WebGLTexture,
     toolsValues: ImageEditorToolsState,
     canvasWidth: number,
-    canvasHeight: number
+    canvasHeight: number,
+    layerDimensions?: { width: number; height: number; x: number; y: number }
   ): WebGLTexture | null {
     if (!this.gl || !this.layerProgram) return null
 
@@ -228,7 +229,8 @@ export class HybridRenderer {
         neutralValues,
         layer.opacity,
         canvasWidth,
-        canvasHeight
+        canvasHeight,
+        layerDimensions
       )
     } else {
       // Additional layers - use actual tool values
@@ -236,7 +238,8 @@ export class HybridRenderer {
         toolsValues,
         layer.opacity,
         canvasWidth,
-        canvasHeight
+        canvasHeight,
+        layerDimensions
       )
     }
 
@@ -560,7 +563,8 @@ export class HybridRenderer {
     toolsValues: ImageEditorToolsState,
     opacity: number,
     canvasWidth: number,
-    canvasHeight: number
+    canvasHeight: number,
+    layerDimensions?: { width: number; height: number; x: number; y: number }
   ): void {
     if (!this.gl || !this.layerProgram) return
 
@@ -591,6 +595,24 @@ export class HybridRenderer {
       { name: "u_opacity", value: opacity },
       { name: "u_resolution", value: [canvasWidth, canvasHeight] },
     ]
+
+    // Add layer dimension uniforms (provide defaults if not specified)
+    if (layerDimensions) {
+      uniforms.push(
+        { name: "u_layerWidth", value: layerDimensions.width },
+        { name: "u_layerHeight", value: layerDimensions.height },
+        { name: "u_layerX", value: layerDimensions.x },
+        { name: "u_layerY", value: layerDimensions.y }
+      )
+    } else {
+      // Default to full canvas if no dimensions provided
+      uniforms.push(
+        { name: "u_layerWidth", value: canvasWidth },
+        { name: "u_layerHeight", value: canvasHeight },
+        { name: "u_layerX", value: 0 },
+        { name: "u_layerY", value: 0 }
+      )
+    }
 
     uniforms.forEach(({ name, value }) => {
       if (!this.gl || !this.layerProgram) return
@@ -747,7 +769,11 @@ export class HybridRenderer {
     toolsValues: ImageEditorToolsState,
     selectedLayerId: string,
     canvasWidth: number,
-    canvasHeight: number
+    canvasHeight: number,
+    layerDimensions?: Map<
+      string,
+      { width: number; height: number; x: number; y: number }
+    >
   ): void {
     if (!this.gl || !this.layerProgram || !this.compositingProgram) {
       console.error("Missing GL context or shader programs")
@@ -779,13 +805,17 @@ export class HybridRenderer {
         layerToolsValues
       )
 
+      // Get layer dimensions if available
+      const dimensions = layerDimensions?.get(layer.id)
+
       // Render this layer with its filters
       const renderedLayerTexture = this.renderLayer(
         layer,
         layerTexture,
         layerToolsValues,
         canvasWidth,
-        canvasHeight
+        canvasHeight,
+        dimensions
       )
 
       if (!renderedLayerTexture) {

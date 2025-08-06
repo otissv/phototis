@@ -862,7 +862,8 @@ export function ImageEditorCanvas({
             renderingToolsValues,
             selectedLayerId,
             canvasWidth,
-            canvasHeight
+            canvasHeight,
+            layerDimensionsRef.current
           )
 
           console.log("renderLayers completed, calling renderToCanvas")
