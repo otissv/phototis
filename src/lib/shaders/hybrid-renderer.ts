@@ -171,7 +171,10 @@ export class HybridRenderer {
     toolsValues: ImageEditorToolsState,
     canvasWidth: number,
     canvasHeight: number,
-    layerDimensions?: { width: number; height: number; x: number; y: number }
+    layerDimensions?: Map<
+      string,
+      { width: number; height: number; x: number; y: number }
+    >
   ): WebGLTexture | null {
     if (!this.gl || !this.layerProgram) return null
 
@@ -198,6 +201,13 @@ export class HybridRenderer {
     this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.texCoordBuffer)
     this.gl.enableVertexAttribArray(texCoordLocation)
     this.gl.vertexAttribPointer(texCoordLocation, 2, this.gl.FLOAT, false, 0, 0)
+
+    // Get layer dimensions for positioning and cropping
+    const layerDim = layerDimensions?.get(layer.id)
+    const layerWidth = layerDim?.width || canvasWidth
+    const layerHeight = layerDim?.height || canvasHeight
+    const layerX = layerDim?.x || 0
+    const layerY = layerDim?.y || 0
 
     // Set uniforms - use neutral values for background layer to avoid filters making it invisible
     if (layer.id === "layer-1") {
@@ -230,7 +240,10 @@ export class HybridRenderer {
         layer.opacity,
         canvasWidth,
         canvasHeight,
-        layerDimensions
+        layerWidth,
+        layerHeight,
+        layerX,
+        layerY
       )
     } else {
       // Additional layers - use actual tool values
@@ -239,7 +252,10 @@ export class HybridRenderer {
         layer.opacity,
         canvasWidth,
         canvasHeight,
-        layerDimensions
+        layerWidth,
+        layerHeight,
+        layerX,
+        layerY
       )
     }
 
@@ -564,7 +580,10 @@ export class HybridRenderer {
     opacity: number,
     canvasWidth: number,
     canvasHeight: number,
-    layerDimensions?: { width: number; height: number; x: number; y: number }
+    layerWidth?: number,
+    layerHeight?: number,
+    layerX?: number,
+    layerY?: number
   ): void {
     if (!this.gl || !this.layerProgram) return
 
@@ -594,25 +613,11 @@ export class HybridRenderer {
       { name: "u_flipVertical", value: toolsValues.flipVertical },
       { name: "u_opacity", value: opacity },
       { name: "u_resolution", value: [canvasWidth, canvasHeight] },
+      { name: "u_layerWidth", value: layerWidth || canvasWidth },
+      { name: "u_layerHeight", value: layerHeight || canvasHeight },
+      { name: "u_layerX", value: layerX || 0 },
+      { name: "u_layerY", value: layerY || 0 },
     ]
-
-    // Add layer dimension uniforms (provide defaults if not specified)
-    if (layerDimensions) {
-      uniforms.push(
-        { name: "u_layerWidth", value: layerDimensions.width },
-        { name: "u_layerHeight", value: layerDimensions.height },
-        { name: "u_layerX", value: layerDimensions.x },
-        { name: "u_layerY", value: layerDimensions.y }
-      )
-    } else {
-      // Default to full canvas if no dimensions provided
-      uniforms.push(
-        { name: "u_layerWidth", value: canvasWidth },
-        { name: "u_layerHeight", value: canvasHeight },
-        { name: "u_layerX", value: 0 },
-        { name: "u_layerY", value: 0 }
-      )
-    }
 
     uniforms.forEach(({ name, value }) => {
       if (!this.gl || !this.layerProgram) return
@@ -805,9 +810,6 @@ export class HybridRenderer {
         layerToolsValues
       )
 
-      // Get layer dimensions if available
-      const dimensions = layerDimensions?.get(layer.id)
-
       // Render this layer with its filters
       const renderedLayerTexture = this.renderLayer(
         layer,
@@ -815,7 +817,7 @@ export class HybridRenderer {
         layerToolsValues,
         canvasWidth,
         canvasHeight,
-        dimensions
+        layerDimensions
       )
 
       if (!renderedLayerTexture) {

@@ -51,7 +51,7 @@ export const LAYER_RENDER_FRAGMENT_SHADER = `
   uniform vec2 u_resolution;
   uniform float u_opacity;
   
-  // Layer positioning and dimensions (optional - defaults to full canvas if not provided)
+  // Layer positioning and cropping
   uniform float u_layerWidth;
   uniform float u_layerHeight;
   uniform float u_layerX;
@@ -111,28 +111,18 @@ export const LAYER_RENDER_FRAGMENT_SHADER = `
   }
   
   void main() {
-    // Calculate layer positioning and scaling
-    vec2 canvasCoord = gl_FragCoord.xy;
+    // Calculate layer positioning and cropping
+    vec2 canvasCoord = v_texCoord * u_resolution;
+    vec2 layerCoord = canvasCoord - vec2(u_layerX, u_layerY);
     
-    // Use layer dimensions if provided, otherwise use full canvas
-    vec2 layerPos = vec2(u_layerX, u_layerY);
-    vec2 layerSize = vec2(u_layerWidth, u_layerHeight);
-    
-    // If layer dimensions are not set (uniforms are 0), use full canvas
-    if (layerSize.x <= 0.0 || layerSize.y <= 0.0) {
-      layerSize = u_resolution;
-      layerPos = vec2(0.0, 0.0);
+    // Check if the current pixel is within the layer bounds
+    if (layerCoord.x < 0.0 || layerCoord.x >= u_layerWidth || 
+        layerCoord.y < 0.0 || layerCoord.y >= u_layerHeight) {
+      discard; // Outside layer bounds, make transparent
     }
     
-    // Check if current pixel is within the layer bounds
-    vec2 localCoord = canvasCoord - layerPos;
-    if (localCoord.x < 0.0 || localCoord.x >= layerSize.x || 
-        localCoord.y < 0.0 || localCoord.y >= layerSize.y) {
-      discard; // Outside layer bounds
-    }
-    
-    // Convert to texture coordinates (0-1 range)
-    vec2 uv = localCoord / layerSize;
+    // Convert to texture coordinates for the layer
+    vec2 uv = layerCoord / vec2(u_layerWidth, u_layerHeight);
     
     // Apply flip transformations
     if (u_flipHorizontal) {
@@ -145,24 +135,22 @@ export const LAYER_RENDER_FRAGMENT_SHADER = `
     // Apply rotation
     if (u_rotate != 0.0) {
       float angle = u_rotate * 3.14159 / 180.0;
-      vec2 center = vec2(0.5, 0.5);
+      vec2 center = vec2(0.5);
       vec2 rotated = uv - center;
-      float cosA = cos(angle);
-      float sinA = sin(angle);
-      rotated = vec2(
-        rotated.x * cosA - rotated.y * sinA,
-        rotated.x * sinA + rotated.y * cosA
+      vec2 rotatedCoord = vec2(
+        rotated.x * cos(angle) - rotated.y * sin(angle),
+        rotated.x * sin(angle) + rotated.y * cos(angle)
       );
-      uv = rotated + center;
+      uv = rotatedCoord + center;
     }
     
     // Apply scale
     if (u_scale != 1.0) {
-      vec2 center = vec2(0.5, 0.5);
+      vec2 center = vec2(0.5);
       uv = (uv - center) * u_scale + center;
     }
     
-    // Clamp texture coordinates to prevent sampling outside texture
+    // Clamp texture coordinates to prevent artifacts
     uv = clamp(uv, 0.0, 1.0);
     
     vec4 color = texture2D(u_image, uv);
@@ -187,7 +175,7 @@ export const LAYER_RENDER_FRAGMENT_SHADER = `
     // Apply blur effects
     if (u_blur > 0.0) {
       float blurAmount = u_blur / 100.0;
-      vec2 blurSize = vec2(blurAmount * 0.2) / u_resolution;
+      vec2 blurSize = vec2(blurAmount * 0.2) / vec2(u_layerWidth, u_layerHeight);
       vec4 blurColor = vec4(0.0);
       float total = 0.0;
       
@@ -195,14 +183,18 @@ export const LAYER_RENDER_FRAGMENT_SHADER = `
         for (float x = -8.0; x <= 8.0; x++) {
           for (float y = -8.0; y <= 8.0; y++) {
             float weight = exp(-(x*x + y*y) / (8.0 * blurAmount * blurAmount));
-            blurColor += texture2D(u_image, uv + vec2(x, y) * blurSize) * weight;
+            vec2 sampleUV = uv + vec2(x, y) * blurSize;
+            sampleUV = clamp(sampleUV, 0.0, 1.0);
+            blurColor += texture2D(u_image, sampleUV) * weight;
             total += weight;
           }
         }
       } else if (u_blurType < 1.5) {
         for (float x = -6.0; x <= 6.0; x++) {
           for (float y = -6.0; y <= 6.0; y++) {
-            blurColor += texture2D(u_image, uv + vec2(x, y) * blurSize);
+            vec2 sampleUV = uv + vec2(x, y) * blurSize;
+            sampleUV = clamp(sampleUV, 0.0, 1.0);
+            blurColor += texture2D(u_image, sampleUV);
             total += 1.0;
           }
         }
@@ -210,7 +202,9 @@ export const LAYER_RENDER_FRAGMENT_SHADER = `
         float angle = u_blurDirection * 3.14159 / 180.0;
         vec2 direction = vec2(cos(angle), sin(angle));
         for (float i = -12.0; i <= 12.0; i++) {
-          blurColor += texture2D(u_image, uv + direction * i * blurSize * 3.0);
+          vec2 sampleUV = uv + direction * i * blurSize * 3.0;
+          sampleUV = clamp(sampleUV, 0.0, 1.0);
+          blurColor += texture2D(u_image, sampleUV);
           total += 1.0;
         }
       } else {
@@ -218,7 +212,9 @@ export const LAYER_RENDER_FRAGMENT_SHADER = `
         vec2 dir = uv - center;
         for (float i = -12.0; i <= 12.0; i++) {
           vec2 offset = dir * i * blurSize * 3.0;
-          blurColor += texture2D(u_image, uv + offset);
+          vec2 sampleUV = uv + offset;
+          sampleUV = clamp(sampleUV, 0.0, 1.0);
+          blurColor += texture2D(u_image, sampleUV);
           total += 1.0;
         }
       }

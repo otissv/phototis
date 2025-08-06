@@ -363,7 +363,7 @@ export function ImageEditorCanvas({
           y: 0,
         })
 
-        // Update canvas dimensions
+        // Set canvas dimensions to background image size
         setCanvasDimensions({
           width: imageData.width,
           height: imageData.height,
@@ -419,41 +419,45 @@ export function ImageEditorCanvas({
             const currentCanvasWidth = canvasDimensions.width
             const currentCanvasHeight = canvasDimensions.height
 
-            let centerX = 0
-            let centerY = 0
+            let layerX = 0
+            let layerY = 0
 
             if (layer.id !== "layer-1") {
-              // Center new layers on the current canvas
-              centerX = Math.max(0, (currentCanvasWidth - imageData.width) / 2)
-              centerY = Math.max(
-                0,
-                (currentCanvasHeight - imageData.height) / 2
-              )
+              // For new layers, center them on the canvas
+              // If the layer is larger than the canvas, position it so the center is visible
+              if (imageData.width > currentCanvasWidth) {
+                layerX = (currentCanvasWidth - imageData.width) / 2
+              } else {
+                layerX = Math.max(0, (currentCanvasWidth - imageData.width) / 2)
+              }
+
+              if (imageData.height > currentCanvasHeight) {
+                layerY = (currentCanvasHeight - imageData.height) / 2
+              } else {
+                layerY = Math.max(
+                  0,
+                  (currentCanvasHeight - imageData.height) / 2
+                )
+              }
             }
 
             const dimensions: LayerDimensions = {
               width: imageData.width,
               height: imageData.height,
-              x: centerX,
-              y: centerY,
+              x: layerX,
+              y: layerY,
             }
             layerDimensionsRef.current.set(layer.id, dimensions)
 
-            // Update canvas dimensions to accommodate all layers
-            const newDimensions = calculateOptimalCanvasSize()
+            // Don't resize canvas - keep it at the background image size
+            // Layers that are larger will be cropped, smaller layers will have transparent areas
           }
         }
       }
     }
 
     loadLayerImages()
-  }, [
-    layers,
-    canvasDimensions,
-    calculateOptimalCanvasSize,
-    isDragActive,
-    loadImageDataFromFile,
-  ])
+  }, [layers, canvasDimensions, isDragActive, loadImageDataFromFile])
 
   // Handle viewport updates based on zoom
   React.useEffect(() => {
