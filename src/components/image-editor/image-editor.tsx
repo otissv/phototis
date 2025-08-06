@@ -14,35 +14,10 @@ import {
   initialState,
   type ImageEditorToolsActions,
 } from "@/components/image-editor/state.image-editor"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "../ui/dropdown-menu"
-import { useWebGLDownload } from "@/components/image-editor/useWebGLDownload"
-import {
-  Sheet,
-  SheetClose,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet"
-import { Slider } from "../ui/slider"
-import { Label } from "../ui/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select"
-import { Input } from "../ui/input"
-import { QualityOptions } from "./quaity-options.image-editor"
+
 import { LayerSystem, type Layer } from "./layer-system"
+import { HybridRenderer } from "@/lib/shaders/hybrid-renderer"
+import type { BlendMode } from "@/lib/shaders/blend-modes"
 
 export interface ImageEditorProps extends React.ComponentProps<"div"> {
   image: File | null
@@ -76,6 +51,7 @@ export function ImageEditor({
       filters: { ...initialState },
       opacity: 100,
       isEmpty: true, // Background layer starts empty until image is loaded
+      blendMode: "normal", // Default blend mode
     }
     return [defaultLayer]
   })
@@ -231,6 +207,16 @@ export function ImageEditor({
     [layers]
   )
 
+  const handleLayerBlendModeChange = React.useCallback(
+    (layerId: string, blendMode: BlendMode) => {
+      const newLayers = layers.map((layer) =>
+        layer.id === layerId ? { ...layer, blendMode } : layer
+      )
+      setLayers(newLayers)
+    },
+    [layers]
+  )
+
   const handleImageDrop = React.useCallback(
     (file: File) => {
       // Create a new layer with the dropped image
@@ -243,6 +229,7 @@ export function ImageEditor({
         opacity: 100,
         isEmpty: false, // Layer has image content
         image: file, // Attach the image to this layer
+        blendMode: "normal", // Default blend mode
       }
 
       // Add the new layer to the top of the stack
@@ -347,6 +334,7 @@ export function ImageEditor({
         onLayersChange={handleLayersChange}
         onSelectedLayerChange={handleSelectedLayerChange}
         onLayerFiltersChange={handleLayerFiltersChange}
+        onLayerBlendModeChange={handleLayerBlendModeChange}
         className='row-span-3'
         onDragStateChange={(isDragging) => {
           setIsDragActive(isDragging)

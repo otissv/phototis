@@ -10,6 +10,7 @@ import { initialState } from "@/components/image-editor/state.image-editor"
 import { upscaleTool } from "./tools/upscaler"
 import type { Layer } from "./layer-system"
 import { ShaderManager } from "@/lib/shaders"
+import { HybridRenderer } from "@/lib/shaders/hybrid-renderer"
 
 // Shader manager instance
 const shaderManager = new ShaderManager()
@@ -59,6 +60,29 @@ export function ImageEditorCanvas({
   const textureRef = React.useRef<WebGLTexture | null>(null)
   const positionBufferRef = React.useRef<WebGLBuffer | null>(null)
   const texCoordBufferRef = React.useRef<WebGLBuffer | null>(null)
+  const hybridRendererRef = React.useRef<HybridRenderer | null>(null)
+
+  // Initialize hybrid renderer
+  React.useEffect(() => {
+    if (!canvasRef?.current || !glRef.current) return
+
+    const canvas = canvasRef.current
+    const gl = glRef.current
+
+    if (!hybridRendererRef.current) {
+      hybridRendererRef.current = new HybridRenderer()
+    }
+
+    const success = hybridRendererRef.current.initialize({
+      gl,
+      width: canvas.width,
+      height: canvas.height,
+    })
+
+    if (!success) {
+      console.error("Failed to initialize hybrid renderer")
+    }
+  }, [canvasRef?.current])
   const [processing, setProcessing] = React.useState(0)
   const [isElementDragging, setIsElementDragging] = React.useState(false)
 
@@ -163,6 +187,16 @@ export function ImageEditorCanvas({
         cancelAnimationFrame(animationId)
       })
       animationRef.current.clear()
+    }
+  }, [])
+
+  // Cleanup hybrid renderer on unmount
+  React.useEffect(() => {
+    return () => {
+      if (hybridRendererRef.current) {
+        hybridRendererRef.current.cleanup()
+        hybridRendererRef.current = null
+      }
     }
   }, [])
 
@@ -659,6 +693,7 @@ export function ImageEditorCanvas({
             image: null,
             opacity: 100,
             filters: initialState,
+            blendMode: "normal" as const,
           }
           allLayersToRender.push(backgroundLayer)
         }

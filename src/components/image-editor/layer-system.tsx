@@ -23,6 +23,7 @@ import {
   DropdownMenuTrigger,
 } from "@radix-ui/react-dropdown-menu"
 import { DropdownMenu } from "../ui/dropdown-menu"
+import { BLEND_MODE_NAMES, type BlendMode } from "@/lib/shaders/blend-modes"
 
 export interface Layer extends React.ComponentProps<"div"> {
   id: string
@@ -33,6 +34,7 @@ export interface Layer extends React.ComponentProps<"div"> {
   opacity: number
   isEmpty: boolean // New property to track if layer is empty/transparent
   image?: File | null // Optional image data for the layer
+  blendMode: BlendMode // Blend mode for layer compositing
 }
 
 export interface LayerSystemProps extends React.ComponentProps<"div"> {
@@ -44,6 +46,7 @@ export interface LayerSystemProps extends React.ComponentProps<"div"> {
     layerId: string,
     filters: ImageEditorToolsState
   ) => void
+  onLayerBlendModeChange?: (layerId: string, blendMode: BlendMode) => void
   onDragStateChange?: (isDragging: boolean) => void
 }
 
@@ -68,6 +71,7 @@ export function LayerSystem({
   onLayersChange,
   onSelectedLayerChange,
   onLayerFiltersChange,
+  onLayerBlendModeChange,
   onDragStateChange,
 }: LayerSystemProps) {
   // Track if any drag operation is active
@@ -91,6 +95,7 @@ export function LayerSystem({
       filters: { ...initialState },
       opacity: 100,
       isEmpty: true, // New layers are empty/transparent
+      blendMode: "normal", // Default blend mode
     }
     onLayersChange([...layers, newLayer])
     onSelectedLayerChange(newLayer.id)
@@ -235,8 +240,46 @@ export function LayerSystem({
           </Button>
         </div>
 
-        <div className='flex items-center justify-between gap-2 h-12 p-2 text-xs'>
-          <div>Blending mode</div>
+        <div className='flex items-center gap-2 h-12 p-2 text-xs justify-between'>
+          <div className='flex items-center gap-2'>
+            <div>Blend:</div>
+            {/* Blend Mode Selector */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='h-8 px-2 text-xs'
+                  disabled={isDragActive || isGlobalDragActive}
+                >
+                  {currentLayer?.blendMode
+                    ? BLEND_MODE_NAMES[currentLayer.blendMode]
+                    : "Normal"}
+                  <ChevronDown className='w-3 h-3 ml-1' />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className='bg-background p-2 border rounded-sm flex flex-col'>
+                {Object.entries(BLEND_MODE_NAMES).map(([mode, name]) => (
+                  <Button
+                    key={mode}
+                    variant='ghost'
+                    size='sm'
+                    className='text-xs h-8 justify-start'
+                    onClick={() =>
+                      onLayerBlendModeChange?.(
+                        selectedLayerId as string,
+                        mode as BlendMode
+                      )
+                    }
+                  >
+                    {name}
+                  </Button>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
+          {/* Opacity Control */}
           <div className='flex items-center gap-1'>
             <span className='text-xs text-muted-foreground'>Opacity:</span>
             <div className='flex items-center border rounded-sm h-9'>
