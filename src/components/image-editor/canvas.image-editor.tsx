@@ -61,28 +61,6 @@ export function ImageEditorCanvas({
   const positionBufferRef = React.useRef<WebGLBuffer | null>(null)
   const texCoordBufferRef = React.useRef<WebGLBuffer | null>(null)
   const hybridRendererRef = React.useRef<HybridRenderer | null>(null)
-
-  // Initialize hybrid renderer
-  React.useEffect(() => {
-    if (!canvasRef?.current || !glRef.current) return
-
-    const canvas = canvasRef.current
-    const gl = glRef.current
-
-    if (!hybridRendererRef.current) {
-      hybridRendererRef.current = new HybridRenderer()
-    }
-
-    const success = hybridRendererRef.current.initialize({
-      gl,
-      width: canvas.width,
-      height: canvas.height,
-    })
-
-    if (!success) {
-      console.error("Failed to initialize hybrid renderer")
-    }
-  }, [canvasRef?.current])
   const [processing, setProcessing] = React.useState(0)
   const [isElementDragging, setIsElementDragging] = React.useState(false)
 
@@ -100,6 +78,41 @@ export function ImageEditorCanvas({
     width: 800,
     height: 600,
   })
+
+  // Initialize hybrid renderer
+  React.useEffect(() => {
+    if (!canvasRef?.current || !glRef.current) return
+
+    const canvas = canvasRef.current
+    const gl = glRef.current
+
+    // Use canvas dimensions instead of canvas element size
+    const width = canvasDimensions.width
+    const height = canvasDimensions.height
+
+    console.log(
+      "Initializing hybrid renderer with dimensions:",
+      width,
+      "x",
+      height
+    )
+
+    if (!hybridRendererRef.current) {
+      hybridRendererRef.current = new HybridRenderer()
+    }
+
+    const success = hybridRendererRef.current.initialize({
+      gl,
+      width,
+      height,
+    })
+
+    if (!success) {
+      console.error("Failed to initialize hybrid renderer")
+    } else {
+      console.log("Hybrid renderer initialized successfully")
+    }
+  }, [canvasRef?.current, canvasDimensions])
 
   // Motion values for smooth viewport handling
   const viewportX = useMotionValue(0)
@@ -245,12 +258,31 @@ export function ImageEditorCanvas({
     const canvas = canvasRef?.current
 
     if (gl && canvas) {
+      console.log(
+        "Updating canvas size from",
+        canvas.width,
+        "x",
+        canvas.height,
+        "to",
+        canvasDimensions.width,
+        "x",
+        canvasDimensions.height
+      )
+
       // Update canvas size
       canvas.width = canvasDimensions.width
       canvas.height = canvasDimensions.height
 
       // Update WebGL viewport
       gl.viewport(0, 0, canvasDimensions.width, canvasDimensions.height)
+
+      console.log("Canvas size updated to:", canvas.width, "x", canvas.height)
+      console.log(
+        "Canvas style size after update:",
+        canvas.style.width,
+        "x",
+        canvas.style.height
+      )
     }
   }, [canvasDimensions, canvasRef?.current])
 
@@ -258,22 +290,46 @@ export function ImageEditorCanvas({
   const loadImageDataFromFile = React.useCallback(
     async (file: File): Promise<ImageData | null> => {
       return new Promise((resolve) => {
+        console.log(
+          `Starting to load image file:`,
+          file.name,
+          file.size,
+          file.type
+        )
         const canvas = document.createElement("canvas")
         const ctx = canvas.getContext("2d")
         if (!ctx) {
+          console.log(`Failed to get 2D context for file:`, file.name)
           resolve(null)
           return
         }
 
         const img = new Image()
         img.onload = () => {
+          console.log(
+            `Image loaded successfully:`,
+            file.name,
+            img.width,
+            "x",
+            img.height
+          )
           canvas.width = img.width
           canvas.height = img.height
           ctx.drawImage(img, 0, 0)
           const imageData = ctx.getImageData(0, 0, img.width, img.height)
+          console.log(
+            `Image data created:`,
+            file.name,
+            imageData.width,
+            "x",
+            imageData.height
+          )
           resolve(imageData)
         }
-        img.onerror = () => resolve(null)
+        img.onerror = (error) => {
+          console.log(`Failed to load image:`, file.name, error)
+          resolve(null)
+        }
         img.src = URL.createObjectURL(file)
       })
     },
@@ -283,10 +339,20 @@ export function ImageEditorCanvas({
   // Handle main image data loading
   React.useEffect(() => {
     const loadMainImage = async () => {
-      if (!image) return
+      if (!image) {
+        console.log("No main image provided")
+        return
+      }
 
+      console.log("Loading main image:", image.name)
       const imageData = await loadImageDataFromFile(image)
       if (imageData) {
+        console.log(
+          "Main image loaded successfully:",
+          imageData.width,
+          "x",
+          imageData.height
+        )
         imageDataCacheRef.current.set("main", imageData)
 
         // Store dimensions for the background layer
@@ -302,6 +368,8 @@ export function ImageEditorCanvas({
           width: imageData.width,
           height: imageData.height,
         })
+      } else {
+        console.log("Failed to load main image")
       }
     }
 
@@ -315,7 +383,7 @@ export function ImageEditorCanvas({
 
     const loadLayerImages = async () => {
       // Clean up old data
-      const currentLayerIds = new Set(layers.map((layer) => layer.id))
+      const currentLayerIds = new Set(layers.map((layer: Layer) => layer.id))
       const oldData = new Map(imageDataCacheRef.current)
 
       for (const [layerId, imageData] of oldData) {
@@ -331,8 +399,20 @@ export function ImageEditorCanvas({
       // Load new layer images
       for (const layer of layers) {
         if (layer.image && !imageDataCacheRef.current.has(layer.id)) {
+          console.log(
+            `Loading image for layer ${layer.id}:`,
+            layer.image.name,
+            layer.image.size,
+            layer.image.type
+          )
           const imageData = await loadImageDataFromFile(layer.image)
           if (imageData) {
+            console.log(
+              `Successfully loaded image for layer ${layer.id}:`,
+              imageData.width,
+              "x",
+              imageData.height
+            )
             imageDataCacheRef.current.set(layer.id, imageData)
 
             // Calculate layer dimensions
@@ -465,6 +545,15 @@ export function ImageEditorCanvas({
     if (!canvasRef?.current) return
 
     const canvas = canvasRef.current
+    console.log("Canvas element:", canvas)
+    console.log("Canvas size:", canvas.width, "x", canvas.height)
+    console.log(
+      "Canvas style size:",
+      canvas.style.width,
+      "x",
+      canvas.style.height
+    )
+
     const gl = canvas.getContext("webgl2", {
       alpha: true,
       premultipliedAlpha: false,
@@ -475,6 +564,7 @@ export function ImageEditorCanvas({
       console.error("WebGL2 not supported")
       return
     }
+    console.log("WebGL context created successfully")
     glRef.current = gl
 
     // Set WebGL to flip textures vertically (WebGL Y-axis is inverted)
@@ -581,28 +671,56 @@ export function ImageEditorCanvas({
       const gl = glRef.current
       if (!gl) return null
 
+      console.log(`loadLayerTexture called for layer: ${layer.id}`)
+
       // Check if we already have a cached texture for this layer
       if (textureCacheRef.current.has(layer.id)) {
+        console.log(`Using cached texture for layer: ${layer.id}`)
         return textureCacheRef.current.get(layer.id) || null
       }
 
       // Get image data for this layer
       const imageData = imageDataCacheRef.current.get(layer.id)
+      console.log(`Image data for layer ${layer.id}:`, !!imageData)
+
       if (imageData) {
+        console.log(
+          `Creating texture for layer ${layer.id} with image data:`,
+          imageData.width,
+          "x",
+          imageData.height
+        )
+        console.log(`Image data first few pixels:`, imageData.data.slice(0, 16))
         const texture = createTextureFromImageData(imageData)
         if (texture) {
           textureCacheRef.current.set(layer.id, texture)
+          console.log(`Created texture for layer: ${layer.id}`)
           return texture
         }
       }
 
+      // For background layer, try to use main image data
+      if (layer.id === "layer-1") {
+        const mainImageData = imageDataCacheRef.current.get("main")
+        console.log(`Main image data for background layer:`, !!mainImageData)
+        if (mainImageData) {
+          const texture = createTextureFromImageData(mainImageData)
+          if (texture) {
+            textureCacheRef.current.set(layer.id, texture)
+            console.log(`Created texture for background layer from main data`)
+            return texture
+          }
+        }
+      }
+
       // Fallback to main texture
+      console.log(`Using fallback texture for layer: ${layer.id}`)
       return textureRef.current
     },
     [createTextureFromImageData]
   )
 
-  // Draw function for multi-layer rendering with direct WebGL data
+  // Draw function using hybrid renderer for proper layer compositing
   const draw = React.useCallback(async () => {
     // Prevent drawing during drag operations or if already drawing
     if (isDragActive || isDrawingRef.current) return
@@ -611,51 +729,34 @@ export function ImageEditorCanvas({
     isDrawingRef.current = true
 
     const gl = glRef.current
-    const program = programRef.current
-    const positionBuffer = positionBufferRef.current
-    const texCoordBuffer = texCoordBufferRef.current
-    const texture = textureRef.current
+    const canvas = canvasRef?.current
 
-    if (!gl || !program || !positionBuffer || !texCoordBuffer || !texture) {
+    if (!gl || !canvas || !hybridRendererRef.current) {
       isDrawingRef.current = false
       return
     }
 
     try {
-      gl.useProgram(program)
-
-      // Set position attribute
-      const positionLocation = gl.getAttribLocation(program, "a_position")
-      gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer)
-      gl.enableVertexAttribArray(positionLocation)
-      gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0)
-
-      // Set texCoord attribute
-      const texCoordLocation = gl.getAttribLocation(program, "a_texCoord")
-      gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer)
-      gl.enableVertexAttribArray(texCoordLocation)
-      gl.vertexAttribPointer(texCoordLocation, 2, gl.FLOAT, false, 0, 0)
-
-      // Enable blending for multi-layer composition
-      gl.enable(gl.BLEND)
-      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
-      gl.blendEquation(gl.FUNC_ADD)
-
-      // Clear the canvas with transparent background
-      gl.clearColor(0, 0, 0, 0)
-      gl.clear(gl.COLOR_BUFFER_BIT)
-
       // Get canvas dimensions
-      const canvas = canvasRef?.current
-      if (!canvas) return
-
       const canvasWidth = canvas.width
       const canvasHeight = canvas.height
 
-      // Render each visible layer from bottom to top
-      const visibleLayers = layers.filter(
-        (layer) => layer.visible && (!layer.isEmpty || layer.image)
+      // Get visible layers sorted from bottom to top
+      const visibleLayers = layers.filter((layer) => {
+        const isVisible = layer.visible && (!layer.isEmpty || layer.image)
+        console.log(
+          `Layer ${layer.id}: visible=${layer.visible}, isEmpty=${layer.isEmpty}, hasImage=${!!layer.image}, isVisible=${isVisible}`
+        )
+        return isVisible
+      })
+
+      console.log("Visible layers:", visibleLayers.length)
+      console.log("All layers:", layers.length)
+      console.log(
+        "Background layer dimensions:",
+        layerDimensionsRef.current.get("layer-1")
       )
+      console.log("Has main image data:", imageDataCacheRef.current.has("main"))
 
       // Always ensure the background layer (layer-1) is rendered if it has dimensions
       const backgroundLayerDimensions =
@@ -675,13 +776,17 @@ export function ImageEditorCanvas({
           (layer) => layer.id === "layer-1"
         )
 
+        console.log("Background layer from system:", backgroundLayerFromSystem)
+
         if (backgroundLayerFromSystem?.visible) {
           allLayersToRender.push(backgroundLayerFromSystem)
+          console.log("Added background layer from system")
         } else if (
           backgroundLayerFromSystem &&
           !backgroundLayerFromSystem.visible
         ) {
           // Background layer exists but is not visible, so don't render it
+          console.log("Background layer exists but is not visible")
         } else {
           // Fallback to creating a background layer object for rendering
           const backgroundLayer = {
@@ -696,8 +801,11 @@ export function ImageEditorCanvas({
             blendMode: "normal" as const,
           }
           allLayersToRender.push(backgroundLayer)
+          console.log("Added fallback background layer")
         }
       }
+
+      console.log("Final layers to render:", allLayersToRender.length)
 
       // If no layers are visible, just clear the canvas and return
       if (allLayersToRender.length === 0) {
@@ -714,208 +822,65 @@ export function ImageEditorCanvas({
       // Use smooth values for rendering
       const renderingToolsValues = smoothToolsValues
 
-      // Render layers in reverse order (last layer at bottom, first layer at top)
-      for (let i = allLayersToRender.length - 1; i >= 0; i--) {
-        const layer = allLayersToRender[i]
+      // Create a map of layer textures
+      const layerTextures = new Map<string, WebGLTexture>()
 
-        // Get layer dimensions
-        const layerDimensions = layerDimensionsRef.current.get(layer.id)
-        if (!layerDimensions) {
-          continue
-        }
+      // Load textures for all visible layers
+      for (const layer of allLayersToRender) {
+        console.log(`Loading texture for layer: ${layer.id}`)
+        console.log(`Layer has image: ${!!layer.image}`)
+        console.log(`Layer isEmpty: ${layer.isEmpty}`)
 
-        // Cache layer tool values to avoid recalculations
-        const cacheKey = `${layer.id}-${JSON.stringify(renderingToolsValues)}`
-        let cachedValues = layerToolValuesCache.current.get(cacheKey)
-
-        if (!cachedValues) {
-          cachedValues = {
-            // Color adjustments
-            brightness:
-              layer.id === selectedLayerId
-                ? (renderingToolsValues.brightness ??
-                  layer.filters.brightness ??
-                  100)
-                : (layer.filters.brightness ?? 100),
-            contrast:
-              layer.id === selectedLayerId
-                ? (renderingToolsValues.contrast ??
-                  layer.filters.contrast ??
-                  100)
-                : (layer.filters.contrast ?? 100),
-            saturation:
-              layer.id === selectedLayerId
-                ? (renderingToolsValues.saturation ??
-                  layer.filters.saturation ??
-                  100)
-                : (layer.filters.saturation ?? 100),
-            hue:
-              layer.id === selectedLayerId
-                ? (renderingToolsValues.hue ?? layer.filters.hue ?? 0)
-                : (layer.filters.hue ?? 0),
-            exposure:
-              layer.id === selectedLayerId
-                ? (renderingToolsValues.exposure ?? layer.filters.exposure ?? 0)
-                : (layer.filters.exposure ?? 0),
-            temperature:
-              layer.id === selectedLayerId
-                ? (renderingToolsValues.temperature ??
-                  layer.filters.temperature ??
-                  0)
-                : (layer.filters.temperature ?? 0),
-            gamma:
-              layer.id === selectedLayerId
-                ? (renderingToolsValues.gamma ?? layer.filters.gamma ?? 1)
-                : (layer.filters.gamma ?? 1),
-
-            // Blur effects
-            blur:
-              layer.id === selectedLayerId
-                ? (renderingToolsValues.blur ?? layer.filters.blur ?? 0)
-                : (layer.filters.blur ?? 0),
-            blurType:
-              layer.id === selectedLayerId
-                ? (renderingToolsValues.blurType ?? layer.filters.blurType ?? 0)
-                : (layer.filters.blurType ?? 0),
-            blurDirection:
-              layer.id === selectedLayerId
-                ? (renderingToolsValues.blurDirection ??
-                  layer.filters.blurDirection ??
-                  0)
-                : (layer.filters.blurDirection ?? 0),
-            blurCenter:
-              layer.id === selectedLayerId
-                ? (renderingToolsValues.blurCenter ??
-                  layer.filters.blurCenter ??
-                  0)
-                : (layer.filters.blurCenter ?? 0),
-
-            // Artistic effects
-            vintage:
-              layer.id === selectedLayerId
-                ? (renderingToolsValues.vintage ?? layer.filters.vintage ?? 0)
-                : (layer.filters.vintage ?? 0),
-            invert:
-              layer.id === selectedLayerId
-                ? (renderingToolsValues.invert ?? layer.filters.invert ?? 0)
-                : (layer.filters.invert ?? 0),
-            sepia:
-              layer.id === selectedLayerId
-                ? (renderingToolsValues.sepia ?? layer.filters.sepia ?? 0)
-                : (layer.filters.sepia ?? 0),
-            grayscale:
-              layer.id === selectedLayerId
-                ? (renderingToolsValues.grayscale ??
-                  layer.filters.grayscale ??
-                  0)
-                : (layer.filters.grayscale ?? 0),
-            tint:
-              layer.id === selectedLayerId
-                ? (renderingToolsValues.tint ?? layer.filters.tint ?? 0)
-                : (layer.filters.tint ?? 0),
-            vibrance:
-              layer.id === selectedLayerId
-                ? (renderingToolsValues.vibrance ?? layer.filters.vibrance ?? 0)
-                : (layer.filters.vibrance ?? 0),
-            noise:
-              layer.id === selectedLayerId
-                ? (renderingToolsValues.noise ?? layer.filters.noise ?? 0)
-                : (layer.filters.noise ?? 0),
-            grain:
-              layer.id === selectedLayerId
-                ? (renderingToolsValues.grain ?? layer.filters.grain ?? 0)
-                : (layer.filters.grain ?? 0),
-
-            // Transformations
-            rotate:
-              layer.id === selectedLayerId
-                ? (renderingToolsValues.rotate ?? layer.filters.rotate ?? 0)
-                : (layer.filters.rotate ?? 0),
-            scale:
-              layer.id === selectedLayerId
-                ? (renderingToolsValues.scale ?? layer.filters.scale ?? 1)
-                : (layer.filters.scale ?? 1),
-            flipHorizontal:
-              layer.id === selectedLayerId
-                ? (renderingToolsValues.flipHorizontal ??
-                  layer.filters.flipHorizontal ??
-                  false)
-                : (layer.filters.flipHorizontal ?? false),
-            flipVertical:
-              layer.id === selectedLayerId
-                ? (renderingToolsValues.flipVertical ??
-                  layer.filters.flipVertical ??
-                  false)
-                : (layer.filters.flipVertical ?? false),
-            opacity: layer.opacity,
-
-            // Layer positioning
-            layerSize: [layerDimensions.width, layerDimensions.height] as [
-              number,
-              number,
-            ],
-            canvasSize: [canvasWidth, canvasHeight] as [number, number],
-            layerPosition: [layerDimensions.x, layerDimensions.y] as [
-              number,
-              number,
-            ],
-          }
-
-          // Cache the calculated values
-          layerToolValuesCache.current.set(cacheKey, cachedValues)
-
-          // Limit cache size to prevent memory leaks
-          if (layerToolValuesCache.current.size > 100) {
-            const firstKey = layerToolValuesCache.current.keys().next().value
-            if (firstKey) {
-              layerToolValuesCache.current.delete(firstKey)
-            }
-          }
-        }
-
-        // Update shader manager with cached values
-        shaderManager.updateUniforms(cachedValues)
-
-        // Set all uniforms using the shader manager
-        shaderManager.setUniforms(gl, program)
-
-        // Set resolution
-        const resolutionLocation = gl.getUniformLocation(
-          program,
-          "u_resolution"
-        )
-        if (resolutionLocation) {
-          gl.uniform2f(
-            resolutionLocation,
-            gl.drawingBufferWidth,
-            gl.drawingBufferHeight
-          )
-        }
-
-        // Load and bind texture for this layer
         const layerTexture = await loadLayerTexture(layer)
         if (layerTexture) {
-          gl.activeTexture(gl.TEXTURE0)
-          gl.bindTexture(gl.TEXTURE_2D, layerTexture)
-          const samplerLocation = gl.getUniformLocation(program, "u_image")
-          if (samplerLocation) gl.uniform1i(samplerLocation, 0)
-
-          // Draw the layer
-          gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+          layerTextures.set(layer.id, layerTexture)
+          console.log(`Successfully loaded texture for layer: ${layer.id}`)
         } else {
-          // Fallback to main texture if layer texture is not available
-          gl.activeTexture(gl.TEXTURE0)
-          gl.bindTexture(gl.TEXTURE_2D, texture)
-          const samplerLocation = gl.getUniformLocation(program, "u_image")
-          if (samplerLocation) gl.uniform1i(samplerLocation, 0)
-
-          // Draw the layer
-          gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+          console.log(`Failed to load texture for layer: ${layer.id}`)
         }
       }
 
-      // Disable blending after rendering
-      gl.disable(gl.BLEND)
+      // Use hybrid renderer to render all layers with proper compositing
+      if (
+        hybridRendererRef.current &&
+        allLayersToRender.length > 0 &&
+        layerTextures.size > 0
+      ) {
+        try {
+          console.log("Using hybrid renderer")
+
+          // Skip test renders for now to focus on main functionality
+
+          console.log(
+            "Starting renderLayers with",
+            allLayersToRender.length,
+            "layers"
+          )
+          hybridRendererRef.current.renderLayers(
+            allLayersToRender,
+            layerTextures,
+            renderingToolsValues,
+            selectedLayerId,
+            canvasWidth,
+            canvasHeight
+          )
+
+          console.log("renderLayers completed, calling renderToCanvas")
+          // Render the final result to canvas
+          hybridRendererRef.current.renderToCanvas(canvas)
+          console.log("renderToCanvas completed")
+        } catch (error) {
+          console.error("Error in hybrid renderer:", error)
+          // Fallback: Clear canvas if hybrid renderer fails
+          gl.clearColor(0, 0, 0, 0)
+          gl.clear(gl.COLOR_BUFFER_BIT)
+        }
+      } else {
+        // Fallback: Clear canvas if no layers or renderer
+        console.log("No layers or renderer available, clearing canvas")
+        gl.clearColor(0, 0, 0, 0)
+        gl.clear(gl.COLOR_BUFFER_BIT)
+      }
     } finally {
       // Always reset the drawing flag
       isDrawingRef.current = false
@@ -927,8 +892,8 @@ export function ImageEditorCanvas({
     isDragActive,
     debouncedToolsValues,
     throttledToolsValues,
-    selectedLayerId,
     smoothToolsValues,
+    selectedLayerId,
   ])
 
   React.useEffect(() => {
@@ -1047,6 +1012,8 @@ export function ImageEditorCanvas({
             backgroundColor: "transparent",
             display: "block",
           }}
+          width={canvasDimensions.width}
+          height={canvasDimensions.height}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}

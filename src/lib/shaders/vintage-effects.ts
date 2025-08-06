@@ -2,7 +2,7 @@ import { BaseShaderPlugin } from "./base-shader"
 
 export class VintageEffectsPlugin extends BaseShaderPlugin {
   name = "vintage-effects"
-  
+
   vertexShader = `
     attribute vec2 a_position;
     attribute vec2 a_texCoord;
@@ -96,4 +96,4 @@ export class VintageEffectsPlugin extends BaseShaderPlugin {
   updateUniforms(values: any): void {
     // Vintage effects are handled by the vertex shader plugin
   }
-} 
+}

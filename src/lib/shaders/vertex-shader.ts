@@ -2,7 +2,7 @@ import { BaseShaderPlugin } from "./base-shader"
 
 export class VertexShaderPlugin extends BaseShaderPlugin {
   name = "vertex"
-  
+
   vertexShader = `
     attribute vec2 a_position;
     attribute vec2 a_texCoord;
@@ -106,30 +106,45 @@ export class VertexShaderPlugin extends BaseShaderPlugin {
   updateUniforms(values: any): void {
     if (values.rotate !== undefined) this.uniforms.u_rotate = values.rotate
     if (values.scale !== undefined) this.uniforms.u_scale = values.scale
-    if (values.flipHorizontal !== undefined) this.uniforms.u_flipHorizontal = values.flipHorizontal
-    if (values.flipVertical !== undefined) this.uniforms.u_flipVertical = values.flipVertical
-    if (values.layerSize !== undefined) this.uniforms.u_layerSize = values.layerSize
-    if (values.canvasSize !== undefined) this.uniforms.u_canvasSize = values.canvasSize
-    if (values.layerPosition !== undefined) this.uniforms.u_layerPosition = values.layerPosition
+    if (values.flipHorizontal !== undefined)
+      this.uniforms.u_flipHorizontal = values.flipHorizontal
+    if (values.flipVertical !== undefined)
+      this.uniforms.u_flipVertical = values.flipVertical
+    if (values.layerSize !== undefined)
+      this.uniforms.u_layerSize = values.layerSize
+    if (values.canvasSize !== undefined)
+      this.uniforms.u_canvasSize = values.canvasSize
+    if (values.layerPosition !== undefined)
+      this.uniforms.u_layerPosition = values.layerPosition
     if (values.opacity !== undefined) this.uniforms.u_opacity = values.opacity
-    if (values.brightness !== undefined) this.uniforms.u_brightness = values.brightness
-    if (values.contrast !== undefined) this.uniforms.u_contrast = values.contrast
-    if (values.saturation !== undefined) this.uniforms.u_saturation = values.saturation
+    if (values.brightness !== undefined)
+      this.uniforms.u_brightness = values.brightness
+    if (values.contrast !== undefined)
+      this.uniforms.u_contrast = values.contrast
+    if (values.saturation !== undefined)
+      this.uniforms.u_saturation = values.saturation
     if (values.hue !== undefined) this.uniforms.u_hue = values.hue
-    if (values.exposure !== undefined) this.uniforms.u_exposure = values.exposure
-    if (values.temperature !== undefined) this.uniforms.u_temperature = values.temperature
+    if (values.exposure !== undefined)
+      this.uniforms.u_exposure = values.exposure
+    if (values.temperature !== undefined)
+      this.uniforms.u_temperature = values.temperature
     if (values.gamma !== undefined) this.uniforms.u_gamma = values.gamma
     if (values.vintage !== undefined) this.uniforms.u_vintage = values.vintage
     if (values.blur !== undefined) this.uniforms.u_blur = values.blur
-    if (values.blurType !== undefined) this.uniforms.u_blurType = values.blurType
-    if (values.blurDirection !== undefined) this.uniforms.u_blurDirection = values.blurDirection
-    if (values.blurCenter !== undefined) this.uniforms.u_blurCenter = values.blurCenter
+    if (values.blurType !== undefined)
+      this.uniforms.u_blurType = values.blurType
+    if (values.blurDirection !== undefined)
+      this.uniforms.u_blurDirection = values.blurDirection
+    if (values.blurCenter !== undefined)
+      this.uniforms.u_blurCenter = values.blurCenter
     if (values.invert !== undefined) this.uniforms.u_invert = values.invert
     if (values.sepia !== undefined) this.uniforms.u_sepia = values.sepia
-    if (values.grayscale !== undefined) this.uniforms.u_grayscale = values.grayscale
+    if (values.grayscale !== undefined)
+      this.uniforms.u_grayscale = values.grayscale
     if (values.tint !== undefined) this.uniforms.u_tint = values.tint
-    if (values.vibrance !== undefined) this.uniforms.u_vibrance = values.vibrance
+    if (values.vibrance !== undefined)
+      this.uniforms.u_vibrance = values.vibrance
     if (values.noise !== undefined) this.uniforms.u_noise = values.noise
     if (values.grain !== undefined) this.uniforms.u_grain = values.grain
   }
-} 
+}

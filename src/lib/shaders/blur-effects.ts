@@ -2,7 +2,7 @@ import { BaseShaderPlugin } from "./base-shader"
 
 export class BlurEffectsPlugin extends BaseShaderPlugin {
   name = "blur-effects"
-  
+
   vertexShader = `
     attribute vec2 a_position;
     attribute vec2 a_texCoord;
@@ -80,4 +80,4 @@ export class BlurEffectsPlugin extends BaseShaderPlugin {
   updateUniforms(values: any): void {
     // Blur effects are handled by the vertex shader plugin
   }
-} 
+}

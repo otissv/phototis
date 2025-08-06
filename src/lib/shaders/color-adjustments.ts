@@ -2,7 +2,7 @@ import { BaseShaderPlugin } from "./base-shader"
 
 export class ColorAdjustmentsPlugin extends BaseShaderPlugin {
   name = "color-adjustments"
-  
+
   vertexShader = `
     attribute vec2 a_position;
     attribute vec2 a_texCoord;
@@ -83,4 +83,4 @@ export class ColorAdjustmentsPlugin extends BaseShaderPlugin {
   updateUniforms(values: any): void {
     // Color adjustments are handled by the vertex shader plugin
   }
-} 
+}
