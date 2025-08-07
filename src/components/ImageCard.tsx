@@ -58,8 +58,6 @@ export function ImageCard({
 
       if (!processedFile) return
 
-      console.log(processedFile)
-
       onDownload(processedFile)
     } finally {
       // setFormat("jpeg")

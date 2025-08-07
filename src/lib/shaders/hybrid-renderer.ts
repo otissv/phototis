@@ -359,9 +359,14 @@ export class HybridRenderer {
     // Check for feedback loop - don't copy if the texture is the same as the FBO texture
     if (texture === fbo.texture) {
       console.warn(
-        "Attempting to copy texture to itself, skipping copy operation"
+        `Attempting to copy texture to itself (${fboName}), skipping copy operation`
       )
       return
+    }
+
+    // Additional check for any FBO texture that might cause feedback
+    if (this.fboManager.isTextureBoundToFBO(texture)) {
+      const sourceFBO = this.fboManager.getFBOByTexture(texture)
     }
 
     // Bind the target FBO
@@ -778,13 +783,6 @@ export class HybridRenderer {
     let accumulatedTexture: WebGLTexture | null = null
     let usePing = true // Track which FBO to use for output
 
-    // Process layers in the correct order (bottom to top)
-    // Each layer will blend with the accumulated result of all visible layers below it
-    console.log(
-      "Rendering layers in order:",
-      visibleLayers.map((l) => `${l.name} (${l.id})`)
-    )
-
     for (let i = 0; i < visibleLayers.length; i++) {
       const layer = visibleLayers[i]
       const layerTexture = layerTextures.get(layer.id)
@@ -826,15 +824,23 @@ export class HybridRenderer {
         const outputFBO = usePing ? "ping" : "pong"
         const inputFBO = usePing ? "pong" : "ping"
 
-        // Copy accumulated texture to input FBO if it's not already there
-        if (accumulatedTexture !== this.fboManager.getFBO(inputFBO)?.texture) {
+        // Handle the accumulated texture - avoid copying FBO textures
+        const inputFBOObj = this.fboManager.getFBO(inputFBO)
+        const outputFBOObj = this.fboManager.getFBO(outputFBO)
+
+        if (this.fboManager.isTextureBoundToFBO(accumulatedTexture)) {
+          // The accumulated texture is an FBO texture, but not in the input FBO
+          // We need to copy it, but be careful about feedback loops
+          const sourceFBO = this.fboManager.getFBOByTexture(accumulatedTexture)
+          if (sourceFBO && sourceFBO !== inputFBO) {
+            this.copyTextureToFBO(accumulatedTexture, inputFBO)
+          }
+        } else {
+          // It's a regular texture, safe to copy
           this.copyTextureToFBO(accumulatedTexture, inputFBO)
         }
 
         // Additional feedback loop check - ensure we're not trying to composite with the same texture
-        const inputFBOObj = this.fboManager.getFBO(inputFBO)
-        const outputFBOObj = this.fboManager.getFBO(outputFBO)
-
         if (
           inputFBOObj &&
           outputFBOObj &&
@@ -869,7 +875,21 @@ export class HybridRenderer {
     // Store the final result in the ping FBO (or whichever one we ended up using)
     if (accumulatedTexture) {
       const finalFBO = usePing ? "ping" : "pong"
-      this.copyTextureToFBO(accumulatedTexture, finalFBO)
+      const finalFBOObj = this.fboManager.getFBO(finalFBO)
+
+      // Only copy if the accumulated texture is not already the final FBO texture
+      if (accumulatedTexture !== finalFBOObj?.texture) {
+        // Check if we're trying to copy an FBO texture
+        if (this.fboManager.isTextureBoundToFBO(accumulatedTexture)) {
+          const sourceFBO = this.fboManager.getFBOByTexture(accumulatedTexture)
+          if (sourceFBO && sourceFBO !== finalFBO) {
+            this.copyTextureToFBO(accumulatedTexture, finalFBO)
+          }
+        } else {
+          // Regular texture, safe to copy
+          this.copyTextureToFBO(accumulatedTexture, finalFBO)
+        }
+      }
     }
   }
 

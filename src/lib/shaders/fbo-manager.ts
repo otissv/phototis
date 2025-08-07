@@ -132,6 +132,16 @@ export class FBOManager {
     return false
   }
 
+  // Get the name of the FBO that a texture is bound to
+  getFBOByTexture(texture: WebGLTexture): string | null {
+    for (const [name, fbo] of this.fbos.entries()) {
+      if (fbo.texture === texture) {
+        return name
+      }
+    }
+    return null
+  }
+
   clearFBO(name: string, r = 0, g = 0, b = 0, a = 0): void {
     if (!this.gl) return
 
