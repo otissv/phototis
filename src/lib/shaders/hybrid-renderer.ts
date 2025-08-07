@@ -711,59 +711,13 @@ export class HybridRenderer {
     }
 
     if (finalFBO) {
-      console.log("Found final FBO, binding texture")
-
-      // Check if final FBO has data
-      const framebuffer = this.gl.createFramebuffer()
-      this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, framebuffer)
-      this.gl.framebufferTexture2D(
-        this.gl.FRAMEBUFFER,
-        this.gl.COLOR_ATTACHMENT0,
-        this.gl.TEXTURE_2D,
-        finalFBO.texture,
-        0
-      )
-
-      const pixels = new Uint8Array(4)
-      this.gl.readPixels(
-        0,
-        0,
-        1,
-        1,
-        this.gl.RGBA,
-        this.gl.UNSIGNED_BYTE,
-        pixels
-      )
-      console.log("Final FBO first pixel:", pixels)
-
-      this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, null)
-      this.gl.deleteFramebuffer(framebuffer)
-
       this.gl.activeTexture(this.gl.TEXTURE0)
       this.gl.bindTexture(this.gl.TEXTURE_2D, finalFBO.texture)
       const samplerLocation = this.gl.getUniformLocation(program, "u_image")
       if (samplerLocation) this.gl.uniform1i(samplerLocation, 0)
 
-      // Check for WebGL errors before draw
-      const errorBefore = this.gl.getError()
-      if (errorBefore !== this.gl.NO_ERROR) {
-        console.error("WebGL error before draw in renderToCanvas:", errorBefore)
-        return
-      }
-
       // Draw
       this.gl.drawArrays(this.gl.TRIANGLE_STRIP, 0, 4)
-
-      // Check for WebGL errors after draw
-      const errorAfter = this.gl.getError()
-      if (errorAfter !== this.gl.NO_ERROR) {
-        console.error("WebGL error after draw in renderToCanvas:", errorAfter)
-        return
-      }
-
-      console.log("renderToCanvas draw completed")
-    } else {
-      console.log("No final FBO found")
     }
   }
 
@@ -785,30 +739,38 @@ export class HybridRenderer {
       return
     }
 
+    // Filter to only visible layers and sort them in rendering order (bottom to top)
+    const visibleLayers = layers
+      .filter((layer) => layer.visible)
+      .sort((a, b) => {
+        // Background layer (layer-1) should always be first
+        if (a.id === "layer-1") return -1
+        if (b.id === "layer-1") return 1
+        // Other layers maintain their original order (bottom to top)
+        return layers.indexOf(a) - layers.indexOf(b)
+      })
+
+    if (visibleLayers.length === 0) {
+      return
+    }
+
     // Start with a transparent base
     let accumulatedTexture: WebGLTexture | null = null
     let usePing = true // Track which FBO to use for output
 
-    // Render layers from bottom to top
-    for (let i = layers.length - 1; i >= 0; i--) {
-      const layer = layers[i]
+    // Process layers in the correct order (bottom to top)
+    // Each layer will blend with the accumulated result of all visible layers below it
+    for (let i = 0; i < visibleLayers.length; i++) {
+      const layer = visibleLayers[i]
       const layerTexture = layerTextures.get(layer.id)
 
-      console.log(`Processing layer ${layer.id} (${i + 1}/${layers.length})`)
-
       if (!layerTexture) {
-        console.log(`No texture for layer ${layer.id}, skipping`)
         continue
       }
 
       // Get the tools values for this layer
       const layerToolsValues =
         layer.id === selectedLayerId ? toolsValues : layer.filters
-
-      console.log(
-        `Rendering layer ${layer.id} with tools values:`,
-        layerToolsValues
-      )
 
       // Render this layer with its filters
       const renderedLayerTexture = this.renderLayer(
@@ -821,21 +783,15 @@ export class HybridRenderer {
       )
 
       if (!renderedLayerTexture) {
-        console.log(`Failed to render layer ${layer.id}`)
         continue
       }
 
-      console.log(`Successfully rendered layer ${layer.id}`)
-
-      // If this is the first layer, use it as the base
+      // If this is the first layer (bottom layer), use it as the base
       if (accumulatedTexture === null) {
         accumulatedTexture = renderedLayerTexture
-        console.log(`Set layer ${layer.id} as base texture`)
       } else {
-        // Composite this layer with the accumulated result using ping-pong FBOs
-        console.log(
-          `Compositing layer ${layer.id} with blend mode ${layer.blendMode}`
-        )
+        // Composite this layer with the accumulated result using the layer's blend mode
+        // The accumulated result contains all visible layers below this one
 
         // Determine which FBO to use for output
         const outputFBO = usePing ? "ping" : "pong"
@@ -846,6 +802,8 @@ export class HybridRenderer {
           this.copyTextureToFBO(accumulatedTexture, inputFBO)
         }
 
+        // Composite the current layer with the accumulated result
+        // This applies the current layer's blend mode to all visible layers below it
         const compositedTexture = this.compositeLayersWithPingPong(
           inputFBO,
           renderedLayerTexture,
@@ -859,470 +817,15 @@ export class HybridRenderer {
         if (compositedTexture) {
           accumulatedTexture = compositedTexture
           usePing = !usePing // Switch ping-pong for next iteration
-          console.log(`Successfully composited layer ${layer.id}`)
-        } else {
-          console.log(`Failed to composite layer ${layer.id}`)
         }
       }
     }
 
     // Store the final result in the ping FBO (or whichever one we ended up using)
     if (accumulatedTexture) {
-      console.log("Storing final result in ping FBO")
       const finalFBO = usePing ? "ping" : "pong"
       this.copyTextureToFBO(accumulatedTexture, finalFBO)
-      console.log(`Stored final result in ${finalFBO} FBO`)
-    } else {
-      console.log("No accumulated texture to store")
     }
-  }
-
-  // Simple test method to render a basic texture
-  testRender(
-    texture: WebGLTexture,
-    canvasWidth: number,
-    canvasHeight: number
-  ): void {
-    if (!this.gl || !this.layerProgram) return
-
-    console.log("Test render started")
-
-    // Bind temp FBO
-    this.fboManager.bindFBO("temp")
-    this.fboManager.clearFBO("temp", 0, 0, 0, 0)
-
-    // Use layer program
-    this.gl.useProgram(this.layerProgram)
-
-    // Set up attributes
-    const positionLocation = this.gl.getAttribLocation(
-      this.layerProgram,
-      "a_position"
-    )
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.positionBuffer)
-    this.gl.enableVertexAttribArray(positionLocation)
-    this.gl.vertexAttribPointer(positionLocation, 2, this.gl.FLOAT, false, 0, 0)
-
-    const texCoordLocation = this.gl.getAttribLocation(
-      this.layerProgram,
-      "a_texCoord"
-    )
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.texCoordBuffer)
-    this.gl.enableVertexAttribArray(texCoordLocation)
-    this.gl.vertexAttribPointer(texCoordLocation, 2, this.gl.FLOAT, false, 0, 0)
-
-    // Set basic uniforms
-    const uniforms = [
-      { name: "u_brightness", value: 100 },
-      { name: "u_contrast", value: 100 },
-      { name: "u_saturation", value: 100 },
-      { name: "u_hue", value: 0 },
-      { name: "u_exposure", value: 0 },
-      { name: "u_temperature", value: 0 },
-      { name: "u_gamma", value: 1 },
-      { name: "u_blur", value: 0 },
-      { name: "u_blurType", value: 0 },
-      { name: "u_blurDirection", value: 0 },
-      { name: "u_blurCenter", value: 0 },
-      { name: "u_vintage", value: 0 },
-      { name: "u_invert", value: 0 },
-      { name: "u_sepia", value: 0 },
-      { name: "u_grayscale", value: 0 },
-      { name: "u_tint", value: 0 },
-      { name: "u_vibrance", value: 0 },
-      { name: "u_noise", value: 0 },
-      { name: "u_grain", value: 0 },
-      { name: "u_rotate", value: 0 },
-      { name: "u_scale", value: 1 },
-      { name: "u_flipHorizontal", value: false },
-      { name: "u_flipVertical", value: false },
-      { name: "u_opacity", value: 100 },
-      { name: "u_resolution", value: [canvasWidth, canvasHeight] },
-    ]
-
-    uniforms.forEach(({ name, value }) => {
-      if (!this.gl || !this.layerProgram) return
-      const location = this.gl.getUniformLocation(this.layerProgram, name)
-      if (location !== null) {
-        if (typeof value === "number") {
-          this.gl.uniform1f(location, value)
-        } else if (typeof value === "boolean") {
-          this.gl.uniform1i(location, value ? 1 : 0)
-        } else if (Array.isArray(value) && value.length === 2) {
-          this.gl.uniform2f(location, value[0], value[1])
-        }
-      }
-    })
-
-    // Bind texture
-    this.gl.activeTexture(this.gl.TEXTURE0)
-    this.gl.bindTexture(this.gl.TEXTURE_2D, texture)
-    const samplerLocation = this.gl.getUniformLocation(
-      this.layerProgram,
-      "u_image"
-    )
-    if (samplerLocation) this.gl.uniform1i(samplerLocation, 0)
-
-    // Check for WebGL errors before draw
-    const errorBefore = this.gl.getError()
-    if (errorBefore !== this.gl.NO_ERROR) {
-      console.error("WebGL error before draw:", errorBefore)
-      return
-    }
-
-    // Draw
-    this.gl.drawArrays(this.gl.TRIANGLE_STRIP, 0, 4)
-
-    // Check for WebGL errors after draw
-    const errorAfter = this.gl.getError()
-    if (errorAfter !== this.gl.NO_ERROR) {
-      console.error("WebGL error after draw:", errorAfter)
-      return
-    }
-
-    console.log("Test render completed")
-  }
-
-  // Simple test to render texture directly to canvas
-  testRenderDirect(texture: WebGLTexture, canvas: HTMLCanvasElement): void {
-    if (!this.gl) return
-
-    console.log("Test render direct started")
-
-    // Create a simple shader program for direct rendering
-    const vertexShader = this.gl.createShader(this.gl.VERTEX_SHADER)
-    if (!vertexShader) return
-    this.gl.shaderSource(
-      vertexShader,
-      `
-      attribute vec2 a_position;
-      attribute vec2 a_texCoord;
-      varying vec2 v_texCoord;
-      void main() {
-        gl_Position = vec4(a_position, 0.0, 1.0);
-        v_texCoord = a_texCoord;
-      }
-    `
-    )
-    this.gl.compileShader(vertexShader)
-
-    // Check for compilation errors
-    if (!this.gl.getShaderParameter(vertexShader, this.gl.COMPILE_STATUS)) {
-      console.error(
-        "Vertex shader compilation failed:",
-        this.gl.getShaderInfoLog(vertexShader)
-      )
-      return
-    }
-
-    const fragmentShader = this.gl.createShader(this.gl.FRAGMENT_SHADER)
-    if (!fragmentShader) return
-    this.gl.shaderSource(
-      fragmentShader,
-      `
-      precision highp float;
-      uniform sampler2D u_image;
-      varying vec2 v_texCoord;
-      void main() {
-        gl_FragColor = texture2D(u_image, v_texCoord);
-      }
-    `
-    )
-    this.gl.compileShader(fragmentShader)
-
-    // Check for compilation errors
-    if (!this.gl.getShaderParameter(fragmentShader, this.gl.COMPILE_STATUS)) {
-      console.error(
-        "Fragment shader compilation failed:",
-        this.gl.getShaderInfoLog(fragmentShader)
-      )
-      return
-    }
-
-    const program = this.gl.createProgram()
-    if (!program) return
-    this.gl.attachShader(program, vertexShader)
-    this.gl.attachShader(program, fragmentShader)
-    this.gl.linkProgram(program)
-
-    // Bind default framebuffer
-    this.fboManager.bindDefaultFramebuffer()
-    this.gl.viewport(0, 0, canvas.width, canvas.height)
-
-    console.log(
-      "Test render direct - Canvas dimensions:",
-      canvas.width,
-      "x",
-      canvas.height
-    )
-    console.log(
-      "Test render direct - Viewport set to:",
-      0,
-      0,
-      canvas.width,
-      canvas.height
-    )
-
-    // Clear canvas
-    this.gl.clearColor(0, 0, 0, 0)
-    this.gl.clear(this.gl.COLOR_BUFFER_BIT)
-
-    // Use simple program
-    this.gl.useProgram(program)
-
-    // Set up attributes
-    const positionLocation = this.gl.getAttribLocation(program, "a_position")
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.positionBuffer)
-    this.gl.enableVertexAttribArray(positionLocation)
-    this.gl.vertexAttribPointer(positionLocation, 2, this.gl.FLOAT, false, 0, 0)
-
-    const texCoordLocation = this.gl.getAttribLocation(program, "a_texCoord")
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.texCoordBuffer)
-    this.gl.enableVertexAttribArray(texCoordLocation)
-    this.gl.vertexAttribPointer(texCoordLocation, 2, this.gl.FLOAT, false, 0, 0)
-
-    // Bind texture
-    this.gl.activeTexture(this.gl.TEXTURE0)
-    this.gl.bindTexture(this.gl.TEXTURE_2D, texture)
-    const samplerLocation = this.gl.getUniformLocation(program, "u_image")
-    if (samplerLocation) this.gl.uniform1i(samplerLocation, 0)
-
-    console.log("Test render direct - Texture bound:", !!texture)
-    console.log("Test render direct - Sampler location:", !!samplerLocation)
-
-    // Check if texture has data by reading a pixel
-    const framebuffer = this.gl.createFramebuffer()
-    this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, framebuffer)
-    this.gl.framebufferTexture2D(
-      this.gl.FRAMEBUFFER,
-      this.gl.COLOR_ATTACHMENT0,
-      this.gl.TEXTURE_2D,
-      texture,
-      0
-    )
-
-    const pixels = new Uint8Array(4)
-    this.gl.readPixels(0, 0, 1, 1, this.gl.RGBA, this.gl.UNSIGNED_BYTE, pixels)
-    console.log("Test render direct - Texture first pixel:", pixels)
-
-    this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, null)
-    this.gl.deleteFramebuffer(framebuffer)
-
-    // Check for WebGL errors
-    const error = this.gl.getError()
-    if (error !== this.gl.NO_ERROR) {
-      console.error("WebGL error before draw:", error)
-    }
-
-    // Draw
-    this.gl.drawArrays(this.gl.TRIANGLE_STRIP, 0, 4)
-
-    // Check for WebGL errors after draw
-    const errorAfter = this.gl.getError()
-    if (errorAfter !== this.gl.NO_ERROR) {
-      console.error("WebGL error after draw:", errorAfter)
-    }
-
-    console.log("Test render direct completed")
-  }
-
-  // Simple test to render a solid color
-  testRenderColorDirect(canvas: HTMLCanvasElement): void {
-    if (!this.gl) return
-
-    console.log("Test render color direct started")
-
-    // Create a simple shader program for direct rendering
-    const vertexShader = this.gl.createShader(this.gl.VERTEX_SHADER)
-    if (!vertexShader) return
-    this.gl.shaderSource(
-      vertexShader,
-      `
-      attribute vec2 a_position;
-      varying vec2 v_texCoord;
-      void main() {
-        gl_Position = vec4(a_position, 0.0, 1.0);
-        v_texCoord = a_position * 0.5 + 0.5;
-      }
-    `
-    )
-    this.gl.compileShader(vertexShader)
-
-    const fragmentShader = this.gl.createShader(this.gl.FRAGMENT_SHADER)
-    if (!fragmentShader) return
-    this.gl.shaderSource(
-      fragmentShader,
-      `
-      precision highp float;
-      varying vec2 v_texCoord;
-      void main() {
-        gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0); // Red color
-      }
-    `
-    )
-    this.gl.compileShader(fragmentShader)
-
-    const program = this.gl.createProgram()
-    if (!program) return
-    this.gl.attachShader(program, vertexShader)
-    this.gl.attachShader(program, fragmentShader)
-    this.gl.linkProgram(program)
-
-    // Bind default framebuffer
-    this.fboManager.bindDefaultFramebuffer()
-    this.gl.viewport(0, 0, canvas.width, canvas.height)
-
-    console.log(
-      "Test render color direct - Canvas dimensions:",
-      canvas.width,
-      "x",
-      canvas.height
-    )
-
-    // Clear canvas
-    this.gl.clearColor(0, 0, 0, 0)
-    this.gl.clear(this.gl.COLOR_BUFFER_BIT)
-
-    // Use simple program
-    this.gl.useProgram(program)
-
-    // Set up attributes
-    const positionLocation = this.gl.getAttribLocation(program, "a_position")
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.positionBuffer)
-    this.gl.enableVertexAttribArray(positionLocation)
-    this.gl.vertexAttribPointer(positionLocation, 2, this.gl.FLOAT, false, 0, 0)
-
-    // Draw
-    this.gl.drawArrays(this.gl.TRIANGLE_STRIP, 0, 4)
-
-    console.log("Test render color direct completed")
-  }
-
-  // Simple test to render a colored rectangle
-  testRenderColor(canvasWidth: number, canvasHeight: number): void {
-    if (!this.gl || !this.layerProgram) return
-
-    console.log("Test color render started")
-
-    // Bind temp FBO
-    this.fboManager.bindFBO("temp")
-    this.fboManager.clearFBO("temp", 1, 0, 0, 1) // Red color
-
-    // Use layer program
-    this.gl.useProgram(this.layerProgram)
-
-    // Set up attributes
-    const positionLocation = this.gl.getAttribLocation(
-      this.layerProgram,
-      "a_position"
-    )
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.positionBuffer)
-    this.gl.enableVertexAttribArray(positionLocation)
-    this.gl.vertexAttribPointer(positionLocation, 2, this.gl.FLOAT, false, 0, 0)
-
-    const texCoordLocation = this.gl.getAttribLocation(
-      this.layerProgram,
-      "a_texCoord"
-    )
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.texCoordBuffer)
-    this.gl.enableVertexAttribArray(texCoordLocation)
-    this.gl.vertexAttribPointer(texCoordLocation, 2, this.gl.FLOAT, false, 0, 0)
-
-    // Set basic uniforms
-    const uniforms = [
-      { name: "u_brightness", value: 100 },
-      { name: "u_contrast", value: 100 },
-      { name: "u_saturation", value: 100 },
-      { name: "u_hue", value: 0 },
-      { name: "u_exposure", value: 0 },
-      { name: "u_temperature", value: 0 },
-      { name: "u_gamma", value: 1 },
-      { name: "u_blur", value: 0 },
-      { name: "u_blurType", value: 0 },
-      { name: "u_blurDirection", value: 0 },
-      { name: "u_blurCenter", value: 0 },
-      { name: "u_vintage", value: 0 },
-      { name: "u_invert", value: 0 },
-      { name: "u_sepia", value: 0 },
-      { name: "u_grayscale", value: 0 },
-      { name: "u_tint", value: 0 },
-      { name: "u_vibrance", value: 0 },
-      { name: "u_noise", value: 0 },
-      { name: "u_grain", value: 0 },
-      { name: "u_rotate", value: 0 },
-      { name: "u_scale", value: 1 },
-      { name: "u_flipHorizontal", value: false },
-      { name: "u_flipVertical", value: false },
-      { name: "u_opacity", value: 100 },
-      { name: "u_resolution", value: [canvasWidth, canvasHeight] },
-    ]
-
-    uniforms.forEach(({ name, value }) => {
-      if (!this.gl || !this.layerProgram) return
-      const location = this.gl.getUniformLocation(this.layerProgram, name)
-      if (location !== null) {
-        if (typeof value === "number") {
-          this.gl.uniform1f(location, value)
-        } else if (typeof value === "boolean") {
-          this.gl.uniform1i(location, value ? 1 : 0)
-        } else if (Array.isArray(value) && value.length === 2) {
-          this.gl.uniform2f(location, value[0], value[1])
-        }
-      }
-    })
-
-    // Create a simple texture with red color
-    const redTexture = this.gl.createTexture()
-    if (redTexture) {
-      this.gl.bindTexture(this.gl.TEXTURE_2D, redTexture)
-      this.gl.texParameteri(
-        this.gl.TEXTURE_2D,
-        this.gl.TEXTURE_WRAP_S,
-        this.gl.CLAMP_TO_EDGE
-      )
-      this.gl.texParameteri(
-        this.gl.TEXTURE_2D,
-        this.gl.TEXTURE_WRAP_T,
-        this.gl.CLAMP_TO_EDGE
-      )
-      this.gl.texParameteri(
-        this.gl.TEXTURE_2D,
-        this.gl.TEXTURE_MIN_FILTER,
-        this.gl.LINEAR
-      )
-      this.gl.texParameteri(
-        this.gl.TEXTURE_2D,
-        this.gl.TEXTURE_MAG_FILTER,
-        this.gl.LINEAR
-      )
-
-      // Create a 1x1 red texture
-      const redData = new Uint8Array([255, 0, 0, 255])
-      this.gl.texImage2D(
-        this.gl.TEXTURE_2D,
-        0,
-        this.gl.RGBA,
-        1,
-        1,
-        0,
-        this.gl.RGBA,
-        this.gl.UNSIGNED_BYTE,
-        redData
-      )
-
-      this.gl.activeTexture(this.gl.TEXTURE0)
-      this.gl.bindTexture(this.gl.TEXTURE_2D, redTexture)
-      const samplerLocation = this.gl.getUniformLocation(
-        this.layerProgram,
-        "u_image"
-      )
-      if (samplerLocation) this.gl.uniform1i(samplerLocation, 0)
-
-      // Draw
-      this.gl.drawArrays(this.gl.TRIANGLE_STRIP, 0, 4)
-    }
-
-    console.log("Test color render completed")
   }
 
   cleanup(): void {

@@ -83,19 +83,11 @@ export function ImageEditorCanvas({
   React.useEffect(() => {
     if (!canvasRef?.current || !glRef.current) return
 
-    const canvas = canvasRef.current
     const gl = glRef.current
 
     // Use canvas dimensions instead of canvas element size
     const width = canvasDimensions.width
     const height = canvasDimensions.height
-
-    console.log(
-      "Initializing hybrid renderer with dimensions:",
-      width,
-      "x",
-      height
-    )
 
     if (!hybridRendererRef.current) {
       hybridRendererRef.current = new HybridRenderer()
@@ -109,8 +101,6 @@ export function ImageEditorCanvas({
 
     if (!success) {
       console.error("Failed to initialize hybrid renderer")
-    } else {
-      console.log("Hybrid renderer initialized successfully")
     }
   }, [canvasRef?.current, canvasDimensions])
 
@@ -132,9 +122,6 @@ export function ImageEditorCanvas({
   // Add throttling for rapid value changes
   const [throttledToolsValues] = useDebounce(toolsValues, 16) // ~60fps throttling
 
-  // Cache for layer-specific tool values to avoid recalculations
-  const layerToolValuesCache = React.useRef<Map<string, any>>(new Map())
-
   // Track if we're currently drawing to prevent overlapping draws
   const isDrawingRef = React.useRef(false)
 
@@ -147,7 +134,7 @@ export function ImageEditorCanvas({
   React.useEffect(() => {
     const toolKeys = Object.keys(toolsValues) as (keyof typeof toolsValues)[]
 
-    toolKeys.forEach((key) => {
+    for (const key of toolKeys) {
       if (typeof toolsValues[key] === "number") {
         const currentValue = smoothToolsValues[key] as number
         const targetValue = toolsValues[key] as number
@@ -190,7 +177,7 @@ export function ImageEditorCanvas({
           animationRef.current.set(key, animationId)
         }
       }
-    })
+    }
   }, [toolsValues, smoothToolsValues])
 
   // Cleanup animations on unmount
@@ -258,31 +245,12 @@ export function ImageEditorCanvas({
     const canvas = canvasRef?.current
 
     if (gl && canvas) {
-      console.log(
-        "Updating canvas size from",
-        canvas.width,
-        "x",
-        canvas.height,
-        "to",
-        canvasDimensions.width,
-        "x",
-        canvasDimensions.height
-      )
-
       // Update canvas size
       canvas.width = canvasDimensions.width
       canvas.height = canvasDimensions.height
 
       // Update WebGL viewport
       gl.viewport(0, 0, canvasDimensions.width, canvasDimensions.height)
-
-      console.log("Canvas size updated to:", canvas.width, "x", canvas.height)
-      console.log(
-        "Canvas style size after update:",
-        canvas.style.width,
-        "x",
-        canvas.style.height
-      )
     }
   }, [canvasDimensions, canvasRef?.current])
 
@@ -290,44 +258,23 @@ export function ImageEditorCanvas({
   const loadImageDataFromFile = React.useCallback(
     async (file: File): Promise<ImageData | null> => {
       return new Promise((resolve) => {
-        console.log(
-          `Starting to load image file:`,
-          file.name,
-          file.size,
-          file.type
-        )
         const canvas = document.createElement("canvas")
         const ctx = canvas.getContext("2d")
         if (!ctx) {
-          console.log(`Failed to get 2D context for file:`, file.name)
           resolve(null)
           return
         }
 
         const img = new Image()
         img.onload = () => {
-          console.log(
-            `Image loaded successfully:`,
-            file.name,
-            img.width,
-            "x",
-            img.height
-          )
           canvas.width = img.width
           canvas.height = img.height
           ctx.drawImage(img, 0, 0)
+
           const imageData = ctx.getImageData(0, 0, img.width, img.height)
-          console.log(
-            `Image data created:`,
-            file.name,
-            imageData.width,
-            "x",
-            imageData.height
-          )
           resolve(imageData)
         }
         img.onerror = (error) => {
-          console.log(`Failed to load image:`, file.name, error)
           resolve(null)
         }
         img.src = URL.createObjectURL(file)
@@ -340,19 +287,11 @@ export function ImageEditorCanvas({
   React.useEffect(() => {
     const loadMainImage = async () => {
       if (!image) {
-        console.log("No main image provided")
         return
       }
 
-      console.log("Loading main image:", image.name)
       const imageData = await loadImageDataFromFile(image)
       if (imageData) {
-        console.log(
-          "Main image loaded successfully:",
-          imageData.width,
-          "x",
-          imageData.height
-        )
         imageDataCacheRef.current.set("main", imageData)
 
         // Store dimensions for the background layer
@@ -368,8 +307,6 @@ export function ImageEditorCanvas({
           width: imageData.width,
           height: imageData.height,
         })
-      } else {
-        console.log("Failed to load main image")
       }
     }
 
@@ -399,20 +336,8 @@ export function ImageEditorCanvas({
       // Load new layer images
       for (const layer of layers) {
         if (layer.image && !imageDataCacheRef.current.has(layer.id)) {
-          console.log(
-            `Loading image for layer ${layer.id}:`,
-            layer.image.name,
-            layer.image.size,
-            layer.image.type
-          )
           const imageData = await loadImageDataFromFile(layer.image)
           if (imageData) {
-            console.log(
-              `Successfully loaded image for layer ${layer.id}:`,
-              imageData.width,
-              "x",
-              imageData.height
-            )
             imageDataCacheRef.current.set(layer.id, imageData)
 
             // Calculate layer dimensions
@@ -549,14 +474,6 @@ export function ImageEditorCanvas({
     if (!canvasRef?.current) return
 
     const canvas = canvasRef.current
-    console.log("Canvas element:", canvas)
-    console.log("Canvas size:", canvas.width, "x", canvas.height)
-    console.log(
-      "Canvas style size:",
-      canvas.style.width,
-      "x",
-      canvas.style.height
-    )
 
     const gl = canvas.getContext("webgl2", {
       alpha: true,
@@ -568,7 +485,6 @@ export function ImageEditorCanvas({
       console.error("WebGL2 not supported")
       return
     }
-    console.log("WebGL context created successfully")
     glRef.current = gl
 
     // Set WebGL to flip textures vertically (WebGL Y-axis is inverted)
@@ -675,30 +591,18 @@ export function ImageEditorCanvas({
       const gl = glRef.current
       if (!gl) return null
 
-      console.log(`loadLayerTexture called for layer: ${layer.id}`)
-
       // Check if we already have a cached texture for this layer
       if (textureCacheRef.current.has(layer.id)) {
-        console.log(`Using cached texture for layer: ${layer.id}`)
         return textureCacheRef.current.get(layer.id) || null
       }
 
       // Get image data for this layer
       const imageData = imageDataCacheRef.current.get(layer.id)
-      console.log(`Image data for layer ${layer.id}:`, !!imageData)
 
       if (imageData) {
-        console.log(
-          `Creating texture for layer ${layer.id} with image data:`,
-          imageData.width,
-          "x",
-          imageData.height
-        )
-        console.log(`Image data first few pixels:`, imageData.data.slice(0, 16))
         const texture = createTextureFromImageData(imageData)
         if (texture) {
           textureCacheRef.current.set(layer.id, texture)
-          console.log(`Created texture for layer: ${layer.id}`)
           return texture
         }
       }
@@ -706,19 +610,18 @@ export function ImageEditorCanvas({
       // For background layer, try to use main image data
       if (layer.id === "layer-1") {
         const mainImageData = imageDataCacheRef.current.get("main")
-        console.log(`Main image data for background layer:`, !!mainImageData)
         if (mainImageData) {
           const texture = createTextureFromImageData(mainImageData)
           if (texture) {
             textureCacheRef.current.set(layer.id, texture)
-            console.log(`Created texture for background layer from main data`)
+
             return texture
           }
         }
       }
 
       // Fallback to main texture
-      console.log(`Using fallback texture for layer: ${layer.id}`)
+
       return textureRef.current
     },
     [createTextureFromImageData]
@@ -748,19 +651,9 @@ export function ImageEditorCanvas({
       // Get visible layers sorted from bottom to top
       const visibleLayers = layers.filter((layer) => {
         const isVisible = layer.visible && (!layer.isEmpty || layer.image)
-        console.log(
-          `Layer ${layer.id}: visible=${layer.visible}, isEmpty=${layer.isEmpty}, hasImage=${!!layer.image}, isVisible=${isVisible}`
-        )
+
         return isVisible
       })
-
-      console.log("Visible layers:", visibleLayers.length)
-      console.log("All layers:", layers.length)
-      console.log(
-        "Background layer dimensions:",
-        layerDimensionsRef.current.get("layer-1")
-      )
-      console.log("Has main image data:", imageDataCacheRef.current.has("main"))
 
       // Always ensure the background layer (layer-1) is rendered if it has dimensions
       const backgroundLayerDimensions =
@@ -768,29 +661,17 @@ export function ImageEditorCanvas({
       const hasBackgroundLayer =
         backgroundLayerDimensions && imageDataCacheRef.current.has("main")
 
-      // Create a complete list of layers to render
-      const allLayersToRender = [...visibleLayers]
+      // Create a complete list of layers to render, ensuring proper order
+      let allLayersToRender: Layer[] = []
 
-      // Add background layer if it exists, isn't already in the list, and is visible
-      if (
-        hasBackgroundLayer &&
-        !allLayersToRender.find((layer) => layer.id === "layer-1")
-      ) {
+      // Always add background layer first if it exists and is visible
+      if (hasBackgroundLayer) {
         const backgroundLayerFromSystem = layers.find(
           (layer) => layer.id === "layer-1"
         )
 
-        console.log("Background layer from system:", backgroundLayerFromSystem)
-
         if (backgroundLayerFromSystem?.visible) {
           allLayersToRender.push(backgroundLayerFromSystem)
-          console.log("Added background layer from system")
-        } else if (
-          backgroundLayerFromSystem &&
-          !backgroundLayerFromSystem.visible
-        ) {
-          // Background layer exists but is not visible, so don't render it
-          console.log("Background layer exists but is not visible")
         } else {
           // Fallback to creating a background layer object for rendering
           const backgroundLayer = {
@@ -805,11 +686,16 @@ export function ImageEditorCanvas({
             blendMode: "normal" as const,
           }
           allLayersToRender.push(backgroundLayer)
-          console.log("Added fallback background layer")
         }
       }
 
-      console.log("Final layers to render:", allLayersToRender.length)
+      // Add all other visible layers (excluding background layer which we already added)
+      // For proper Photoshop-style blending, additional layers should be processed in the order they appear
+      // in the layers array, which represents their stacking order from bottom to top
+      const additionalLayers = visibleLayers.filter(
+        (layer) => layer.id !== "layer-1"
+      )
+      allLayersToRender = [...allLayersToRender, ...additionalLayers]
 
       // If no layers are visible, just clear the canvas and return
       if (allLayersToRender.length === 0) {
@@ -831,16 +717,9 @@ export function ImageEditorCanvas({
 
       // Load textures for all visible layers
       for (const layer of allLayersToRender) {
-        console.log(`Loading texture for layer: ${layer.id}`)
-        console.log(`Layer has image: ${!!layer.image}`)
-        console.log(`Layer isEmpty: ${layer.isEmpty}`)
-
         const layerTexture = await loadLayerTexture(layer)
         if (layerTexture) {
           layerTextures.set(layer.id, layerTexture)
-          console.log(`Successfully loaded texture for layer: ${layer.id}`)
-        } else {
-          console.log(`Failed to load texture for layer: ${layer.id}`)
         }
       }
 
@@ -851,15 +730,6 @@ export function ImageEditorCanvas({
         layerTextures.size > 0
       ) {
         try {
-          console.log("Using hybrid renderer")
-
-          // Skip test renders for now to focus on main functionality
-
-          console.log(
-            "Starting renderLayers with",
-            allLayersToRender.length,
-            "layers"
-          )
           hybridRendererRef.current.renderLayers(
             allLayersToRender,
             layerTextures,
@@ -870,10 +740,8 @@ export function ImageEditorCanvas({
             layerDimensionsRef.current
           )
 
-          console.log("renderLayers completed, calling renderToCanvas")
           // Render the final result to canvas
           hybridRendererRef.current.renderToCanvas(canvas)
-          console.log("renderToCanvas completed")
         } catch (error) {
           console.error("Error in hybrid renderer:", error)
           // Fallback: Clear canvas if hybrid renderer fails
@@ -882,7 +750,6 @@ export function ImageEditorCanvas({
         }
       } else {
         // Fallback: Clear canvas if no layers or renderer
-        console.log("No layers or renderer available, clearing canvas")
         gl.clearColor(0, 0, 0, 0)
         gl.clear(gl.COLOR_BUFFER_BIT)
       }

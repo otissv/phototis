@@ -10,6 +10,7 @@ import {
   Layers,
   Lock,
   ChevronDown,
+  Camera,
 } from "lucide-react"
 import { useDrag, useDrop } from "react-dnd"
 import { Button } from "@/components/ui/button"
@@ -97,9 +98,44 @@ export function LayerSystem({
       isEmpty: true, // New layers are empty/transparent
       blendMode: "normal", // Default blend mode
     }
-    onLayersChange([...layers, newLayer])
+    onLayersChange([newLayer, ...layers])
     onSelectedLayerChange(newLayer.id)
   }, [layers, onLayersChange, onSelectedLayerChange, isDragActive])
+
+  const handleFileUpload = React.useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      if (isDragActive || isGlobalDragActive) return
+
+      const files = event.target.files
+      if (!files || files.length === 0) return
+
+      const file = files[0]
+      if (!file.type.startsWith("image/")) {
+        console.warn("Selected file is not an image")
+        return
+      }
+
+      // Create a new layer with the uploaded image
+      const newLayer: Layer = {
+        id: `layer-${Date.now()}`,
+        name: file.name || `Image Layer ${layers.length + 1}`,
+        visible: true,
+        locked: false,
+        filters: { ...initialState },
+        opacity: 100,
+        isEmpty: false, // Layer has image content
+        image: file, // Store the image file
+        blendMode: "normal", // Default blend mode
+      }
+
+      onLayersChange([newLayer, ...layers])
+      onSelectedLayerChange(newLayer.id)
+
+      // Reset the input value to allow selecting the same file again
+      event.target.value = ""
+    },
+    [layers, onLayersChange, onSelectedLayerChange, isDragActive]
+  )
 
   const handleDeleteLayer = React.useCallback(
     (layerId: string) => {
@@ -229,15 +265,6 @@ export function LayerSystem({
             <Layers className='w-4 h-4' />
             Layers
           </h3>
-          <Button
-            variant='ghost'
-            size='sm'
-            onClick={handleAddLayer}
-            className='h-8 w-8 p-0'
-            disabled={isDragActive || isGlobalDragActive}
-          >
-            <Plus className='w-4 h-4' />
-          </Button>
         </div>
 
         <div className='flex items-center gap-2 h-12 p-2 text-xs justify-between'>
@@ -359,6 +386,33 @@ export function LayerSystem({
               onDragStateChange={onDragStateChange || (() => {})}
             />
           ))}
+        </div>
+
+        <div className='flex items-center gap-1 border-t border-border pt-2'>
+          {/* File upload button */}
+          <div className='relative h-8 w-8 p-0 flex items-center justify-center rounded-sm hover:bg-muted'>
+            <Camera className='w-4 h-4' />
+            <input
+              type='file'
+              accept='image/*'
+              onChange={handleFileUpload}
+              className='absolute inset-0 w-full h-full opacity-0 cursor-pointer'
+              disabled={isDragActive || isGlobalDragActive}
+              title='Upload image to new layer'
+            />
+          </div>
+
+          {/* Empty layer button */}
+          <Button
+            variant='ghost'
+            size='sm'
+            onClick={handleAddLayer}
+            className='h-8 w-8 p-0'
+            disabled={isDragActive || isGlobalDragActive}
+            title='Add empty layer'
+          >
+            <Layers className='w-4 h-4' />
+          </Button>
         </div>
       </div>
     </div>
@@ -643,24 +697,26 @@ function LayerItemContent({
                 disabled={isDragActive || layer.id === "layer-1"}
               />
             ) : (
-              <Button
-                variant='ghost'
-                className={cn(
-                  "text-sm truncate flex items-center gap-1 h-6 flex-1 w-full justify-start px-1cursor-pointer rounded-sm cursor-grab",
-                  "hover:bg-transparent"
-                )}
-                onDoubleClick={() =>
-                  !isDragActive && layer.id !== "layer-1" && setIsEditing(true)
-                }
-                disabled={isDragActive}
-              >
-                <span className='text-xs whitespace-nowrap truncate'>
-                  {layer.name}
-                </span>
-                {layer.isEmpty && (
-                  <span className='text-xs text-muted-foreground'>(empty)</span>
-                )}
-              </Button>
+              <div className='flex items-center gap-2'>
+                <LayerThumbnail layer={layer} />
+                <Button
+                  variant='ghost'
+                  className={cn(
+                    "text-sm truncate flex items-center gap-1 h-6 flex-1 justify-start px-1 cursor-pointer rounded-sm cursor-grab",
+                    "hover:bg-transparent"
+                  )}
+                  onDoubleClick={() =>
+                    !isDragActive &&
+                    layer.id !== "layer-1" &&
+                    setIsEditing(true)
+                  }
+                  disabled={isDragActive}
+                >
+                  <span className='text-xs whitespace-nowrap truncate'>
+                    {layer.name}
+                  </span>
+                </Button>
+              </div>
             )}
           </div>
 
@@ -713,5 +769,36 @@ function LayerItemContent({
         </div>
       </div>
     </>
+  )
+}
+
+// Thumbnail component for layer preview
+function LayerThumbnail({ layer }: { layer: Layer }) {
+  const [thumbnailUrl, setThumbnailUrl] = React.useState<string | null>(null)
+
+  React.useEffect(() => {
+    if (layer.image) {
+      const url = URL.createObjectURL(layer.image)
+      setThumbnailUrl(url)
+
+      return () => {
+        URL.revokeObjectURL(url)
+      }
+    }
+    setThumbnailUrl(null)
+  }, [layer.image])
+
+  if (!thumbnailUrl) {
+    return <div className='size-6' />
+  }
+
+  return (
+    <div className='w-6 h-6 rounded-xs overflow-hidden border border-border'>
+      <img
+        src={thumbnailUrl}
+        alt={layer.name}
+        className='w-full h-full object-cover'
+      />
+    </div>
   )
 }

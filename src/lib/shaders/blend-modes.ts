@@ -1,4 +1,4 @@
-export type BlendMode = 
+export type BlendMode =
   | "normal"
   | "multiply"
   | "screen"
@@ -103,20 +103,32 @@ export const BLEND_MODE_GLSL = `
     return c.z + c.y * (rgb - 0.5) * (1.0 - abs(2.0 * c.z - 1.0));
   }
 
-  // Blend mode functions
+  // Blend mode functions with proper alpha handling
   vec4 blendNormal(vec4 base, vec4 top) {
-    return mix(base, top, top.a);
+    // Normal blend with proper alpha compositing
+    float alpha = top.a + base.a * (1.0 - top.a);
+    if (alpha < 0.001) return vec4(0.0);
+    
+    vec3 result = (top.rgb * top.a + base.rgb * base.a * (1.0 - top.a)) / alpha;
+    return vec4(result, alpha);
   }
 
   vec4 blendMultiply(vec4 base, vec4 top) {
-    return vec4(base.rgb * top.rgb, top.a);
+    // Multiply blend: result = base * top
+    vec3 result = base.rgb * top.rgb;
+    float alpha = top.a + base.a * (1.0 - top.a);
+    return vec4(result, alpha);
   }
 
   vec4 blendScreen(vec4 base, vec4 top) {
-    return vec4(1.0 - (1.0 - base.rgb) * (1.0 - top.rgb), top.a);
+    // Screen blend: result = 1 - (1 - base) * (1 - top)
+    vec3 result = 1.0 - (1.0 - base.rgb) * (1.0 - top.rgb);
+    float alpha = top.a + base.a * (1.0 - top.a);
+    return vec4(result, alpha);
   }
 
   vec4 blendOverlay(vec4 base, vec4 top) {
+    // Overlay blend: combines multiply and screen based on base luminance
     vec3 result;
     for (int i = 0; i < 3; i++) {
       if (base[i] < 0.5) {
@@ -125,10 +137,12 @@ export const BLEND_MODE_GLSL = `
         result[i] = 1.0 - 2.0 * (1.0 - base[i]) * (1.0 - top[i]);
       }
     }
-    return vec4(result, top.a);
+    float alpha = top.a + base.a * (1.0 - top.a);
+    return vec4(result, alpha);
   }
 
   vec4 blendSoftLight(vec4 base, vec4 top) {
+    // Soft Light blend: similar to overlay but softer
     vec3 result;
     for (int i = 0; i < 3; i++) {
       if (top[i] < 0.5) {
@@ -137,10 +151,12 @@ export const BLEND_MODE_GLSL = `
         result[i] = base[i] * (1.0 - 2.0 * top[i]) + sqrt(base[i]) * (2.0 * top[i] - 1.0);
       }
     }
-    return vec4(result, top.a);
+    float alpha = top.a + base.a * (1.0 - top.a);
+    return vec4(result, alpha);
   }
 
   vec4 blendHardLight(vec4 base, vec4 top) {
+    // Hard Light blend: overlay but based on top layer
     vec3 result;
     for (int i = 0; i < 3; i++) {
       if (top[i] < 0.5) {
@@ -149,10 +165,12 @@ export const BLEND_MODE_GLSL = `
         result[i] = 1.0 - 2.0 * (1.0 - base[i]) * (1.0 - top[i]);
       }
     }
-    return vec4(result, top.a);
+    float alpha = top.a + base.a * (1.0 - top.a);
+    return vec4(result, alpha);
   }
 
   vec4 blendColorDodge(vec4 base, vec4 top) {
+    // Color Dodge blend: brightens base based on top
     vec3 result;
     for (int i = 0; i < 3; i++) {
       if (top[i] == 1.0) {
@@ -161,10 +179,12 @@ export const BLEND_MODE_GLSL = `
         result[i] = min(1.0, base[i] / (1.0 - top[i]));
       }
     }
-    return vec4(result, top.a);
+    float alpha = top.a + base.a * (1.0 - top.a);
+    return vec4(result, alpha);
   }
 
   vec4 blendColorBurn(vec4 base, vec4 top) {
+    // Color Burn blend: darkens base based on top
     vec3 result;
     for (int i = 0; i < 3; i++) {
       if (top[i] == 0.0) {
@@ -173,51 +193,72 @@ export const BLEND_MODE_GLSL = `
         result[i] = 1.0 - min(1.0, (1.0 - base[i]) / top[i]);
       }
     }
-    return vec4(result, top.a);
+    float alpha = top.a + base.a * (1.0 - top.a);
+    return vec4(result, alpha);
   }
 
   vec4 blendDarken(vec4 base, vec4 top) {
-    return vec4(min(base.rgb, top.rgb), top.a);
+    // Darken blend: takes the darker of each channel
+    vec3 result = min(base.rgb, top.rgb);
+    float alpha = top.a + base.a * (1.0 - top.a);
+    return vec4(result, alpha);
   }
 
   vec4 blendLighten(vec4 base, vec4 top) {
-    return vec4(max(base.rgb, top.rgb), top.a);
+    // Lighten blend: takes the lighter of each channel
+    vec3 result = max(base.rgb, top.rgb);
+    float alpha = top.a + base.a * (1.0 - top.a);
+    return vec4(result, alpha);
   }
 
   vec4 blendDifference(vec4 base, vec4 top) {
-    return vec4(abs(base.rgb - top.rgb), top.a);
+    // Difference blend: absolute difference between channels
+    vec3 result = abs(base.rgb - top.rgb);
+    float alpha = top.a + base.a * (1.0 - top.a);
+    return vec4(result, alpha);
   }
 
   vec4 blendExclusion(vec4 base, vec4 top) {
-    return vec4(base.rgb + top.rgb - 2.0 * base.rgb * top.rgb, top.a);
+    // Exclusion blend: similar to difference but softer
+    vec3 result = base.rgb + top.rgb - 2.0 * base.rgb * top.rgb;
+    float alpha = top.a + base.a * (1.0 - top.a);
+    return vec4(result, alpha);
   }
 
   vec4 blendHue(vec4 base, vec4 top) {
+    // Hue blend: takes hue from top, saturation and lightness from base
     vec3 baseHSL = rgb2hsl(base.rgb);
     vec3 topHSL = rgb2hsl(top.rgb);
     vec3 result = hsl2rgb(vec3(topHSL.x, baseHSL.y, baseHSL.z));
-    return vec4(result, top.a);
+    float alpha = top.a + base.a * (1.0 - top.a);
+    return vec4(result, alpha);
   }
 
   vec4 blendSaturation(vec4 base, vec4 top) {
+    // Saturation blend: takes saturation from top, hue and lightness from base
     vec3 baseHSL = rgb2hsl(base.rgb);
     vec3 topHSL = rgb2hsl(top.rgb);
     vec3 result = hsl2rgb(vec3(baseHSL.x, topHSL.y, baseHSL.z));
-    return vec4(result, top.a);
+    float alpha = top.a + base.a * (1.0 - top.a);
+    return vec4(result, alpha);
   }
 
   vec4 blendColor(vec4 base, vec4 top) {
+    // Color blend: takes hue and saturation from top, lightness from base
     vec3 baseHSL = rgb2hsl(base.rgb);
     vec3 topHSL = rgb2hsl(top.rgb);
     vec3 result = hsl2rgb(vec3(topHSL.x, topHSL.y, baseHSL.z));
-    return vec4(result, top.a);
+    float alpha = top.a + base.a * (1.0 - top.a);
+    return vec4(result, alpha);
   }
 
   vec4 blendLuminosity(vec4 base, vec4 top) {
+    // Luminosity blend: takes lightness from top, hue and saturation from base
     vec3 baseHSL = rgb2hsl(base.rgb);
     vec3 topHSL = rgb2hsl(top.rgb);
     vec3 result = hsl2rgb(vec3(baseHSL.x, baseHSL.y, topHSL.z));
-    return vec4(result, top.a);
+    float alpha = top.a + base.a * (1.0 - top.a);
+    return vec4(result, alpha);
   }
 
   vec4 applyBlendMode(vec4 base, vec4 top, int blendMode) {
@@ -239,4 +280,4 @@ export const BLEND_MODE_GLSL = `
     if (blendMode == 15) return blendLuminosity(base, top);
     return blendNormal(base, top);
   }
-` 
+`

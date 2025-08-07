@@ -1,7 +1,7 @@
 "use client"
 
 import React from "react"
-import { PlusIcon, MinusIcon, ChevronDown } from "lucide-react"
+import { PlusIcon, MinusIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -16,7 +16,6 @@ import {
 } from "@/components/image-editor/state.image-editor"
 
 import { LayerSystem, type Layer } from "./layer-system"
-import { HybridRenderer } from "@/lib/shaders/hybrid-renderer"
 import type { BlendMode } from "@/lib/shaders/blend-modes"
 
 export interface ImageEditorProps extends React.ComponentProps<"div"> {

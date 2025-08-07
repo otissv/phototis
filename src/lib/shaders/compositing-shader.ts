@@ -32,7 +32,18 @@ export const COMPOSITING_FRAGMENT_SHADER = `
     // Apply opacity to top layer
     topColor.a *= u_opacity / 100.0;
     
-    // Apply blend mode
+    // Debug: Check if we're getting valid colors
+    if (topColor.a < 0.01) {
+      gl_FragColor = baseColor;
+      return;
+    }
+    
+    if (baseColor.a < 0.01) {
+      gl_FragColor = topColor;
+      return;
+    }
+    
+    // Apply blend mode with proper alpha handling
     vec4 blendedColor = applyBlendMode(baseColor, topColor, u_blendMode);
     
     // Ensure alpha is properly handled
