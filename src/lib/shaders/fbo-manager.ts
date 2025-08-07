@@ -122,6 +122,16 @@ export class FBOManager {
     return this.currentFBO
   }
 
+  // Check if a texture is bound to any FBO
+  isTextureBoundToFBO(texture: WebGLTexture): boolean {
+    for (const fbo of this.fbos.values()) {
+      if (fbo.texture === texture) {
+        return true
+      }
+    }
+    return false
+  }
+
   clearFBO(name: string, r = 0, g = 0, b = 0, a = 0): void {
     if (!this.gl) return
 

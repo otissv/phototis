@@ -39,8 +39,9 @@ export class HybridRenderer {
     const tempFBO = this.fboManager.createFBO(width, height, "temp")
     const pingFBO = this.fboManager.createFBO(width, height, "ping")
     const pongFBO = this.fboManager.createFBO(width, height, "pong")
+    const resultFBO = this.fboManager.createFBO(width, height, "result")
 
-    if (!tempFBO || !pingFBO || !pongFBO) {
+    if (!tempFBO || !pingFBO || !pongFBO || !resultFBO) {
       console.error("Failed to create FBOs")
       return false
     }
@@ -182,6 +183,23 @@ export class HybridRenderer {
     this.fboManager.bindFBO("temp")
     this.fboManager.clearFBO("temp", 0, 0, 0, 0)
 
+    // Ensure we're not reading from the same texture we're writing to
+    const currentTempFBO = this.fboManager.getFBO("temp")
+    if (currentTempFBO?.texture === layerTexture) {
+      console.warn(
+        "Attempting to read from and write to the same texture, skipping layer"
+      )
+      return null
+    }
+
+    // Additional check for any FBO texture that might cause feedback
+    if (this.fboManager.isTextureBoundToFBO(layerTexture)) {
+      console.warn(
+        "Layer texture is bound to an FBO texture, potential feedback loop detected"
+      )
+      return null
+    }
+
     // Use layer program
     this.gl.useProgram(this.layerProgram)
 
@@ -209,55 +227,17 @@ export class HybridRenderer {
     const layerX = layerDim?.x || 0
     const layerY = layerDim?.y || 0
 
-    // Set uniforms - use neutral values for background layer to avoid filters making it invisible
-    if (layer.id === "layer-1") {
-      // Background layer - use neutral filter values
-      const neutralValues = {
-        ...toolsValues,
-        brightness: 100,
-        contrast: 100,
-        saturation: 100,
-        hue: 0,
-        exposure: 0,
-        temperature: 0,
-        gamma: 1,
-        blur: 0,
-        vintage: 0,
-        invert: 0,
-        sepia: 0,
-        grayscale: 0,
-        tint: 0,
-        vibrance: 0,
-        noise: 0,
-        grain: 0,
-        rotate: 0,
-        scale: 1,
-        flipHorizontal: false,
-        flipVertical: false,
-      }
-      this.setLayerUniforms(
-        neutralValues,
-        layer.opacity,
-        canvasWidth,
-        canvasHeight,
-        layerWidth,
-        layerHeight,
-        layerX,
-        layerY
-      )
-    } else {
-      // Additional layers - use actual tool values
-      this.setLayerUniforms(
-        toolsValues,
-        layer.opacity,
-        canvasWidth,
-        canvasHeight,
-        layerWidth,
-        layerHeight,
-        layerX,
-        layerY
-      )
-    }
+    // Set uniforms - treat all layers equally for proper blend mode interactions
+    this.setLayerUniforms(
+      toolsValues,
+      layer.opacity,
+      canvasWidth,
+      canvasHeight,
+      layerWidth,
+      layerHeight,
+      layerX,
+      layerY
+    )
 
     // Bind layer texture
     this.gl.activeTexture(this.gl.TEXTURE0)
@@ -376,6 +356,14 @@ export class HybridRenderer {
       return
     }
 
+    // Check for feedback loop - don't copy if the texture is the same as the FBO texture
+    if (texture === fbo.texture) {
+      console.warn(
+        "Attempting to copy texture to itself, skipping copy operation"
+      )
+      return
+    }
+
     // Bind the target FBO
     this.fboManager.bindFBO(fboName)
     this.fboManager.clearFBO(fboName, 0, 0, 0, 0)
@@ -454,6 +442,29 @@ export class HybridRenderer {
   ): WebGLTexture | null {
     if (!this.gl || !this.compositingProgram) return null
 
+    // Get input FBO texture to check for feedback loops
+    const inputFBOObj = this.fboManager.getFBO(inputFBO)
+    if (!inputFBOObj) {
+      console.error(`Input FBO ${inputFBO} not found`)
+      return null
+    }
+
+    // Get output FBO to check for feedback loops
+    const outputFBOObj = this.fboManager.getFBO(outputFBO)
+    if (!outputFBOObj) {
+      console.error(`Output FBO ${outputFBO} not found`)
+      return null
+    }
+
+    // Prevent feedback loops by ensuring we're not reading from and writing to the same texture
+    if (
+      inputFBOObj.texture === topTexture ||
+      outputFBOObj.texture === topTexture
+    ) {
+      console.warn("Attempting to composite with feedback loop, skipping")
+      return inputFBOObj.texture
+    }
+
     // Bind output FBO for compositing
     this.fboManager.bindFBO(outputFBO)
     this.fboManager.clearFBO(outputFBO, 0, 0, 0, 0)
@@ -504,11 +515,6 @@ export class HybridRenderer {
     }
 
     // Bind input FBO texture as base texture
-    const inputFBOObj = this.fboManager.getFBO(inputFBO)
-    if (!inputFBOObj) {
-      console.error(`Input FBO ${inputFBO} not found`)
-      return null
-    }
 
     this.gl.activeTexture(this.gl.TEXTURE0)
     this.gl.bindTexture(this.gl.TEXTURE_2D, inputFBOObj.texture)
@@ -531,7 +537,6 @@ export class HybridRenderer {
     this.gl.drawArrays(this.gl.TRIANGLE_STRIP, 0, 4)
 
     // Return the output FBO texture
-    const outputFBOObj = this.fboManager.getFBO(outputFBO)
     if (outputFBOObj) {
       return outputFBOObj.texture
     }
@@ -710,7 +715,8 @@ export class HybridRenderer {
       finalFBO = pongFBO
     }
 
-    if (finalFBO) {
+    // Only draw if we have a valid FBO with content
+    if (finalFBO && !this.isFBOEmpty(finalFBO)) {
       this.gl.activeTexture(this.gl.TEXTURE0)
       this.gl.bindTexture(this.gl.TEXTURE_2D, finalFBO.texture)
       const samplerLocation = this.gl.getUniformLocation(program, "u_image")
@@ -719,6 +725,23 @@ export class HybridRenderer {
       // Draw
       this.gl.drawArrays(this.gl.TRIANGLE_STRIP, 0, 4)
     }
+    // If no FBO has content, the canvas will remain transparent (already cleared above)
+  }
+
+  // Helper method to get the rendering order for debugging
+  private getRenderingOrder(layers: Layer[]): Layer[] {
+    return layers
+      .filter((layer) => {
+        if (!layer.visible) return false
+        if (layer.id === "layer-1") {
+          return !!layer.image || !layer.isEmpty
+        }
+        return !!layer.image || !layer.isEmpty
+      })
+      .sort((a, b) => {
+        // Reverse the order for rendering: bottom layers first, top layers last
+        return layers.indexOf(b) - layers.indexOf(a)
+      })
   }
 
   // Method to render all layers with proper compositing using ping-pong FBOs
@@ -739,18 +762,15 @@ export class HybridRenderer {
       return
     }
 
-    // Filter to only visible layers and sort them in rendering order (bottom to top)
-    const visibleLayers = layers
-      .filter((layer) => layer.visible)
-      .sort((a, b) => {
-        // Background layer (layer-1) should always be first
-        if (a.id === "layer-1") return -1
-        if (b.id === "layer-1") return 1
-        // Other layers maintain their original order (bottom to top)
-        return layers.indexOf(a) - layers.indexOf(b)
-      })
+    // Get layers in proper rendering order (bottom to top)
+    const visibleLayers = this.getRenderingOrder(layers)
 
     if (visibleLayers.length === 0) {
+      // Clear all FBOs when no layers are visible
+      this.fboManager.clearFBO("ping", 0, 0, 0, 0)
+      this.fboManager.clearFBO("pong", 0, 0, 0, 0)
+      this.fboManager.clearFBO("temp", 0, 0, 0, 0)
+      this.fboManager.clearFBO("result", 0, 0, 0, 0)
       return
     }
 
@@ -760,6 +780,11 @@ export class HybridRenderer {
 
     // Process layers in the correct order (bottom to top)
     // Each layer will blend with the accumulated result of all visible layers below it
+    console.log(
+      "Rendering layers in order:",
+      visibleLayers.map((l) => `${l.name} (${l.id})`)
+    )
+
     for (let i = 0; i < visibleLayers.length; i++) {
       const layer = visibleLayers[i]
       const layerTexture = layerTextures.get(layer.id)
@@ -786,9 +811,13 @@ export class HybridRenderer {
         continue
       }
 
-      // If this is the first layer (bottom layer), use it as the base
+      // If this is the first layer (bottom layer), store it in an FBO as the base
       if (accumulatedTexture === null) {
-        accumulatedTexture = renderedLayerTexture
+        // Store the first layer in the ping FBO as the base
+        this.copyTextureToFBO(renderedLayerTexture, "ping")
+        accumulatedTexture =
+          this.fboManager.getFBO("ping")?.texture || renderedLayerTexture
+        usePing = true
       } else {
         // Composite this layer with the accumulated result using the layer's blend mode
         // The accumulated result contains all visible layers below this one
@@ -800,6 +829,22 @@ export class HybridRenderer {
         // Copy accumulated texture to input FBO if it's not already there
         if (accumulatedTexture !== this.fboManager.getFBO(inputFBO)?.texture) {
           this.copyTextureToFBO(accumulatedTexture, inputFBO)
+        }
+
+        // Additional feedback loop check - ensure we're not trying to composite with the same texture
+        const inputFBOObj = this.fboManager.getFBO(inputFBO)
+        const outputFBOObj = this.fboManager.getFBO(outputFBO)
+
+        if (
+          inputFBOObj &&
+          outputFBOObj &&
+          (renderedLayerTexture === inputFBOObj.texture ||
+            renderedLayerTexture === outputFBOObj.texture)
+        ) {
+          console.warn(
+            "Feedback loop detected in layer compositing, skipping layer"
+          )
+          continue
         }
 
         // Composite the current layer with the accumulated result

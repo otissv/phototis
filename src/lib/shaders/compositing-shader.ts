@@ -32,12 +32,13 @@ export const COMPOSITING_FRAGMENT_SHADER = `
     // Apply opacity to top layer
     topColor.a *= u_opacity / 100.0;
     
-    // Debug: Check if we're getting valid colors
+    // If top layer is completely transparent, just show base
     if (topColor.a < 0.01) {
       gl_FragColor = baseColor;
       return;
     }
     
+    // If base is completely transparent, just show top
     if (baseColor.a < 0.01) {
       gl_FragColor = topColor;
       return;

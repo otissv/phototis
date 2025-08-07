@@ -117,14 +117,18 @@ export const BLEND_MODE_GLSL = `
     // Multiply blend: result = base * top
     vec3 result = base.rgb * top.rgb;
     float alpha = top.a + base.a * (1.0 - top.a);
-    return vec4(result, alpha);
+    if (alpha < 0.001) return vec4(0.0);
+    vec3 compositedResult = (result * top.a + base.rgb * base.a * (1.0 - top.a)) / alpha;
+    return vec4(compositedResult, alpha);
   }
 
   vec4 blendScreen(vec4 base, vec4 top) {
     // Screen blend: result = 1 - (1 - base) * (1 - top)
     vec3 result = 1.0 - (1.0 - base.rgb) * (1.0 - top.rgb);
     float alpha = top.a + base.a * (1.0 - top.a);
-    return vec4(result, alpha);
+    if (alpha < 0.001) return vec4(0.0);
+    vec3 compositedResult = (result * top.a + base.rgb * base.a * (1.0 - top.a)) / alpha;
+    return vec4(compositedResult, alpha);
   }
 
   vec4 blendOverlay(vec4 base, vec4 top) {
@@ -138,7 +142,9 @@ export const BLEND_MODE_GLSL = `
       }
     }
     float alpha = top.a + base.a * (1.0 - top.a);
-    return vec4(result, alpha);
+    if (alpha < 0.001) return vec4(0.0);
+    vec3 compositedResult = (result * top.a + base.rgb * base.a * (1.0 - top.a)) / alpha;
+    return vec4(compositedResult, alpha);
   }
 
   vec4 blendSoftLight(vec4 base, vec4 top) {
@@ -152,7 +158,9 @@ export const BLEND_MODE_GLSL = `
       }
     }
     float alpha = top.a + base.a * (1.0 - top.a);
-    return vec4(result, alpha);
+    if (alpha < 0.001) return vec4(0.0);
+    vec3 compositedResult = (result * top.a + base.rgb * base.a * (1.0 - top.a)) / alpha;
+    return vec4(compositedResult, alpha);
   }
 
   vec4 blendHardLight(vec4 base, vec4 top) {
@@ -166,7 +174,9 @@ export const BLEND_MODE_GLSL = `
       }
     }
     float alpha = top.a + base.a * (1.0 - top.a);
-    return vec4(result, alpha);
+    if (alpha < 0.001) return vec4(0.0);
+    vec3 compositedResult = (result * top.a + base.rgb * base.a * (1.0 - top.a)) / alpha;
+    return vec4(compositedResult, alpha);
   }
 
   vec4 blendColorDodge(vec4 base, vec4 top) {
@@ -180,7 +190,9 @@ export const BLEND_MODE_GLSL = `
       }
     }
     float alpha = top.a + base.a * (1.0 - top.a);
-    return vec4(result, alpha);
+    if (alpha < 0.001) return vec4(0.0);
+    vec3 compositedResult = (result * top.a + base.rgb * base.a * (1.0 - top.a)) / alpha;
+    return vec4(compositedResult, alpha);
   }
 
   vec4 blendColorBurn(vec4 base, vec4 top) {
@@ -194,35 +206,45 @@ export const BLEND_MODE_GLSL = `
       }
     }
     float alpha = top.a + base.a * (1.0 - top.a);
-    return vec4(result, alpha);
+    if (alpha < 0.001) return vec4(0.0);
+    vec3 compositedResult = (result * top.a + base.rgb * base.a * (1.0 - top.a)) / alpha;
+    return vec4(compositedResult, alpha);
   }
 
   vec4 blendDarken(vec4 base, vec4 top) {
     // Darken blend: takes the darker of each channel
     vec3 result = min(base.rgb, top.rgb);
     float alpha = top.a + base.a * (1.0 - top.a);
-    return vec4(result, alpha);
+    if (alpha < 0.001) return vec4(0.0);
+    vec3 compositedResult = (result * top.a + base.rgb * base.a * (1.0 - top.a)) / alpha;
+    return vec4(compositedResult, alpha);
   }
 
   vec4 blendLighten(vec4 base, vec4 top) {
     // Lighten blend: takes the lighter of each channel
     vec3 result = max(base.rgb, top.rgb);
     float alpha = top.a + base.a * (1.0 - top.a);
-    return vec4(result, alpha);
+    if (alpha < 0.001) return vec4(0.0);
+    vec3 compositedResult = (result * top.a + base.rgb * base.a * (1.0 - top.a)) / alpha;
+    return vec4(compositedResult, alpha);
   }
 
   vec4 blendDifference(vec4 base, vec4 top) {
     // Difference blend: absolute difference between channels
     vec3 result = abs(base.rgb - top.rgb);
     float alpha = top.a + base.a * (1.0 - top.a);
-    return vec4(result, alpha);
+    if (alpha < 0.001) return vec4(0.0);
+    vec3 compositedResult = (result * top.a + base.rgb * base.a * (1.0 - top.a)) / alpha;
+    return vec4(compositedResult, alpha);
   }
 
   vec4 blendExclusion(vec4 base, vec4 top) {
     // Exclusion blend: similar to difference but softer
     vec3 result = base.rgb + top.rgb - 2.0 * base.rgb * top.rgb;
     float alpha = top.a + base.a * (1.0 - top.a);
-    return vec4(result, alpha);
+    if (alpha < 0.001) return vec4(0.0);
+    vec3 compositedResult = (result * top.a + base.rgb * base.a * (1.0 - top.a)) / alpha;
+    return vec4(compositedResult, alpha);
   }
 
   vec4 blendHue(vec4 base, vec4 top) {
@@ -231,7 +253,9 @@ export const BLEND_MODE_GLSL = `
     vec3 topHSL = rgb2hsl(top.rgb);
     vec3 result = hsl2rgb(vec3(topHSL.x, baseHSL.y, baseHSL.z));
     float alpha = top.a + base.a * (1.0 - top.a);
-    return vec4(result, alpha);
+    if (alpha < 0.001) return vec4(0.0);
+    vec3 compositedResult = (result * top.a + base.rgb * base.a * (1.0 - top.a)) / alpha;
+    return vec4(compositedResult, alpha);
   }
 
   vec4 blendSaturation(vec4 base, vec4 top) {
@@ -240,7 +264,9 @@ export const BLEND_MODE_GLSL = `
     vec3 topHSL = rgb2hsl(top.rgb);
     vec3 result = hsl2rgb(vec3(baseHSL.x, topHSL.y, baseHSL.z));
     float alpha = top.a + base.a * (1.0 - top.a);
-    return vec4(result, alpha);
+    if (alpha < 0.001) return vec4(0.0);
+    vec3 compositedResult = (result * top.a + base.rgb * base.a * (1.0 - top.a)) / alpha;
+    return vec4(compositedResult, alpha);
   }
 
   vec4 blendColor(vec4 base, vec4 top) {
@@ -249,7 +275,9 @@ export const BLEND_MODE_GLSL = `
     vec3 topHSL = rgb2hsl(top.rgb);
     vec3 result = hsl2rgb(vec3(topHSL.x, topHSL.y, baseHSL.z));
     float alpha = top.a + base.a * (1.0 - top.a);
-    return vec4(result, alpha);
+    if (alpha < 0.001) return vec4(0.0);
+    vec3 compositedResult = (result * top.a + base.rgb * base.a * (1.0 - top.a)) / alpha;
+    return vec4(compositedResult, alpha);
   }
 
   vec4 blendLuminosity(vec4 base, vec4 top) {
@@ -258,7 +286,9 @@ export const BLEND_MODE_GLSL = `
     vec3 topHSL = rgb2hsl(top.rgb);
     vec3 result = hsl2rgb(vec3(baseHSL.x, baseHSL.y, topHSL.z));
     float alpha = top.a + base.a * (1.0 - top.a);
-    return vec4(result, alpha);
+    if (alpha < 0.001) return vec4(0.0);
+    vec3 compositedResult = (result * top.a + base.rgb * base.a * (1.0 - top.a)) / alpha;
+    return vec4(compositedResult, alpha);
   }
 
   vec4 applyBlendMode(vec4 base, vec4 top, int blendMode) {

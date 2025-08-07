@@ -141,11 +141,6 @@ export function LayerSystem({
     (layerId: string) => {
       if (isDragActive || isGlobalDragActive) return
 
-      // Prevent deletion of the background layer (layer-1)
-      if (layerId === "layer-1") {
-        return
-      }
-
       const newLayers = layers.filter((layer) => layer.id !== layerId)
       onLayersChange(newLayers)
 
@@ -165,11 +160,6 @@ export function LayerSystem({
   const handleDuplicateLayer = React.useCallback(
     (layerId: string) => {
       if (isDragActive || isGlobalDragActive) return
-
-      // Prevent duplication of the background layer (layer-1)
-      if (layerId === "layer-1") {
-        return
-      }
 
       const layerToDuplicate = layers.find((layer) => layer.id === layerId)
       if (!layerToDuplicate) return
@@ -201,11 +191,6 @@ export function LayerSystem({
     (layerId: string) => {
       if (isDragActive || isGlobalDragActive) return
 
-      // Prevent locking the background layer (layer-1)
-      if (layerId === "layer-1") {
-        return
-      }
-
       const newLayers = layers.map((layer) =>
         layer.id === layerId ? { ...layer, locked: !layer.locked } : layer
       )
@@ -217,11 +202,6 @@ export function LayerSystem({
   const handleLayerNameChange = React.useCallback(
     (layerId: string, name: string) => {
       if (isDragActive || isGlobalDragActive) return
-
-      // Prevent renaming the background layer (layer-1)
-      if (layerId === "layer-1") {
-        return
-      }
 
       const newLayers = layers.map((layer) =>
         layer.id === layerId ? { ...layer, name } : layer
@@ -537,8 +517,10 @@ function DraggableLayerItem({
       isOver: monitor.isOver(),
     }),
     canDrop: () => {
-      // Prevent drops during navigation or other drag operations
-      return !isGlobalDragActive
+      // Allow drops during layer drag operations
+      // The isGlobalDragActive flag is used to prevent other UI interactions during drag
+      // but we want to allow layer reordering during drag
+      return true
     },
   })
 
@@ -657,11 +639,7 @@ function LayerItemContent({
           </Button>
 
           <Button
-            title={
-              layer.id === "layer-1"
-                ? "Cannot lock background layer"
-                : "Toggle layer lock"
-            }
+            title='Toggle layer lock'
             variant='ghost'
             size='sm'
             onClick={(e: React.MouseEvent) => {
@@ -669,13 +647,12 @@ function LayerItemContent({
               onToggleLock()
             }}
             className='size-10 p-0 rounded-sm cursor-pointer'
-            disabled={isDragActive || layer.id === "layer-1"}
+            disabled={isDragActive}
           >
             <Lock
               className={cn(
                 "w-3 h-3",
-                layer.locked ? "text-primary" : "text-muted-foreground",
-                layer.id === "layer-1" && "text-muted-foreground"
+                layer.locked ? "text-primary" : "text-muted-foreground"
               )}
             />
           </Button>
@@ -694,7 +671,7 @@ function LayerItemContent({
                   "focus-visible:ring-0 focus-visible:ring-transparent focus-visible:ring-offset-0"
                 )}
                 autoFocus
-                disabled={isDragActive || layer.id === "layer-1"}
+                disabled={isDragActive}
               />
             ) : (
               <div className='flex items-center gap-2'>
@@ -705,11 +682,7 @@ function LayerItemContent({
                     "text-sm truncate flex items-center gap-1 h-6 flex-1 justify-start px-1 cursor-pointer rounded-sm cursor-grab",
                     "hover:bg-transparent"
                   )}
-                  onDoubleClick={() =>
-                    !isDragActive &&
-                    layer.id !== "layer-1" &&
-                    setIsEditing(true)
-                  }
+                  onDoubleClick={() => !isDragActive && setIsEditing(true)}
                   disabled={isDragActive}
                 >
                   <span className='text-xs whitespace-nowrap truncate'>
@@ -729,19 +702,10 @@ function LayerItemContent({
                 onDuplicate()
               }}
               className='size-10 p-0 rounded-sm cursor-pointer'
-              disabled={isDragActive || layer.id === "layer-1"}
-              title={
-                layer.id === "layer-1"
-                  ? "Cannot duplicate background layer"
-                  : "Duplicate layer"
-              }
+              disabled={isDragActive}
+              title='Duplicate layer'
             >
-              <Copy
-                className={cn(
-                  "w-3 h-3",
-                  layer.id === "layer-1" && "text-muted-foreground"
-                )}
-              />
+              <Copy className={cn("w-3 h-3")} />
             </Button>
             <Button
               variant='ghost'
@@ -751,19 +715,10 @@ function LayerItemContent({
                 onDelete()
               }}
               className='size-10 p-0 text-destructive rounded-sm cursor-pointer'
-              disabled={isDragActive || layer.id === "layer-1"}
-              title={
-                layer.id === "layer-1"
-                  ? "Cannot delete background layer"
-                  : "Delete layer"
-              }
+              disabled={isDragActive}
+              title='Delete layer'
             >
-              <Trash2
-                className={cn(
-                  "w-3 h-3",
-                  layer.id === "layer-1" && "text-muted-foreground"
-                )}
-              />
+              <Trash2 className={cn("w-3 h-3")} />
             </Button>
           </div>
         </div>

@@ -182,11 +182,23 @@ export function ImageEditor({
 
   const handleLayersChange = React.useCallback(
     (newLayers: Layer[]) => {
-      // Prevent layer updates during drag operations
-      if (isDragActive) return
+      // Allow layer reordering during drag operations, but prevent other changes
+      if (isDragActive) {
+        // Check if this is just a reordering (same layers, different order)
+        const currentLayerIds = layers.map((layer) => layer.id).sort()
+        const newLayerIds = newLayers.map((layer) => layer.id).sort()
+        const isReordering =
+          currentLayerIds.length === newLayerIds.length &&
+          currentLayerIds.every((id, index) => id === newLayerIds[index])
+
+        if (isReordering) {
+          setLayers(newLayers)
+        }
+        return
+      }
       setLayers(newLayers)
     },
-    [isDragActive]
+    [isDragActive, layers]
   )
 
   const handleSelectedLayerChange = React.useCallback(
@@ -287,22 +299,20 @@ export function ImageEditor({
         </div>
       </div>
 
-      <div className='col-start-2 row-start-2 flex flex-col items-center overflow-hidden'>
-        <div className='flex justify-center items-center w-full overflow-hidden h-[calc(100vh-300px)]'>
-          <div className='relative w-full h-full'>
-            <ImageEditorCanvas
-              image={image}
-              toolsValues={toolsValues}
-              layers={layers}
-              onProgress={handleOnProgress}
-              id='image-editor-canvas'
-              canvasRef={canvasRef}
-              onDrawReady={handleDrawReady}
-              onImageDrop={handleImageDrop}
-              isDragActive={isDragActive}
-              selectedLayerId={selectedLayerId}
-            />
-          </div>
+      <div className='col-start-2 row-start-2 flex flex-col items-center h-[calc(100vh-300px)] overflow-hidden'>
+        <div className='relative h-full'>
+          <ImageEditorCanvas
+            image={image}
+            toolsValues={toolsValues}
+            layers={layers}
+            onProgress={handleOnProgress}
+            id='image-editor-canvas'
+            canvasRef={canvasRef}
+            onDrawReady={handleDrawReady}
+            onImageDrop={handleImageDrop}
+            isDragActive={isDragActive}
+            selectedLayerId={selectedLayerId}
+          />
         </div>
       </div>
 

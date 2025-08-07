@@ -327,9 +327,6 @@ export function ImageEditorCanvas({
         if (!currentLayerIds.has(layerId) && layerId !== "main") {
           imageDataCacheRef.current.delete(layerId)
           textureCacheRef.current.delete(layerId)
-          if (layerId !== "layer-1") {
-            layerDimensionsRef.current.delete(layerId)
-          }
         }
       }
 
@@ -597,7 +594,12 @@ export function ImageEditorCanvas({
       }
 
       // Get image data for this layer
-      const imageData = imageDataCacheRef.current.get(layer.id)
+      let imageData = imageDataCacheRef.current.get(layer.id)
+
+      // For the background layer (layer-1), use the main image data if available
+      if (!imageData && layer.id === "layer-1") {
+        imageData = imageDataCacheRef.current.get("main")
+      }
 
       if (imageData) {
         const texture = createTextureFromImageData(imageData)
@@ -607,21 +609,12 @@ export function ImageEditorCanvas({
         }
       }
 
-      // For background layer, try to use main image data
-      if (layer.id === "layer-1") {
-        const mainImageData = imageDataCacheRef.current.get("main")
-        if (mainImageData) {
-          const texture = createTextureFromImageData(mainImageData)
-          if (texture) {
-            textureCacheRef.current.set(layer.id, texture)
-
-            return texture
-          }
-        }
+      // For empty layers without image content, return null
+      if (layer.isEmpty && !layer.image) {
+        return null
       }
 
-      // Fallback to main texture
-
+      // Fallback to main texture for layers that should have content
       return textureRef.current
     },
     [createTextureFromImageData]
@@ -648,56 +641,11 @@ export function ImageEditorCanvas({
       const canvasWidth = canvas.width
       const canvasHeight = canvas.height
 
-      // Get visible layers sorted from bottom to top
-      const visibleLayers = layers.filter((layer) => {
-        const isVisible = layer.visible && (!layer.isEmpty || layer.image)
+      // Pass all layers to the hybrid renderer and let it handle the ordering
+      // The hybrid renderer will filter visible layers and sort them properly
+      const allLayersToRender = layers
 
-        return isVisible
-      })
-
-      // Always ensure the background layer (layer-1) is rendered if it has dimensions
-      const backgroundLayerDimensions =
-        layerDimensionsRef.current.get("layer-1")
-      const hasBackgroundLayer =
-        backgroundLayerDimensions && imageDataCacheRef.current.has("main")
-
-      // Create a complete list of layers to render, ensuring proper order
-      let allLayersToRender: Layer[] = []
-
-      // Always add background layer first if it exists and is visible
-      if (hasBackgroundLayer) {
-        const backgroundLayerFromSystem = layers.find(
-          (layer) => layer.id === "layer-1"
-        )
-
-        if (backgroundLayerFromSystem?.visible) {
-          allLayersToRender.push(backgroundLayerFromSystem)
-        } else {
-          // Fallback to creating a background layer object for rendering
-          const backgroundLayer = {
-            id: "layer-1",
-            name: "Background",
-            visible: true,
-            locked: false,
-            isEmpty: false,
-            image: null,
-            opacity: 100,
-            filters: initialState,
-            blendMode: "normal" as const,
-          }
-          allLayersToRender.push(backgroundLayer)
-        }
-      }
-
-      // Add all other visible layers (excluding background layer which we already added)
-      // For proper Photoshop-style blending, additional layers should be processed in the order they appear
-      // in the layers array, which represents their stacking order from bottom to top
-      const additionalLayers = visibleLayers.filter(
-        (layer) => layer.id !== "layer-1"
-      )
-      allLayersToRender = [...allLayersToRender, ...additionalLayers]
-
-      // If no layers are visible, just clear the canvas and return
+      // If no layers are available, just clear the canvas and return
       if (allLayersToRender.length === 0) {
         gl.clearColor(0, 0, 0, 0)
         gl.clear(gl.COLOR_BUFFER_BIT)
@@ -715,8 +663,19 @@ export function ImageEditorCanvas({
       // Create a map of layer textures
       const layerTextures = new Map<string, WebGLTexture>()
 
-      // Load textures for all visible layers
+      // Load textures for layers that have content (the hybrid renderer will filter visible ones)
       for (const layer of allLayersToRender) {
+        // Skip layers that don't have image content
+        // For the background layer, check if main image data is available
+        if (layer.id === "layer-1") {
+          const mainImageData = imageDataCacheRef.current.get("main")
+          if (!mainImageData && layer.isEmpty && !layer.image) {
+            continue
+          }
+        } else if (layer.isEmpty && !layer.image) {
+          continue
+        }
+
         const layerTexture = await loadLayerTexture(layer)
         if (layerTexture) {
           layerTextures.set(layer.id, layerTexture)
@@ -804,6 +763,26 @@ export function ImageEditorCanvas({
     return () => clearTimeout(timer)
   }, [draw, isDragActive])
 
+  // Trigger redraw when layers are reordered (even during drag)
+  React.useEffect(() => {
+    // Only redraw if WebGL objects are ready
+    if (
+      !glRef.current ||
+      !programRef.current ||
+      !positionBufferRef.current ||
+      !texCoordBufferRef.current ||
+      !textureRef.current
+    ) {
+      return
+    }
+
+    // Small delay to ensure layer dimensions are calculated
+    const timer = setTimeout(() => {
+      draw()
+    }, 50) // Shorter delay for reordering
+    return () => clearTimeout(timer)
+  }, [draw]) // Depend on draw function which already includes layers
+
   React.useEffect(() => {
     onDrawReady?.(() => draw())
   }, [draw, onDrawReady])
@@ -860,12 +839,19 @@ export function ImageEditorCanvas({
   return (
     <div
       ref={containerRef}
-      className='relative  h-full overflow-hidden'
+      className='relative h-full overflow-auto flex items-center justify-center '
       onWheel={handleWheel}
       onDoubleClick={handleDoubleClick}
     >
+      <style>{`
+      .image-editor-checkerboard {
+        background: repeating-conic-gradient(#fff 0% 25%, #ccc 0% 50%) 0 / 20px 20px;
+      }
+      
+      `}</style>
+
       <motion.div
-        className='relative'
+        className='relative transition-all duration-200 image-editor-checkerboard'
         style={{
           x: transformX,
           y: transformY,
