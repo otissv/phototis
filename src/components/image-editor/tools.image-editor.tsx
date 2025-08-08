@@ -47,6 +47,13 @@ import {
 import { useWebGLDownload } from "@/components/image-editor/useWebGLDownload"
 import { Button } from "../ui/button"
 import { QualityOptions } from "./quaity-options.image-editor"
+import { SharpenButton, SharpenControls } from "./tools/sharpen.tools"
+import { TintButton, TintControls } from "./tools/tint.tools"
+import { VibranceButton, VibranceControls } from "./tools/vibrance.tools"
+import { GrainButton, GrainControls } from "./tools/grain.tools"
+import { InvertButton, InvertControls } from "./tools/invert.tools"
+import { SepiaButton, SepiaControls } from "./tools/sepia.tools"
+import { GrayscaleButton, GrayscaleControls } from "./tools/grayscale.tools"
 
 export function getEditorTools({
   selectedSidebar,
@@ -73,7 +80,7 @@ export function getEditorTools({
       return {
         header: (_props: ImageEditorHeaderProps) => <></>,
         footer: (props: ImageEditorFooterProps) => (
-          <FilterFooter
+          <PresetsFooter
             {...props}
             canvasRef={canvasRef}
             drawFnRef={drawFnRef}
@@ -159,6 +166,20 @@ export function FinetuneFooter({
           return dispatch({ type: "blurDirection", payload: value })
         case "blurCenter":
           return dispatch({ type: "blurCenter", payload: value })
+        case "tint":
+          return dispatch({ type: "tint", payload: value })
+        case "vibrance":
+          return dispatch({ type: "vibrance", payload: value })
+        case "noise":
+          return dispatch({ type: "noise", payload: value })
+        case "grain":
+          return dispatch({ type: "grain", payload: value })
+        case "invert":
+          return dispatch({ type: "invert", payload: value })
+        case "sepia":
+          return dispatch({ type: "sepia", payload: value })
+        case "grayscale":
+          return dispatch({ type: "grayscale", payload: value })
         default:
           return () => {}
       }
@@ -166,7 +187,6 @@ export function FinetuneFooter({
     [dispatch, selectedTool]
   )
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: <explanation>
   const Control = React.useMemo(() => {
     const controlProps = {
       image,
@@ -198,6 +218,20 @@ export function FinetuneFooter({
         return <GammaControls {...controlProps} />
       case "vintage":
         return <VintageControls {...controlProps} />
+      case "sharpen":
+        return <SharpenControls {...controlProps} />
+      case "tint":
+        return <TintControls {...controlProps} />
+      case "vibrance":
+        return <VibranceControls {...controlProps} />
+      case "grain":
+        return <GrainControls {...controlProps} />
+      case "invert":
+        return <InvertControls {...controlProps} />
+      case "sepia":
+        return <SepiaControls {...controlProps} />
+      case "grayscale":
+        return <GrayscaleControls {...controlProps} />
     }
   }, [selectedTool, value, progress, handleOnChange, image])
 
@@ -263,10 +297,10 @@ export function FinetuneFooter({
 
   return (
     <div {...props}>
-      <div className='flex justify-center'>
+      <div className='flex justify-center overflow-x-auto '>
         <div className='max-w-lg'>{Control}</div>
       </div>
-      <ul className='flex gap-6 w-full justify-center'>
+      <ul className='flex gap-6 w-full max-w-lg overflow-x-auto py-2'>
         <li>
           <BrightnessButton
             onSelectedToolChange={onSelectedToolChange}
@@ -333,6 +367,62 @@ export function FinetuneFooter({
             Blur
           </ImageEditorButton>
         </li>
+        <li>
+          <SharpenButton
+            onSelectedToolChange={onSelectedToolChange}
+            selectedTool={selectedTool}
+            progress={progress}
+          />
+        </li>
+        <li>
+          <TintButton
+            onSelectedToolChange={onSelectedToolChange}
+            selectedTool={selectedTool}
+            progress={progress}
+          />
+        </li>
+        <li>
+          <VibranceButton
+            onSelectedToolChange={onSelectedToolChange}
+            selectedTool={selectedTool}
+            progress={progress}
+          />
+        </li>
+        {/* <li>
+          <NoiseButton
+            onSelectedToolChange={onSelectedToolChange}
+            selectedTool={selectedTool}
+            progress={progress}
+          />
+        </li> */}
+        <li>
+          <GrainButton
+            onSelectedToolChange={onSelectedToolChange}
+            selectedTool={selectedTool}
+            progress={progress}
+          />
+        </li>
+        <li>
+          <InvertButton
+            onSelectedToolChange={onSelectedToolChange}
+            selectedTool={selectedTool}
+            progress={progress}
+          />
+        </li>
+        <li>
+          <SepiaButton
+            onSelectedToolChange={onSelectedToolChange}
+            selectedTool={selectedTool}
+            progress={progress}
+          />
+        </li>
+        <li>
+          <GrayscaleButton
+            onSelectedToolChange={onSelectedToolChange}
+            selectedTool={selectedTool}
+            progress={progress}
+          />
+        </li>
       </ul>
       {renderBlurControls()}
     </div>
@@ -340,9 +430,9 @@ export function FinetuneFooter({
 }
 
 /**
- * Filter
+ * Presets
  */
-export function FilterFooter({
+export function PresetsFooter({
   className,
   selectedTool,
   value,
