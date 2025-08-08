@@ -210,32 +210,29 @@ export const TOOL_VALUES: Record<ToolValueKeys, ToolValueTypes> = {
 }
 
 export const SIDEBAR_TOOLS = {
-  transform: ["rotate", "scale", "resize", "flipVertical", "flipHorizontal"],
-  upscale: ["upscale"],
+  rotate: ["rotate", "flipVertical", "flipHorizontal"],
+  scale: ["scale", "resize", "upscale"],
   actions: ["actions"],
   layers: ["layers"],
-  finetune: [
+  adjust: [
     "brightness",
     "contrast",
+    "exposure",
+    "gamma",
     "hue",
     "saturation",
-    "exposure",
     "temperature",
-    "gamma",
-    "blur",
-    "sharpen",
-    "vintage",
-  ],
-  filter: [
     "tint",
     "vibrance",
-    "sharpen",
+    "vintage",
+  ],
+  effects: [
     "blur",
-    "noise",
     "grain",
-    "sharpen",
-    "invert",
-    "sepia",
     "grayscale",
+    "invert",
+    "noise",
+    "sepia",
+    "sharpen",
   ],
 }

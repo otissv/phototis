@@ -54,6 +54,7 @@ import { GrainButton, GrainControls } from "./tools/grain.tools"
 import { InvertButton, InvertControls } from "./tools/invert.tools"
 import { SepiaButton, SepiaControls } from "./tools/sepia.tools"
 import { GrayscaleButton, GrayscaleControls } from "./tools/grayscale.tools"
+import { NoiseButton, NoiseControls } from "./tools/noise.tools"
 
 export function getEditorTools({
   selectedSidebar,
@@ -65,65 +66,59 @@ export function getEditorTools({
   drawFnRef: React.RefObject<() => void>
 }) {
   switch (selectedSidebar) {
-    case "finetune":
+    case "adjust":
       return {
         header: (_props: ImageEditorHeaderProps) => <></>,
         footer: (props: ImageEditorFooterProps) => (
-          <FinetuneFooter
+          <AdjustFooter
             {...props}
             canvasRef={canvasRef}
             drawFnRef={drawFnRef}
           />
         ),
       }
-    case "filter":
+    case "effects":
       return {
         header: (_props: ImageEditorHeaderProps) => <></>,
         footer: (props: ImageEditorFooterProps) => (
-          <PresetsFooter
+          <EffectsFooter
             {...props}
             canvasRef={canvasRef}
             drawFnRef={drawFnRef}
           />
         ),
       }
-    case "upscale":
+    case "rotate":
       return {
         header: (_props: ImageEditorHeaderProps) => <></>,
         footer: (props: ImageEditorFooterProps) => (
-          <UpscaleFooter
+          <RotateFooter
             {...props}
             canvasRef={canvasRef}
             drawFnRef={drawFnRef}
           />
+        ),
+      }
+    case "scale":
+      return {
+        header: (_props: ImageEditorHeaderProps) => <></>,
+        footer: (props: ImageEditorFooterProps) => (
+          <ScaleFooter {...props} canvasRef={canvasRef} drawFnRef={drawFnRef} />
         ),
       }
 
     default:
       return {
-        header: (props: ImageEditorHeaderProps) => (
-          <TransformHeader
-            {...props}
-            canvasRef={canvasRef}
-            drawFnRef={drawFnRef}
-          />
-        ),
-        footer: (props: ImageEditorFooterProps) => (
-          <TransformFooter
-            {...props}
-            canvasRef={canvasRef}
-            drawFnRef={drawFnRef}
-          />
-        ),
+        header: (_props: ImageEditorHeaderProps) => <></>,
+        footer: (_props: ImageEditorFooterProps) => <></>,
       }
   }
 }
 
 /**
- * Finetune
+ * Adjust
  */
-
-export function FinetuneFooter({
+export function AdjustFooter({
   selectedTool,
   value,
   onSelectedToolChange,
@@ -144,18 +139,169 @@ export function FinetuneFooter({
           return dispatch({ type: "brightness", payload: value })
         case "contrast":
           return dispatch({ type: "contrast", payload: value })
+        case "exposure":
+          return dispatch({ type: "exposure", payload: value })
+        case "gamma":
+          return dispatch({ type: "gamma", payload: value })
         case "hue":
           return dispatch({ type: "hue", payload: value })
         case "saturation":
           return dispatch({ type: "saturation", payload: value })
-        case "exposure":
-          return dispatch({ type: "exposure", payload: value })
         case "temperature":
-          return dispatch({ type: "temperature", payload: value })
-        case "gamma":
-          return dispatch({ type: "gamma", payload: value })
+        case "tint":
+          return dispatch({ type: "tint", payload: value })
+        case "vibrance":
+          return dispatch({ type: "vibrance", payload: value })
         case "vintage":
           return dispatch({ type: "vintage", payload: value })
+        default:
+          return () => {}
+      }
+    },
+    [dispatch, selectedTool]
+  )
+
+  const Control = React.useMemo(() => {
+    const controlProps = {
+      image,
+      value,
+      progress,
+      selectedTool,
+      label: (value: number, operator: string) => {
+        if (selectedTool === "rotate") {
+          return `${Math.round(value)} ${operator}`
+        }
+        return `${Math.round(value)} ${operator}`
+      },
+      onChange: handleOnChange,
+    }
+    switch (selectedTool) {
+      case "brightness":
+        return <BrightnessControls {...controlProps} />
+      case "contrast":
+        return <ContrastControls {...controlProps} />
+      case "exposure":
+        return <ExposureControls {...controlProps} />
+      case "gamma":
+        return <GammaControls {...controlProps} />
+      case "hue":
+        return <HueControls {...controlProps} />
+      case "saturation":
+        return <SaturationControls {...controlProps} />
+      case "temperature":
+        return <TemperatureControls {...controlProps} />
+      case "vintage":
+        return <VintageControls {...controlProps} />
+
+      case "tint":
+        return <TintControls {...controlProps} />
+      case "vibrance":
+        return <VibranceControls {...controlProps} />
+    }
+  }, [selectedTool, value, progress, handleOnChange, image])
+
+  return (
+    <div {...props}>
+      <div className='flex justify-center overflow-x-auto '>
+        <div className='max-w-lg'>{Control}</div>
+      </div>
+      <ul className='flex gap-6 w-full max-w-lg overflow-x-auto py-2'>
+        <li>
+          <BrightnessButton
+            onSelectedToolChange={onSelectedToolChange}
+            selectedTool={selectedTool}
+            progress={progress}
+          />
+        </li>
+        <li>
+          <ContrastButton
+            onSelectedToolChange={onSelectedToolChange}
+            selectedTool={selectedTool}
+            progress={progress}
+          />
+        </li>
+        <li>
+          <HueButton
+            onSelectedToolChange={onSelectedToolChange}
+            selectedTool={selectedTool}
+            progress={progress}
+          />
+        </li>
+        <li>
+          <SaturationButton
+            onSelectedToolChange={onSelectedToolChange}
+            selectedTool={selectedTool}
+            progress={progress}
+          />
+        </li>
+        <li>
+          <ExposureButton
+            onSelectedToolChange={onSelectedToolChange}
+            selectedTool={selectedTool}
+            progress={progress}
+          />
+        </li>
+        <li>
+          <TemperatureButton
+            onSelectedToolChange={onSelectedToolChange}
+            selectedTool={selectedTool}
+            progress={progress}
+          />
+        </li>
+        <li>
+          <GammaButton
+            onSelectedToolChange={onSelectedToolChange}
+            selectedTool={selectedTool}
+            progress={progress}
+          />
+        </li>
+        <li>
+          <VintageButton
+            onSelectedToolChange={onSelectedToolChange}
+            selectedTool={selectedTool}
+            progress={progress}
+          />
+        </li>
+
+        <li>
+          <TintButton
+            onSelectedToolChange={onSelectedToolChange}
+            selectedTool={selectedTool}
+            progress={progress}
+          />
+        </li>
+        <li>
+          <VibranceButton
+            onSelectedToolChange={onSelectedToolChange}
+            selectedTool={selectedTool}
+            progress={progress}
+          />
+        </li>
+      </ul>
+    </div>
+  )
+}
+
+/**
+ * Effects
+ */
+export function EffectsFooter({
+  selectedTool,
+  value,
+  onSelectedToolChange,
+  dispatch,
+  toolsValues,
+  progress,
+  image,
+  onChange: _onChange,
+  onProgress: _onProgress,
+  canvasRef,
+  drawFnRef,
+  ...props
+}: ImageEditorFooterProps) {
+  const handleOnChange = React.useCallback(
+    (value: number) => {
+      switch (selectedTool) {
         case "sharpen":
           return dispatch({ type: "sharpen", payload: value })
         case "blur":
@@ -166,10 +312,6 @@ export function FinetuneFooter({
           return dispatch({ type: "blurDirection", payload: value })
         case "blurCenter":
           return dispatch({ type: "blurCenter", payload: value })
-        case "tint":
-          return dispatch({ type: "tint", payload: value })
-        case "vibrance":
-          return dispatch({ type: "vibrance", payload: value })
         case "noise":
           return dispatch({ type: "noise", payload: value })
         case "grain":
@@ -202,36 +344,19 @@ export function FinetuneFooter({
       onChange: handleOnChange,
     }
     switch (selectedTool) {
-      case "brightness":
-        return <BrightnessControls {...controlProps} />
-      case "contrast":
-        return <ContrastControls {...controlProps} />
-      case "hue":
-        return <HueControls {...controlProps} />
-      case "saturation":
-        return <SaturationControls {...controlProps} />
-      case "exposure":
-        return <ExposureControls {...controlProps} />
-      case "temperature":
-        return <TemperatureControls {...controlProps} />
-      case "gamma":
-        return <GammaControls {...controlProps} />
-      case "vintage":
-        return <VintageControls {...controlProps} />
-      case "sharpen":
-        return <SharpenControls {...controlProps} />
-      case "tint":
-        return <TintControls {...controlProps} />
-      case "vibrance":
-        return <VibranceControls {...controlProps} />
       case "grain":
         return <GrainControls {...controlProps} />
-      case "invert":
-        return <InvertControls {...controlProps} />
-      case "sepia":
-        return <SepiaControls {...controlProps} />
       case "grayscale":
         return <GrayscaleControls {...controlProps} />
+      case "invert":
+        return <InvertControls {...controlProps} />
+      case "noise":
+        return <NoiseControls {...controlProps} />
+      case "sepia":
+        return <SepiaControls {...controlProps} />
+
+      case "sharpen":
+        return <SharpenControls {...controlProps} />
     }
   }, [selectedTool, value, progress, handleOnChange, image])
 
@@ -302,63 +427,6 @@ export function FinetuneFooter({
       </div>
       <ul className='flex gap-6 w-full max-w-lg overflow-x-auto py-2'>
         <li>
-          <BrightnessButton
-            onSelectedToolChange={onSelectedToolChange}
-            selectedTool={selectedTool}
-            progress={progress}
-          />
-        </li>
-        <li>
-          <ContrastButton
-            onSelectedToolChange={onSelectedToolChange}
-            selectedTool={selectedTool}
-            progress={progress}
-          />
-        </li>
-        <li>
-          <HueButton
-            onSelectedToolChange={onSelectedToolChange}
-            selectedTool={selectedTool}
-            progress={progress}
-          />
-        </li>
-        <li>
-          <SaturationButton
-            onSelectedToolChange={onSelectedToolChange}
-            selectedTool={selectedTool}
-            progress={progress}
-          />
-        </li>
-        <li>
-          <ExposureButton
-            onSelectedToolChange={onSelectedToolChange}
-            selectedTool={selectedTool}
-            progress={progress}
-          />
-        </li>
-        <li>
-          <TemperatureButton
-            onSelectedToolChange={onSelectedToolChange}
-            selectedTool={selectedTool}
-            progress={progress}
-          />
-        </li>
-        <li>
-          <GammaButton
-            onSelectedToolChange={onSelectedToolChange}
-            selectedTool={selectedTool}
-            progress={progress}
-          />
-        </li>
-        <li>
-          <VintageButton
-            onSelectedToolChange={onSelectedToolChange}
-            selectedTool={selectedTool}
-            progress={progress}
-          />
-        </li>
-
-        <li>
           <ImageEditorButton
             isActive={selectedTool === "blur"}
             variant='ghost'
@@ -375,28 +443,7 @@ export function FinetuneFooter({
           />
         </li>
         <li>
-          <TintButton
-            onSelectedToolChange={onSelectedToolChange}
-            selectedTool={selectedTool}
-            progress={progress}
-          />
-        </li>
-        <li>
-          <VibranceButton
-            onSelectedToolChange={onSelectedToolChange}
-            selectedTool={selectedTool}
-            progress={progress}
-          />
-        </li>
-        {/* <li>
-          <NoiseButton
-            onSelectedToolChange={onSelectedToolChange}
-            selectedTool={selectedTool}
-            progress={progress}
-          />
-        </li> */}
-        <li>
-          <GrainButton
+          <GrayscaleButton
             onSelectedToolChange={onSelectedToolChange}
             selectedTool={selectedTool}
             progress={progress}
@@ -410,14 +457,14 @@ export function FinetuneFooter({
           />
         </li>
         <li>
-          <SepiaButton
+          <NoiseButton
             onSelectedToolChange={onSelectedToolChange}
             selectedTool={selectedTool}
             progress={progress}
           />
         </li>
         <li>
-          <GrayscaleButton
+          <SepiaButton
             onSelectedToolChange={onSelectedToolChange}
             selectedTool={selectedTool}
             progress={progress}
@@ -430,150 +477,20 @@ export function FinetuneFooter({
 }
 
 /**
- * Presets
+ * Rotate
  */
-export function PresetsFooter({
-  className,
-  selectedTool,
-  value,
-  onSelectedToolChange,
-  dispatch,
+export function RotateFooter({
   image,
   progress,
-  ...props
-}: ImageEditorFooterProps) {
-  const handleOnChange = React.useCallback(
-    (value: number) => {
-      switch (selectedTool) {
-        case "tint":
-          return dispatch({ type: "tint", payload: value })
-        case "vibrance":
-          return dispatch({ type: "vibrance", payload: value })
-        case "noise":
-          return dispatch({ type: "noise", payload: value })
-        case "grain":
-          return dispatch({ type: "grain", payload: value })
-        case "sharpen":
-          return dispatch({ type: "sharpen", payload: value })
-        case "invert":
-          return dispatch({ type: "invert", payload: value })
-        case "sepia":
-          return dispatch({ type: "sepia", payload: value })
-        case "grayscale":
-          return dispatch({ type: "grayscale", payload: value })
-        default:
-          return () => {}
-      }
-    },
-    [dispatch, selectedTool]
-  )
-
-  return (
-    <div>
-      <ul className='flex gap-2 mt-10  justify-center'>
-        <li>
-          <ImageEditorButton
-            isActive={selectedTool === "tint"}
-            variant='ghost'
-            onClick={() => onSelectedToolChange("tint")}
-            disabled={progress}
-          >
-            Tint
-          </ImageEditorButton>
-        </li>
-        <li>
-          <ImageEditorButton
-            isActive={selectedTool === "vibrance"}
-            variant='ghost'
-            onClick={() => onSelectedToolChange("vibrance")}
-            disabled={progress}
-          >
-            Vibrance
-          </ImageEditorButton>
-        </li>
-        <li>
-          <ImageEditorButton
-            isActive={selectedTool === "noise"}
-            variant='ghost'
-            onClick={() => onSelectedToolChange("noise")}
-            disabled={progress}
-          >
-            Noise
-          </ImageEditorButton>
-        </li>
-        <li>
-          <ImageEditorButton
-            isActive={selectedTool === "grain"}
-            variant='ghost'
-            onClick={() => onSelectedToolChange("grain")}
-            disabled={progress}
-          >
-            Grain
-          </ImageEditorButton>
-        </li>
-        <li>
-          <ImageEditorButton
-            isActive={selectedTool === "invert"}
-            variant='ghost'
-            onClick={() => onSelectedToolChange("invert")}
-            disabled={progress}
-          >
-            Invert
-          </ImageEditorButton>
-        </li>
-        <li>
-          <ImageEditorButton
-            isActive={selectedTool === "sepia"}
-            variant='ghost'
-            onClick={() => onSelectedToolChange("sepia")}
-            disabled={progress}
-          >
-            Sepia
-          </ImageEditorButton>
-        </li>
-        <li>
-          <ImageEditorButton
-            isActive={selectedTool === "grayscale"}
-            variant='ghost'
-            onClick={() => onSelectedToolChange("grayscale")}
-            disabled={progress}
-          >
-            Grayscale
-          </ImageEditorButton>
-        </li>
-      </ul>
-    </div>
-  )
-}
-
-/**
- * Transform
- */
-
-export function TransformHeader({
   selectedTool,
   toolsValues,
-  onSelectedToolChange,
+  value,
   dispatch,
-  progress,
-  onProgress,
+  onSelectedToolChange,
   canvasRef,
   drawFnRef,
   ...props
-}: ImageEditorHeaderProps) {
-  const [isOptionsOpen, setIsOptionsOpen] = React.useState(false)
-  const [jpegQuality, setJpegQuality] = React.useState(80)
-  const [webpQuality, setWebpQuality] = React.useState(80)
-
-  const downloadImage = useWebGLDownload(canvasRef, drawFnRef)
-
-  const handleOnDownload = React.useCallback(
-    (mimeType: string, quality?: number) => () => {
-      downloadImage(mimeType, quality ? quality / 100 : undefined)
-    },
-    [downloadImage]
-  )
-
+}: Omit<ImageEditorFooterProps, "onChange" | "onProgress">) {
   const handleRotateLeft = () => {
     const currentRotation =
       typeof toolsValues.rotate === "number" ? toolsValues.rotate : 0
@@ -609,6 +526,114 @@ export function TransformHeader({
       payload: toolsValues.flipVertical ? 0 : 1,
     })
   }
+
+  const handleOnChange = React.useCallback(
+    (value: number) => {
+      dispatch({ type: selectedTool, payload: value })
+    },
+    [dispatch, selectedTool]
+  )
+
+  let operator = ""
+
+  if (selectedTool === "rotate") {
+    operator = "°"
+  } else if (selectedTool === "scale") {
+    operator = "%"
+  }
+
+  const Control = React.useMemo(() => {
+    const controlProps = {
+      image,
+      value,
+      progress,
+      operator,
+      selectedTool,
+      label: (value: number, operator: string) => {
+        if (selectedTool === "rotate") {
+          return `${Math.round(value)} ${operator}`
+        }
+        return `${Math.round(value)} ${operator}`
+      },
+      onChange: handleOnChange,
+    }
+    switch (selectedTool) {
+      case "rotate":
+        return <RotationControls {...controlProps} />
+    }
+  }, [selectedTool, value, operator, progress, handleOnChange, image])
+
+  return (
+    <div {...props}>
+      <div className='flex justify-center'>
+        <div className='max-w-lg'>{Control}</div>
+      </div>
+      <ul className='flex gap-2 w-full justify-center'>
+        <li className='flex items-center gap-1'>
+          <ImageEditorButton
+            title='Rotate image 90°'
+            variant='ghost'
+            onClick={handleRotateLeft}
+            disabled={progress}
+          >
+            <RotateCwSquare size={16} className='mr-1' />
+            Rotate 90°
+          </ImageEditorButton>
+        </li>
+        <li className='flex items-center gap-1'>
+          <ImageEditorButton
+            title='Flip image horizontally'
+            variant='ghost'
+            onClick={handleFlipHorizontal}
+            disabled={progress}
+          >
+            <FlipHorizontal2 size={16} className='mr-1' />
+            Flip Horizontal
+          </ImageEditorButton>
+        </li>
+        <li className='flex items-center gap-1'>
+          <ImageEditorButton
+            title='Flip image vertically'
+            variant='ghost'
+            onClick={handleFlipVertical}
+            disabled={progress}
+          >
+            <FlipVertical2 size={16} className='mr-1' />
+            Flip Vertical
+          </ImageEditorButton>
+        </li>
+      </ul>
+    </div>
+  )
+}
+
+/**
+ * Transform
+ */
+
+export function TransformHeader({
+  selectedTool,
+  toolsValues,
+  onSelectedToolChange,
+  dispatch,
+  progress,
+  onProgress,
+  canvasRef,
+  drawFnRef,
+  ...props
+}: ImageEditorHeaderProps) {
+  const [isOptionsOpen, setIsOptionsOpen] = React.useState(false)
+  const [jpegQuality, setJpegQuality] = React.useState(80)
+  const [webpQuality, setWebpQuality] = React.useState(80)
+
+  const downloadImage = useWebGLDownload(canvasRef, drawFnRef)
+
+  const handleOnDownload = React.useCallback(
+    (mimeType: string, quality?: number) => () => {
+      downloadImage(mimeType, quality ? quality / 100 : undefined)
+    },
+    [downloadImage]
+  )
 
   const handleOnUndo = React.useCallback(() => {
     dispatch({ type: "undo" })
@@ -656,43 +681,6 @@ export function TransformHeader({
         >
           <Redo size={16} className='mr-1' />
           Redo
-        </ImageEditorButton>
-      </li>
-      <li className='flex items-center gap-1'>
-        <div className='w-[1px] h-6 bg-muted' />
-
-        <ImageEditorButton
-          title='Rotate image 90°'
-          variant='ghost'
-          onClick={handleRotateLeft}
-          disabled={progress}
-        >
-          <RotateCwSquare size={16} className='mr-1' />
-          Rotate 90°
-        </ImageEditorButton>
-      </li>
-      <li className='flex items-center gap-1'>
-        <div className='w-[1px] h-6 bg-muted' />
-
-        <ImageEditorButton
-          title='Flip image horizontally'
-          variant='ghost'
-          onClick={handleFlipHorizontal}
-          disabled={progress}
-        >
-          <FlipHorizontal2 size={16} className='mr-1' />
-          Flip Horizontal
-        </ImageEditorButton>
-      </li>
-      <li className='flex items-center gap-1'>
-        <ImageEditorButton
-          title='Flip image vertically'
-          variant='ghost'
-          onClick={handleFlipVertical}
-          disabled={progress}
-        >
-          <FlipVertical2 size={16} className='mr-1' />
-          Flip Vertical
         </ImageEditorButton>
       </li>
 
@@ -765,7 +753,7 @@ export function TransformHeader({
   )
 }
 
-export function TransformFooter({
+export function ScaleFooter({
   image,
   progress,
   selectedTool,
@@ -809,8 +797,6 @@ export function TransformFooter({
       onChange: handleOnChange,
     }
     switch (selectedTool) {
-      case "rotate":
-        return <RotationControls {...controlProps} />
       case "scale":
         return <ScaleControls {...controlProps} />
       case "resize":
@@ -819,6 +805,14 @@ export function TransformFooter({
             {...controlProps}
             canvasRef={canvasRef}
             drawFnRef={drawFnRef}
+          />
+        )
+      case "upscale":
+        return (
+          <UpscaleButton
+            value={toolsValues?.upscale || 0}
+            dispatch={dispatch}
+            progress={progress}
           />
         )
     }
@@ -830,15 +824,6 @@ export function TransformFooter({
         <div className='max-w-lg'>{Control}</div>
       </div>
       <ul className='flex gap-2 w-full justify-center'>
-        <li>
-          <RotationButton
-            onSelectedToolChange={onSelectedToolChange}
-            selectedTool={selectedTool}
-            progress={progress}
-            canvasRef={canvasRef}
-            drawFnRef={drawFnRef}
-          />
-        </li>
         <li>
           <ScaleButton
             onSelectedToolChange={onSelectedToolChange}
@@ -858,28 +843,14 @@ export function TransformFooter({
             progress={progress}
           />
         </li>
+        <li>
+          <UpscaleButton
+            value={toolsValues?.upscale || 0}
+            dispatch={dispatch}
+            progress={progress}
+          />
+        </li>
       </ul>
-    </div>
-  )
-}
-
-export function UpscaleFooter({
-  image,
-  progress,
-  selectedTool,
-  toolsValues,
-  value,
-  dispatch,
-  onSelectedToolChange,
-  ...props
-}: Omit<ImageEditorFooterProps, "onChange" | "onProgress">) {
-  return (
-    <div className='flex justify-center ' {...props}>
-      <UpscaleButton
-        value={toolsValues?.upscale || 0}
-        dispatch={dispatch}
-        progress={progress}
-      />
     </div>
   )
 }

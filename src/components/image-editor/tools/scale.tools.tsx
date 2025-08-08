@@ -24,7 +24,7 @@ function ScaleButton({
       isActive={selectedTool === "scale"}
       disabled={progress}
     >
-      Scale
+      Zoom
     </ImageEditorButton>
   )
 }

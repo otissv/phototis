@@ -1,6 +1,12 @@
 "use client"
 
-import { Blend, ImageUpscale, SlidersHorizontal } from "lucide-react"
+import {
+  Blend,
+  ImageUpscale,
+  RotateCwSquare,
+  SlidersHorizontal,
+  Sparkles,
+} from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -30,59 +36,38 @@ export function ImageEditorSidebar({
         <Button
           variant='outline'
           className={cn("flex flex-col rounded-md text-xs size-18", {
-            "bg-accent text-accent-foreground": selected === "transform",
+            "bg-accent text-accent-foreground": selected === "adjust",
           })}
           onClick={() => {
-            onChange("transform")
+            onChange("adjust")
 
-            if (!SIDEBAR_TOOLS.transform.includes(selected)) {
-              onSelectedToolChange("rotate")
-            }
-          }}
-          disabled={progress}
-        >
-          <ImageUpscale />
-          Transform
-        </Button>
-      </li>
-
-      <li>
-        <Button
-          variant='outline'
-          className={cn("flex flex-col rounded-md text-xs size-18", {
-            "bg-accent text-accent-foreground": selected === "finetune",
-          })}
-          onClick={() => {
-            onChange("finetune")
-
-            if (!SIDEBAR_TOOLS.finetune.includes(selected)) {
+            if (!SIDEBAR_TOOLS.adjust.includes(selected)) {
               onSelectedToolChange("brightness")
             }
           }}
           disabled={progress}
         >
           <SlidersHorizontal />
-          Finetune
+          Adjust
         </Button>
       </li>
-
       <li>
         <Button
           variant='outline'
           className={cn("flex flex-col rounded-md text-xs size-18", {
-            "bg-accent text-accent-foreground": selected === "filter",
+            "bg-accent text-accent-foreground": selected === "rotate",
           })}
           onClick={() => {
-            onChange("filter")
+            onChange("rotate")
 
-            if (!SIDEBAR_TOOLS.filter.includes(selected)) {
-              onSelectedToolChange("tint")
+            if (!SIDEBAR_TOOLS.rotate.includes(selected)) {
+              onSelectedToolChange("rotate")
             }
           }}
           disabled={progress}
         >
-          <Blend />
-          Presets
+          <RotateCwSquare />
+          Rotate
         </Button>
       </li>
 
@@ -90,19 +75,39 @@ export function ImageEditorSidebar({
         <Button
           variant='outline'
           className={cn("flex flex-col rounded-md text-xs size-18", {
-            "bg-accent text-accent-foreground": selected === "upscale",
+            "bg-accent text-accent-foreground": selected === "scale",
           })}
           onClick={() => {
-            onChange("upscale")
+            onChange("scale")
 
-            if (!SIDEBAR_TOOLS.filter.includes(selected)) {
-              onSelectedToolChange("upscale")
+            if (!SIDEBAR_TOOLS.scale.includes(selected)) {
+              onSelectedToolChange("scale")
             }
           }}
           disabled={progress}
         >
           <ImageUpscale />
-          Upscale
+          scale
+        </Button>
+      </li>
+
+      <li>
+        <Button
+          variant='outline'
+          className={cn("flex flex-col rounded-md text-xs size-18", {
+            "bg-accent text-accent-foreground": selected === "effects",
+          })}
+          onClick={() => {
+            onChange("effects")
+
+            if (!SIDEBAR_TOOLS.effects.includes(selected)) {
+              onSelectedToolChange("blur")
+            }
+          }}
+          disabled={progress}
+        >
+          <Sparkles />
+          Effects
         </Button>
       </li>
     </ul>
