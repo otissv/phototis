@@ -230,7 +230,14 @@ export class HybridRenderer {
       return null
     }
 
-    // Create a simple shader program for basic texture rendering
+    // Get layer dimensions and position
+    const layerDim = layerDimensions?.get(layer.id)
+    const layerWidth = layerDim?.width || canvasWidth
+    const layerHeight = layerDim?.height || canvasHeight
+    const layerX = layerDim?.x || 0
+    const layerY = layerDim?.y || 0
+
+    // Create a vertex shader that handles layer positioning and sizing
     const vertexShader = this.gl.createShader(this.gl.VERTEX_SHADER)
     if (!vertexShader) return null
     this.gl.shaderSource(
@@ -238,9 +245,22 @@ export class HybridRenderer {
       `
       attribute vec2 a_position;
       attribute vec2 a_texCoord;
+      uniform vec2 u_canvasSize;
+      uniform vec2 u_position;
+      uniform vec2 u_size;
       varying vec2 v_texCoord;
+      
       void main() {
-        gl_Position = vec4(a_position, 0.0, 1.0);
+        // Convert from [-1,1] quad to pixel space
+        vec2 pixelPos = u_position + (a_position + 1.0) * 0.5 * u_size;
+        
+        // Convert pixel position to clip space
+        vec2 clipPos = (pixelPos / u_canvasSize) * 2.0 - 1.0;
+        
+        // Flip Y coordinate for WebGL (Y-axis is inverted)
+        gl_Position = vec4(clipPos, 0.0, 1.0);
+        
+        // Pass through texture coordinates
         v_texCoord = a_texCoord;
       }
     `
@@ -256,6 +276,7 @@ export class HybridRenderer {
       uniform sampler2D u_image;
       uniform float u_opacity;
       varying vec2 v_texCoord;
+      
       void main() {
         vec4 color = texture2D(u_image, v_texCoord);
         color.a *= u_opacity / 100.0;
@@ -274,7 +295,7 @@ export class HybridRenderer {
     this.gl.attachShader(program, fragmentShader)
     this.gl.linkProgram(program)
 
-    // Use simple program
+    // Use program
     this.gl.useProgram(program)
 
     // Set up attributes
@@ -287,6 +308,28 @@ export class HybridRenderer {
     this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.texCoordBuffer)
     this.gl.enableVertexAttribArray(texCoordLocation)
     this.gl.vertexAttribPointer(texCoordLocation, 2, this.gl.FLOAT, false, 0, 0)
+
+    // Set uniforms for layer positioning and sizing
+    const canvasSizeLocation = this.gl.getUniformLocation(
+      program,
+      "u_canvasSize"
+    )
+    if (canvasSizeLocation) {
+      this.gl.uniform2f(canvasSizeLocation, canvasWidth, canvasHeight)
+    }
+
+    const layerPositionLocation = this.gl.getUniformLocation(
+      program,
+      "u_position"
+    )
+    if (layerPositionLocation) {
+      this.gl.uniform2f(layerPositionLocation, layerX, layerY)
+    }
+
+    const layerSizeLocation = this.gl.getUniformLocation(program, "u_size")
+    if (layerSizeLocation) {
+      this.gl.uniform2f(layerSizeLocation, layerWidth, layerHeight)
+    }
 
     // Set opacity uniform
     const opacityLocation = this.gl.getUniformLocation(program, "u_opacity")
@@ -779,8 +822,6 @@ export class HybridRenderer {
         finalFBO = pingFBO
       } else if (pongFBO && !this.isFBOEmpty(pongFBO)) {
         finalFBO = pongFBO
-      } else {
-        console.log("No FBO with content found for rendering to canvas")
       }
     }
 
@@ -793,10 +834,7 @@ export class HybridRenderer {
 
       // Draw
       this.gl.drawArrays(this.gl.TRIANGLE_STRIP, 0, 4)
-    } else {
-      console.log("No FBO with content found for rendering to canvas")
     }
-    // If no FBO has content, the canvas will remain transparent (already cleared above)
   }
 
   // Helper method to get the rendering order for debugging
@@ -837,19 +875,13 @@ export class HybridRenderer {
     >
   ): void {
     if (!this.gl || !this.layerProgram || !this.compositingProgram) {
-      console.error("Missing GL context or shader programs")
       return
     }
 
     // Get layers in proper rendering order (bottom to top)
     const visibleLayers = this.getRenderingOrder(layers)
-    console.log(
-      "Visible layers:",
-      visibleLayers.map((l) => l.id)
-    )
 
     if (visibleLayers.length === 0) {
-      console.log("No visible layers to render")
       // Clear all FBOs when no layers are visible
       this.fboManager.clearFBO("ping", 0, 0, 0, 0)
       this.fboManager.clearFBO("pong", 0, 0, 0, 0)
@@ -867,11 +899,8 @@ export class HybridRenderer {
       const layerTexture = layerTextures.get(layer.id)
 
       if (!layerTexture) {
-        console.log(`No texture found for layer: ${layer.id}`)
         continue
       }
-
-      console.log(`Rendering layer: ${layer.id}`)
 
       // Get the tools values for this layer
       const layerToolsValues =
@@ -888,7 +917,6 @@ export class HybridRenderer {
       )
 
       if (!renderedLayerTexture) {
-        console.log(`Failed to render layer: ${layer.id}`)
         continue
       }
 
@@ -957,7 +985,6 @@ export class HybridRenderer {
 
     // Store the final result in the result FBO
     if (accumulatedTexture) {
-      console.log("Storing final result in result FBO")
       const finalFBO = usePing ? "ping" : "pong"
       const finalFBOObj = this.fboManager.getFBO(finalFBO)
 
@@ -980,8 +1007,6 @@ export class HybridRenderer {
         // Copy from ping/pong to result FBO
         this.copyTextureToFBO(accumulatedTexture, "result")
       }
-    } else {
-      console.log("No accumulated texture to store in result FBO")
     }
   }
 
