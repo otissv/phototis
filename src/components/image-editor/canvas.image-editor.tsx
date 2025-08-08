@@ -313,6 +313,36 @@ export function ImageEditorCanvas({
     loadMainImage()
   }, [image, loadImageDataFromFile])
 
+  // Initialize hybrid renderer when WebGL context is ready
+  React.useEffect(() => {
+    if (!canvasRef?.current || !glRef.current) {
+      return
+    }
+
+    const gl = glRef.current
+    const canvas = canvasRef.current
+
+    // Use canvas dimensions instead of canvas element size
+    const width = canvasDimensions.width
+    const height = canvasDimensions.height
+
+    if (!hybridRendererRef.current) {
+      hybridRendererRef.current = new HybridRenderer()
+    }
+
+    const success = hybridRendererRef.current.initialize({
+      gl,
+      width,
+      height,
+    })
+
+    if (!success) {
+      console.error("Failed to initialize hybrid renderer")
+      // Reset the hybrid renderer reference so we can try again
+      hybridRendererRef.current = null
+    }
+  }, [canvasRef?.current, canvasDimensions])
+
   // Handle layer-specific image data loading
   React.useEffect(() => {
     // Prevent updates during drag operations
@@ -665,7 +695,6 @@ export function ImageEditorCanvas({
 
       // Load textures for layers that have content (the hybrid renderer will filter visible ones)
       for (const layer of allLayersToRender) {
-        // Skip layers that don't have image content
         // For the background layer, check if main image data is available
         if (layer.id === "layer-1") {
           const mainImageData = imageDataCacheRef.current.get("main")
@@ -679,6 +708,11 @@ export function ImageEditorCanvas({
         const layerTexture = await loadLayerTexture(layer)
         if (layerTexture) {
           layerTextures.set(layer.id, layerTexture)
+        } else {
+          // Fallback to main texture if layer texture fails to load
+          if (textureRef.current) {
+            layerTextures.set(layer.id, textureRef.current)
+          }
         }
       }
 

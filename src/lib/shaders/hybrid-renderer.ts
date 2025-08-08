@@ -1,4 +1,9 @@
-import { FBOManager, type FBO } from "./fbo-manager"
+import {
+  FBOManager,
+  type FBO,
+  type LayerFBO,
+  type LayerBounds,
+} from "./fbo-manager"
 import { BLEND_MODE_MAP, type BlendMode } from "./blend-modes"
 import {
   COMPOSITING_VERTEX_SHADER,
@@ -42,7 +47,12 @@ export class HybridRenderer {
     const resultFBO = this.fboManager.createFBO(width, height, "result")
 
     if (!tempFBO || !pingFBO || !pongFBO || !resultFBO) {
-      console.error("Failed to create FBOs")
+      console.error("Failed to create FBOs:", {
+        tempFBO: !!tempFBO,
+        pingFBO: !!pingFBO,
+        pongFBO: !!pongFBO,
+        resultFBO: !!resultFBO,
+      })
       return false
     }
 
@@ -59,7 +69,10 @@ export class HybridRenderer {
     )
 
     if (!this.layerProgram || !this.compositingProgram) {
-      console.error("Failed to compile shader programs")
+      console.error("Failed to compile shader programs:", {
+        layerProgram: !!this.layerProgram,
+        compositingProgram: !!this.compositingProgram,
+      })
       return false
     }
 
@@ -68,7 +81,10 @@ export class HybridRenderer {
     this.texCoordBuffer = gl.createBuffer()
 
     if (!this.positionBuffer || !this.texCoordBuffer) {
-      console.error("Failed to create buffers")
+      console.error("Failed to create buffers:", {
+        positionBuffer: !!this.positionBuffer,
+        texCoordBuffer: !!this.texCoordBuffer,
+      })
       return false
     }
 
@@ -93,7 +109,10 @@ export class HybridRenderer {
     this.compositingTexture = gl.createTexture()
 
     if (!this.layerTexture || !this.compositingTexture) {
-      console.error("Failed to create textures")
+      console.error("Failed to create textures:", {
+        layerTexture: !!this.layerTexture,
+        compositingTexture: !!this.compositingTexture,
+      })
       return false
     }
 
@@ -122,44 +141,49 @@ export class HybridRenderer {
 
     // Create and compile vertex shader
     const vertexShader = this.gl.createShader(this.gl.VERTEX_SHADER)
-    if (!vertexShader) return null
+    if (!vertexShader) {
+      console.error("Failed to create vertex shader")
+      return null
+    }
     this.gl.shaderSource(vertexShader, vertexSource)
     this.gl.compileShader(vertexShader)
 
     if (!this.gl.getShaderParameter(vertexShader, this.gl.COMPILE_STATUS)) {
-      console.error(
-        "Vertex shader compilation failed:",
-        this.gl.getShaderInfoLog(vertexShader)
-      )
+      const error = this.gl.getShaderInfoLog(vertexShader)
+      console.error("Vertex shader compilation failed:", error)
+      console.error("Vertex shader source:", vertexSource)
       return null
     }
 
     // Create and compile fragment shader
     const fragmentShader = this.gl.createShader(this.gl.FRAGMENT_SHADER)
-    if (!fragmentShader) return null
+    if (!fragmentShader) {
+      console.error("Failed to create fragment shader")
+      return null
+    }
     this.gl.shaderSource(fragmentShader, fragmentSource)
     this.gl.compileShader(fragmentShader)
 
     if (!this.gl.getShaderParameter(fragmentShader, this.gl.COMPILE_STATUS)) {
-      console.error(
-        "Fragment shader compilation failed:",
-        this.gl.getShaderInfoLog(fragmentShader)
-      )
+      const error = this.gl.getShaderInfoLog(fragmentShader)
+      console.error("Fragment shader compilation failed:", error)
+      console.error("Fragment shader source:", fragmentSource)
       return null
     }
 
     // Create and link program
     const program = this.gl.createProgram()
-    if (!program) return null
+    if (!program) {
+      console.error("Failed to create program")
+      return null
+    }
     this.gl.attachShader(program, vertexShader)
     this.gl.attachShader(program, fragmentShader)
     this.gl.linkProgram(program)
 
     if (!this.gl.getProgramParameter(program, this.gl.LINK_STATUS)) {
-      console.error(
-        "Program linking failed:",
-        this.gl.getProgramInfoLog(program)
-      )
+      const error = this.gl.getProgramInfoLog(program)
+      console.error("Program linking failed:", error)
       return null
     }
 
@@ -177,15 +201,21 @@ export class HybridRenderer {
       { width: number; height: number; x: number; y: number }
     >
   ): WebGLTexture | null {
-    if (!this.gl || !this.layerProgram) return null
+    if (!this.gl) return null
 
-    // Bind temp FBO for layer rendering
+    // Use the temp FBO for layer rendering
+    const tempFBO = this.fboManager.getFBO("temp")
+    if (!tempFBO) {
+      console.error("Temp FBO not found")
+      return null
+    }
+
+    // Bind temp FBO for rendering
     this.fboManager.bindFBO("temp")
     this.fboManager.clearFBO("temp", 0, 0, 0, 0)
 
     // Ensure we're not reading from the same texture we're writing to
-    const currentTempFBO = this.fboManager.getFBO("temp")
-    if (currentTempFBO?.texture === layerTexture) {
+    if (tempFBO.texture === layerTexture) {
       console.warn(
         "Attempting to read from and write to the same texture, skipping layer"
       )
@@ -200,63 +230,81 @@ export class HybridRenderer {
       return null
     }
 
-    // Use layer program
-    this.gl.useProgram(this.layerProgram)
+    // Create a simple shader program for basic texture rendering
+    const vertexShader = this.gl.createShader(this.gl.VERTEX_SHADER)
+    if (!vertexShader) return null
+    this.gl.shaderSource(
+      vertexShader,
+      `
+      attribute vec2 a_position;
+      attribute vec2 a_texCoord;
+      varying vec2 v_texCoord;
+      void main() {
+        gl_Position = vec4(a_position, 0.0, 1.0);
+        v_texCoord = a_texCoord;
+      }
+    `
+    )
+    this.gl.compileShader(vertexShader)
+
+    const fragmentShader = this.gl.createShader(this.gl.FRAGMENT_SHADER)
+    if (!fragmentShader) return null
+    this.gl.shaderSource(
+      fragmentShader,
+      `
+      precision highp float;
+      uniform sampler2D u_image;
+      uniform float u_opacity;
+      varying vec2 v_texCoord;
+      void main() {
+        vec4 color = texture2D(u_image, v_texCoord);
+        color.a *= u_opacity / 100.0;
+        if (color.a < 0.01) {
+          discard;
+        }
+        gl_FragColor = color;
+      }
+    `
+    )
+    this.gl.compileShader(fragmentShader)
+
+    const program = this.gl.createProgram()
+    if (!program) return null
+    this.gl.attachShader(program, vertexShader)
+    this.gl.attachShader(program, fragmentShader)
+    this.gl.linkProgram(program)
+
+    // Use simple program
+    this.gl.useProgram(program)
 
     // Set up attributes
-    const positionLocation = this.gl.getAttribLocation(
-      this.layerProgram,
-      "a_position"
-    )
+    const positionLocation = this.gl.getAttribLocation(program, "a_position")
     this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.positionBuffer)
     this.gl.enableVertexAttribArray(positionLocation)
     this.gl.vertexAttribPointer(positionLocation, 2, this.gl.FLOAT, false, 0, 0)
 
-    const texCoordLocation = this.gl.getAttribLocation(
-      this.layerProgram,
-      "a_texCoord"
-    )
+    const texCoordLocation = this.gl.getAttribLocation(program, "a_texCoord")
     this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.texCoordBuffer)
     this.gl.enableVertexAttribArray(texCoordLocation)
     this.gl.vertexAttribPointer(texCoordLocation, 2, this.gl.FLOAT, false, 0, 0)
 
-    // Get layer dimensions for positioning and cropping
-    const layerDim = layerDimensions?.get(layer.id)
-    const layerWidth = layerDim?.width || canvasWidth
-    const layerHeight = layerDim?.height || canvasHeight
-    const layerX = layerDim?.x || 0
-    const layerY = layerDim?.y || 0
-
-    // Set uniforms - treat all layers equally for proper blend mode interactions
-    this.setLayerUniforms(
-      toolsValues,
-      layer.opacity,
-      canvasWidth,
-      canvasHeight,
-      layerWidth,
-      layerHeight,
-      layerX,
-      layerY
-    )
+    // Set opacity uniform
+    const opacityLocation = this.gl.getUniformLocation(program, "u_opacity")
+    if (opacityLocation) {
+      this.gl.uniform1f(opacityLocation, layer.opacity)
+    }
 
     // Bind layer texture
     this.gl.activeTexture(this.gl.TEXTURE0)
     this.gl.bindTexture(this.gl.TEXTURE_2D, layerTexture)
-    const samplerLocation = this.gl.getUniformLocation(
-      this.layerProgram,
-      "u_image"
-    )
+    const samplerLocation = this.gl.getUniformLocation(program, "u_image")
     if (samplerLocation) this.gl.uniform1i(samplerLocation, 0)
 
     // Draw
     this.gl.drawArrays(this.gl.TRIANGLE_STRIP, 0, 4)
 
-    // Return the rendered texture
-    const tempFBO = this.fboManager.getFBO("temp")
-    if (tempFBO) {
-      return tempFBO.texture
-    }
-    return null
+    // Return the rendered texture from the temp FBO
+    return tempFBO.texture
   }
 
   compositeLayers(
@@ -565,13 +613,13 @@ export class HybridRenderer {
       0
     )
 
-    // Read a single pixel from the center
-    const pixels = new Uint8Array(4)
+    // Read multiple pixels to check for content
+    const pixels = new Uint8Array(16) // 4 pixels (2x2)
     this.gl.readPixels(
-      Math.floor(fbo.width / 2),
-      Math.floor(fbo.height / 2),
-      1,
-      1,
+      Math.floor(fbo.width / 2) - 1,
+      Math.floor(fbo.height / 2) - 1,
+      2,
+      2,
       this.gl.RGBA,
       this.gl.UNSIGNED_BYTE,
       pixels
@@ -581,8 +629,16 @@ export class HybridRenderer {
     this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, null)
     this.gl.deleteFramebuffer(tempFramebuffer)
 
-    // Check if the pixel is transparent (alpha = 0)
-    return pixels[3] === 0
+    // Check if any pixel has non-zero alpha
+    let hasContent = false
+    for (let i = 3; i < pixels.length; i += 4) {
+      if (pixels[i] > 0) {
+        hasContent = true
+        break
+      }
+    }
+
+    return !hasContent
   }
 
   private setLayerUniforms(
@@ -710,14 +766,22 @@ export class HybridRenderer {
     this.gl.enableVertexAttribArray(texCoordLocation)
     this.gl.vertexAttribPointer(texCoordLocation, 2, this.gl.FLOAT, false, 0, 0)
 
-    // Bind ping FBO texture (or pong if ping is empty)
-    const pingFBO = this.fboManager.getFBO("ping")
-    const pongFBO = this.fboManager.getFBO("pong")
+    // Check for final result in result FBO first, then ping/pong
+    let finalFBO = this.fboManager.getFBO("result")
 
-    // Use whichever FBO has data, preferring ping
-    let finalFBO = pingFBO
-    if (!pingFBO || this.isFBOEmpty(pingFBO)) {
-      finalFBO = pongFBO
+    // If result FBO is empty or doesn't exist, check ping/pong FBOs
+    if (!finalFBO || this.isFBOEmpty(finalFBO)) {
+      const pingFBO = this.fboManager.getFBO("ping")
+      const pongFBO = this.fboManager.getFBO("pong")
+
+      // Use whichever FBO has data, preferring ping
+      if (pingFBO && !this.isFBOEmpty(pingFBO)) {
+        finalFBO = pingFBO
+      } else if (pongFBO && !this.isFBOEmpty(pongFBO)) {
+        finalFBO = pongFBO
+      } else {
+        console.log("No FBO with content found for rendering to canvas")
+      }
     }
 
     // Only draw if we have a valid FBO with content
@@ -729,6 +793,8 @@ export class HybridRenderer {
 
       // Draw
       this.gl.drawArrays(this.gl.TRIANGLE_STRIP, 0, 4)
+    } else {
+      console.log("No FBO with content found for rendering to canvas")
     }
     // If no FBO has content, the canvas will remain transparent (already cleared above)
   }
@@ -737,19 +803,27 @@ export class HybridRenderer {
   private getRenderingOrder(layers: Layer[]): Layer[] {
     return layers
       .filter((layer) => {
+        // Always include visible layers
         if (!layer.visible) return false
+
+        // For layer-1 (background), check if it has image data or is not empty
         if (layer.id === "layer-1") {
-          return !!layer.image || !layer.isEmpty
+          return true // Always include background layer if visible
         }
+
+        // For other layers, check if they have image content
         return !!layer.image || !layer.isEmpty
       })
       .sort((a, b) => {
-        // Reverse the order for rendering: bottom layers first, top layers last
-        return layers.indexOf(b) - layers.indexOf(a)
+        // Use original layer list index to maintain order
+        return (
+          layers.findIndex((layer) => layer.id === b.id) -
+          layers.findIndex((layer) => layer.id === a.id)
+        )
       })
   }
 
-  // Method to render all layers with proper compositing using ping-pong FBOs
+  // Method to render all layers with proper compositing using layer-specific FBOs
   renderLayers(
     layers: Layer[],
     layerTextures: Map<string, WebGLTexture>,
@@ -769,8 +843,13 @@ export class HybridRenderer {
 
     // Get layers in proper rendering order (bottom to top)
     const visibleLayers = this.getRenderingOrder(layers)
+    console.log(
+      "Visible layers:",
+      visibleLayers.map((l) => l.id)
+    )
 
     if (visibleLayers.length === 0) {
+      console.log("No visible layers to render")
       // Clear all FBOs when no layers are visible
       this.fboManager.clearFBO("ping", 0, 0, 0, 0)
       this.fboManager.clearFBO("pong", 0, 0, 0, 0)
@@ -788,14 +867,17 @@ export class HybridRenderer {
       const layerTexture = layerTextures.get(layer.id)
 
       if (!layerTexture) {
+        console.log(`No texture found for layer: ${layer.id}`)
         continue
       }
+
+      console.log(`Rendering layer: ${layer.id}`)
 
       // Get the tools values for this layer
       const layerToolsValues =
         layer.id === selectedLayerId ? toolsValues : layer.filters
 
-      // Render this layer with its filters
+      // Render this layer with its filters using layer-specific FBO
       const renderedLayerTexture = this.renderLayer(
         layer,
         layerTexture,
@@ -806,6 +888,7 @@ export class HybridRenderer {
       )
 
       if (!renderedLayerTexture) {
+        console.log(`Failed to render layer: ${layer.id}`)
         continue
       }
 
@@ -872,8 +955,9 @@ export class HybridRenderer {
       }
     }
 
-    // Store the final result in the ping FBO (or whichever one we ended up using)
+    // Store the final result in the result FBO
     if (accumulatedTexture) {
+      console.log("Storing final result in result FBO")
       const finalFBO = usePing ? "ping" : "pong"
       const finalFBOObj = this.fboManager.getFBO(finalFBO)
 
@@ -883,13 +967,21 @@ export class HybridRenderer {
         if (this.fboManager.isTextureBoundToFBO(accumulatedTexture)) {
           const sourceFBO = this.fboManager.getFBOByTexture(accumulatedTexture)
           if (sourceFBO && sourceFBO !== finalFBO) {
-            this.copyTextureToFBO(accumulatedTexture, finalFBO)
+            this.copyTextureToFBO(accumulatedTexture, "result")
+          } else {
+            // Copy from ping/pong to result FBO
+            this.copyTextureToFBO(accumulatedTexture, "result")
           }
         } else {
           // Regular texture, safe to copy
-          this.copyTextureToFBO(accumulatedTexture, finalFBO)
+          this.copyTextureToFBO(accumulatedTexture, "result")
         }
+      } else {
+        // Copy from ping/pong to result FBO
+        this.copyTextureToFBO(accumulatedTexture, "result")
       }
+    } else {
+      console.log("No accumulated texture to store in result FBO")
     }
   }
 

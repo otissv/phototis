@@ -2,6 +2,7 @@
 
 import {
   Blend,
+  Funnel,
   ImageUpscale,
   RotateCwSquare,
   SlidersHorizontal,
@@ -106,8 +107,27 @@ export function ImageEditorSidebar({
           }}
           disabled={progress}
         >
+          <Funnel />
+          Filters
+        </Button>
+      </li>
+      <li>
+        <Button
+          variant='outline'
+          className={cn("flex flex-col rounded-md text-xs size-18", {
+            "bg-accent text-accent-foreground": selected === "presets",
+          })}
+          onClick={() => {
+            onChange("presets")
+
+            if (!SIDEBAR_TOOLS.effects.includes(selected)) {
+              onSelectedToolChange("blur")
+            }
+          }}
+          disabled={progress}
+        >
           <Sparkles />
-          Effects
+          Presets
         </Button>
       </li>
     </ul>
