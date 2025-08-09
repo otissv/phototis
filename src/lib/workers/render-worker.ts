@@ -78,8 +78,8 @@ interface SuccessMessage {
 let gl: WebGL2RenderingContext | null = null
 let canvas: OffscreenCanvas | null = null
 let asynchronousPipeline: AsynchronousPipeline | null = null
-// Temporary flag: disable pipeline path until pipeline produces final textures
-const USE_PIPELINE = false
+// Enable pipeline path; progressive rendering will render when final texture ready
+const USE_PIPELINE = true
 let currentRenderMessageId: string | null = null
 const pipelineTaskToWorkerId = new Map<string, string>()
 
@@ -90,6 +90,20 @@ let blitPositionBuffer: WebGLBuffer | null = null
 let blitTexCoordBuffer: WebGLBuffer | null = null
 let blitUTexLocation: WebGLUniformLocation | null = null
 let blitUOpacityLocation: WebGLUniformLocation | null = null
+
+// Compositing program with blend modes
+let compProgram: WebGLProgram | null = null
+let compVAO: WebGLVertexArrayObject | null = null
+let compPositionBuffer: WebGLBuffer | null = null
+let compTexCoordBuffer: WebGLBuffer | null = null
+let compUBaseLocation: WebGLUniformLocation | null = null
+let compUTopLocation: WebGLUniformLocation | null = null
+let compUOpacityLocation: WebGLUniformLocation | null = null
+let compUBlendModeLocation: WebGLUniformLocation | null = null
+
+// Texture cache
+const textureCache = new Map<string, WebGLTexture>()
+const textureSignatures = new Map<string, string>()
 
 function createShader(
   glCtx: WebGL2RenderingContext,
@@ -107,6 +121,87 @@ function createShader(
     throw new Error(info)
   }
   return shader
+}
+
+function initCompositingResources(glCtx: WebGL2RenderingContext): void {
+  const vs = `#version 300 es\n
+in vec2 a_position;\n
+in vec2 a_texCoord;\n
+out vec2 v_texCoord;\n
+void main(){\n
+  v_texCoord = a_texCoord;\n
+  gl_Position = vec4(a_position, 0.0, 1.0);\n
+}`
+
+  const blendGLSL = `
+  vec3 rgb2hsl(vec3 c){float maxc=max(max(c.r,c.g),c.b);float minc=min(min(c.r,c.g),c.b);float delta=maxc-minc;vec3 hsl=vec3(0.0,0.0,(maxc+minc)/2.0);if(delta!=0.0){hsl.y=hsl.z<0.5?delta/(maxc+minc):delta/(2.0-maxc-minc);float deltaR=(((maxc-c.r)/6.0)+(delta/2.0))/delta;float deltaG=(((maxc-c.g)/6.0)+(delta/2.0))/delta;float deltaB=(((maxc-c.b)/6.0)+(delta/2.0))/delta;if(c.r==maxc){hsl.x=deltaB-deltaG;}else if(c.g==maxc){hsl.x=(1.0/3.0)+deltaR-deltaB;}else{hsl.x=(2.0/3.0)+deltaG-deltaR;}if(hsl.x<0.0)hsl.x+=1.0; if(hsl.x>1.0)hsl.x-=1.0;}return hsl;}
+  vec3 hsl2rgb(vec3 c){vec3 rgb=clamp(abs(mod(c.x*6.0+vec3(0.0,4.0,2.0),6.0)-3.0)-1.0,0.0,1.0);return c.z + c.y * (rgb - 0.5) * (1.0 - abs(2.0*c.z - 1.0));}
+  vec4 blendNormal(vec4 base, vec4 top){float a=top.a+base.a*(1.0-top.a);if(a<0.001) return vec4(0.0);vec3 r=(top.rgb*top.a+base.rgb*base.a*(1.0-top.a))/a;return vec4(r,a);} 
+  vec4 blendMultiply(vec4 base, vec4 top){vec3 m=base.rgb*top.rgb;float a=top.a+base.a*(1.0-top.a);if(a<0.001) return vec4(0.0);vec3 r=(m*top.a+base.rgb*base.a*(1.0-top.a))/a;return vec4(r,a);} 
+  vec4 blendScreen(vec4 base, vec4 top){vec3 s=1.0-(1.0-base.rgb)*(1.0-top.rgb);float a=top.a+base.a*(1.0-top.a);if(a<0.001) return vec4(0.0);vec3 r=(s*top.a+base.rgb*base.a*(1.0-top.a))/a;return vec4(r,a);} 
+  vec4 applyBlendMode(vec4 base, vec4 top, int m){if(m==0) return blendNormal(base,top); if(m==1) return blendMultiply(base,top); if(m==2) return blendScreen(base,top); return blendNormal(base,top);} 
+  `
+
+  const fs = `#version 300 es\n
+precision highp float;\n
+in vec2 v_texCoord;\n
+uniform sampler2D u_baseTexture;\n
+uniform sampler2D u_topTexture;\n
+uniform float u_opacity;\n
+uniform int u_blendMode;\n
+out vec4 outColor;\n
+${blendGLSL}\n
+void main(){\n
+  vec2 uv = vec2(v_texCoord.x, 1.0 - v_texCoord.y);\n
+  vec4 baseColor = texture(u_baseTexture, uv);\n
+  vec4 topColor = texture(u_topTexture, uv);\n
+  topColor.a *= u_opacity;\n
+  outColor = applyBlendMode(baseColor, topColor, u_blendMode);\n
+}`
+
+  compProgram = createProgram(glCtx, vs, fs)
+  compUBaseLocation = glCtx.getUniformLocation(compProgram, "u_baseTexture")
+  compUTopLocation = glCtx.getUniformLocation(compProgram, "u_topTexture")
+  compUOpacityLocation = glCtx.getUniformLocation(compProgram, "u_opacity")
+  compUBlendModeLocation = glCtx.getUniformLocation(compProgram, "u_blendMode")
+
+  compVAO = glCtx.createVertexArray()
+  if (!compVAO) throw new Error("Failed to create compositing VAO")
+  glCtx.bindVertexArray(compVAO)
+
+  compPositionBuffer = glCtx.createBuffer()
+  if (!compPositionBuffer)
+    throw new Error("Failed to create compositing position buffer")
+  glCtx.bindBuffer(glCtx.ARRAY_BUFFER, compPositionBuffer)
+  glCtx.bufferData(
+    glCtx.ARRAY_BUFFER,
+    new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]),
+    glCtx.STATIC_DRAW
+  )
+  const aPosLoc = glCtx.getAttribLocation(compProgram, "a_position")
+  glCtx.enableVertexAttribArray(aPosLoc)
+  glCtx.vertexAttribPointer(aPosLoc, 2, glCtx.FLOAT, false, 0, 0)
+
+  compTexCoordBuffer = glCtx.createBuffer()
+  if (!compTexCoordBuffer)
+    throw new Error("Failed to create compositing texcoord buffer")
+  glCtx.bindBuffer(glCtx.ARRAY_BUFFER, compTexCoordBuffer)
+  glCtx.bufferData(
+    glCtx.ARRAY_BUFFER,
+    new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]),
+    glCtx.STATIC_DRAW
+  )
+  const aTexLoc = glCtx.getAttribLocation(compProgram, "a_texCoord")
+  glCtx.enableVertexAttribArray(aTexLoc)
+  glCtx.vertexAttribPointer(aTexLoc, 2, glCtx.FLOAT, false, 0, 0)
+
+  glCtx.bindVertexArray(null)
+}
+
+const BLEND_MODE_CODE: Record<string, number> = {
+  normal: 0,
+  multiply: 1,
+  screen: 2,
 }
 
 function createProgram(
@@ -235,8 +330,9 @@ function initializeWebGL(
     gl.viewport(0, 0, width, height)
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true)
 
-    // Initialize blit resources
+    // Initialize blit and compositing resources
     initBlitResources(gl)
+    initCompositingResources(gl)
 
     // Initialize asynchronous pipeline
     asynchronousPipeline = new AsynchronousPipeline({
@@ -407,65 +503,169 @@ async function renderLayers(
       progress: 60,
     } as ProgressMessage)
 
-    // Stage 3: Layer compositing and blending (immediate draw to canvas)
+    // Stage 3: Layer compositing and blending (shader-based)
     let finalTexture: WebGLTexture | null = null
     let drewAnyLayer = false
-
     if (renderedLayers.size > 0) {
       try {
-        // Bind default framebuffer and clear
-        gl.bindFramebuffer(gl.FRAMEBUFFER, null)
-        gl.viewport(0, 0, canvasWidth, canvasHeight)
-        gl.clearColor(0, 0, 0, 0)
-        gl.clear(gl.COLOR_BUFFER_BIT)
-
-        if (!blitProgram || !blitVAO || !blitUTexLocation) {
-          throw new Error("Blit resources not initialized")
+        if (
+          !compProgram ||
+          !compVAO ||
+          !compUBaseLocation ||
+          !compUTopLocation
+        ) {
+          throw new Error("Compositing resources not initialized")
         }
 
-        // Enable alpha blending for layer compositing
-        gl.enable(gl.BLEND)
-        gl.blendFuncSeparate(
-          gl.SRC_ALPHA,
-          gl.ONE_MINUS_SRC_ALPHA,
-          gl.ONE,
-          gl.ONE_MINUS_SRC_ALPHA
-        )
+        // Create two FBO/texture targets for ping-pong compositing
+        const makeTarget = () => {
+          const glCtx = gl as WebGL2RenderingContext
+          const tex = glCtx.createTexture()
+          if (!tex) throw new Error("Failed to create comp texture")
+          glCtx.bindTexture(glCtx.TEXTURE_2D, tex)
+          glCtx.texParameteri(
+            glCtx.TEXTURE_2D,
+            glCtx.TEXTURE_WRAP_S,
+            glCtx.CLAMP_TO_EDGE
+          )
+          glCtx.texParameteri(
+            glCtx.TEXTURE_2D,
+            glCtx.TEXTURE_WRAP_T,
+            glCtx.CLAMP_TO_EDGE
+          )
+          glCtx.texParameteri(
+            glCtx.TEXTURE_2D,
+            glCtx.TEXTURE_MIN_FILTER,
+            glCtx.LINEAR
+          )
+          glCtx.texParameteri(
+            glCtx.TEXTURE_2D,
+            glCtx.TEXTURE_MAG_FILTER,
+            glCtx.LINEAR
+          )
+          glCtx.texImage2D(
+            glCtx.TEXTURE_2D,
+            0,
+            glCtx.RGBA,
+            canvasWidth,
+            canvasHeight,
+            0,
+            glCtx.RGBA,
+            glCtx.UNSIGNED_BYTE,
+            null
+          )
+          const fb = glCtx.createFramebuffer()
+          if (!fb) throw new Error("Failed to create comp framebuffer")
+          glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, fb)
+          glCtx.framebufferTexture2D(
+            glCtx.FRAMEBUFFER,
+            glCtx.COLOR_ATTACHMENT0,
+            glCtx.TEXTURE_2D,
+            tex,
+            0
+          )
+          return { tex, fb }
+        }
 
-        gl.useProgram(blitProgram)
-        gl.bindVertexArray(blitVAO)
+        const ping = makeTarget()
+        const pong = makeTarget()
+        let writeTarget = ping
+        let readTexture: WebGLTexture | null = null
 
-        // Draw layers bottom -> top
-        const orderedLayers = layers.slice().reverse()
-        for (const layer of orderedLayers) {
+        // Clear first target
+        {
+          const glCtx = gl as WebGL2RenderingContext
+          glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, writeTarget.fb)
+          glCtx.viewport(0, 0, canvasWidth, canvasHeight)
+          glCtx.clearColor(0, 0, 0, 0)
+          glCtx.clear(glCtx.COLOR_BUFFER_BIT)
+        }
+
+        // Ordered draw bottom->top: assume incoming bottom->top order
+        for (const layer of layers) {
           const tex = renderedLayers.get(layer.id)
           if (!tex || layer.visible === false || layer.opacity <= 0) continue
 
-          gl.activeTexture(gl.TEXTURE0)
-          gl.bindTexture(gl.TEXTURE_2D, tex)
-          gl.uniform1i(blitUTexLocation, 0)
-
-          // Apply layer opacity (0-100 → 0.0-1.0)
-          if (blitUOpacityLocation) {
-            gl.uniform1f(
-              blitUOpacityLocation,
-              Math.max(0, Math.min(1, layer.opacity / 100))
-            )
+          if (!readTexture) {
+            // First visible layer: blit to writeTarget
+            if (!blitProgram || !blitVAO || !blitUTexLocation) {
+              throw new Error("Blit resources not initialized")
+            }
+            const glCtx = gl as WebGL2RenderingContext
+            glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, writeTarget.fb)
+            glCtx.useProgram(blitProgram)
+            glCtx.bindVertexArray(blitVAO)
+            glCtx.activeTexture(glCtx.TEXTURE0)
+            glCtx.bindTexture(glCtx.TEXTURE_2D, tex)
+            glCtx.uniform1i(blitUTexLocation as WebGLUniformLocation, 0)
+            if (blitUOpacityLocation) {
+              glCtx.uniform1f(
+                blitUOpacityLocation,
+                Math.max(0, Math.min(1, layer.opacity / 100))
+              )
+            }
+            glCtx.drawArrays(glCtx.TRIANGLE_STRIP, 0, 4)
+            glCtx.bindVertexArray(null)
+            glCtx.useProgram(null)
+            readTexture = writeTarget.tex
+            drewAnyLayer = true
+            continue
           }
 
-          gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+          // Composite current layer over accumulated result into the opposite target
+          const output = writeTarget === ping ? pong : ping
+          {
+            const glCtx = gl as WebGL2RenderingContext
+            glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, output.fb)
+            glCtx.viewport(0, 0, canvasWidth, canvasHeight)
+            glCtx.clearColor(0, 0, 0, 0)
+            glCtx.clear(glCtx.COLOR_BUFFER_BIT)
 
-          // Keep reference to last texture for post-processing if needed
-          finalTexture = tex
-          drewAnyLayer = true
+            glCtx.useProgram(compProgram)
+            glCtx.bindVertexArray(compVAO)
+
+            glCtx.activeTexture(glCtx.TEXTURE0)
+            glCtx.bindTexture(glCtx.TEXTURE_2D, readTexture)
+            glCtx.uniform1i(compUBaseLocation as WebGLUniformLocation, 0)
+
+            glCtx.activeTexture(glCtx.TEXTURE1)
+            glCtx.bindTexture(glCtx.TEXTURE_2D, tex)
+            glCtx.uniform1i(compUTopLocation as WebGLUniformLocation, 1)
+
+            if (compUOpacityLocation)
+              glCtx.uniform1f(
+                compUOpacityLocation,
+                Math.max(0, Math.min(1, layer.opacity / 100))
+              )
+
+            const mode =
+              (layer as any).blendModeCode ??
+              BLEND_MODE_CODE[(layer as any).blendMode] ??
+              0
+            if (compUBlendModeLocation)
+              glCtx.uniform1i(compUBlendModeLocation, mode)
+
+            glCtx.drawArrays(glCtx.TRIANGLE_STRIP, 0, 4)
+            glCtx.bindVertexArray(null)
+            glCtx.useProgram(null)
+          }
+
+          // Swap
+          writeTarget = output
+          readTexture = writeTarget.tex
         }
 
-        // Cleanup binds
-        gl.bindVertexArray(null)
-        gl.useProgram(null)
-        gl.disable(gl.BLEND)
+        finalTexture = readTexture
+
+        // Render final to canvas
+        if (drewAnyLayer && finalTexture) {
+          await renderToCanvas(finalTexture, canvasWidth, canvasHeight)
+        }
       } catch (error) {
-        console.error("Failed to composite layers (immediate):", error)
+        console.error("Failed to composite layers (blend shader):", error)
+      } finally {
+        // Unbind framebuffer
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null)
       }
     }
 
@@ -534,6 +734,17 @@ async function loadLayerTexture(layer: Layer): Promise<WebGLTexture | null> {
   try {
     if (!layer.image) return null
 
+    // Basic signature for cache invalidation
+    const signature: string | undefined = (layer as any).imageSignature
+    const cacheKey = `${layer.id}`
+    const existingSig = textureSignatures.get(cacheKey)
+    if (signature && existingSig === signature) {
+      const cached = textureCache.get(cacheKey)
+      if (cached) {
+        return cached
+      }
+    }
+
     // Create texture
     const texture = gl.createTexture()
     if (!texture) return null
@@ -575,6 +786,9 @@ async function loadLayerTexture(layer: Layer): Promise<WebGLTexture | null> {
       imageBitmap
     )
 
+    // Cache texture
+    textureCache.set(cacheKey, texture)
+    if (signature) textureSignatures.set(cacheKey, signature)
     return texture
   } catch (error) {
     console.error("Failed to load layer texture:", error)

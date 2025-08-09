@@ -295,11 +295,16 @@ export class WorkerManager {
       layers.map(async (layer) => {
         if (layer.image instanceof File) {
           try {
-            const imageBitmap = await createImageBitmap(layer.image)
+            const file = layer.image
+            const imageBitmap = await createImageBitmap(file)
+            const imageSignature = `${file.name}:${file.size}:${file.lastModified}`
             return {
               ...layer,
+              // Replace File with ImageBitmap for worker consumption
               image: imageBitmap,
-            }
+              // Attach a stable signature for caching/invalidation in worker
+              imageSignature,
+            } as any
           } catch (error) {
             console.warn(
               `Failed to convert File to ImageBitmap for layer ${layer.id}:`,
