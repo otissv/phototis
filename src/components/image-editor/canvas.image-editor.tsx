@@ -11,6 +11,9 @@ import { upscaleTool } from "./tools/upscaler"
 import type { Layer } from "./layer-system"
 import { ShaderManager } from "@/lib/shaders"
 import { HybridRenderer } from "@/lib/shaders/hybrid-renderer"
+import { useWorkerRenderer } from "@/lib/hooks/useWorkerRenderer"
+import { TaskPriority } from "@/lib/workers/worker-manager"
+import { CanvasStateManager } from "@/lib/canvas-state-manager"
 
 // Shader manager instance
 const shaderManager = new ShaderManager()
@@ -64,6 +67,34 @@ export function ImageEditorCanvas({
   const [processing, setProcessing] = React.useState(0)
   const [isElementDragging, setIsElementDragging] = React.useState(false)
 
+  // Worker-based rendering system
+  const {
+    isReady: isWorkerReady,
+    isProcessing: isWorkerProcessing,
+    progress: workerProgress,
+    error: workerError,
+    queueStats,
+    initialize: initializeWorker,
+    renderLayers: renderLayersWithWorker,
+    cancelCurrentTask,
+    canvasRef: workerCanvasRef,
+  } = useWorkerRenderer({
+    enableProgressiveRendering: true,
+    progressiveLevels: [0.25, 0.5, 1.0],
+    maxRetries: 3,
+    taskTimeout: 30000,
+  })
+
+  // Stable refs for worker state to avoid re-render loops in draw
+  const isWorkerReadyRef = React.useRef(false)
+  const isWorkerProcessingRef = React.useRef(false)
+  React.useEffect(() => {
+    isWorkerReadyRef.current = isWorkerReady
+  }, [isWorkerReady])
+  React.useEffect(() => {
+    isWorkerProcessingRef.current = isWorkerProcessing
+  }, [isWorkerProcessing])
+
   // Direct image data cache for WebGL textures
   const imageDataCacheRef = React.useRef<Map<string, ImageData>>(new Map())
   const textureCacheRef = React.useRef<Map<string, WebGLTexture>>(new Map())
@@ -79,11 +110,43 @@ export function ImageEditorCanvas({
     height: 600,
   })
 
-  // Initialize hybrid renderer
+  // Initialize worker-based rendering system
+  React.useEffect(() => {
+    if (!canvasRef?.current) return
+
+    const canvas = canvasRef.current
+
+    // Check if canvas has already been transferred
+    const canvasStateManager = CanvasStateManager.getInstance()
+    if (!canvasStateManager.canTransferToOffscreen(canvas)) {
+      return
+    }
+
+    // Initialize worker renderer with canvas
+    initializeWorker(canvas).then((success) => {
+      if (!success) {
+        console.error("Failed to initialize worker renderer")
+      }
+    })
+  }, [canvasRef?.current, initializeWorker])
+
+  // Initialize hybrid renderer (fallback)
   React.useEffect(() => {
     if (!canvasRef?.current || !glRef.current) return
 
+    const canvas = canvasRef.current
     const gl = glRef.current
+    const canvasStateManager = CanvasStateManager.getInstance()
+
+    // Check if canvas can be used for WebGL operations
+    if (!canvasStateManager.canUseForWebGL(canvas)) {
+      const error = canvasStateManager.getErrorMessage(canvas)
+      console.warn(
+        "Canvas cannot be used for hybrid renderer:",
+        error || "Canvas has been transferred to OffscreenCanvas"
+      )
+      return
+    }
 
     // Use canvas dimensions instead of canvas element size
     const width = canvasDimensions.width
@@ -207,6 +270,27 @@ export function ImageEditorCanvas({
 
   // Container ref for viewport calculations
   const containerRef = React.useRef<HTMLDivElement>(null)
+
+  // Create a compact signature representing layers order and relevant props
+  const layersSignature = React.useMemo(() => {
+    return layers
+      .map((l) => {
+        const imageSig = l.image
+          ? `img:${(l.image as File).name}:${(l.image as File).size}:$${
+              (l.image as File).type
+            }`
+          : "img:0"
+        return [
+          l.id,
+          l.visible ? 1 : 0,
+          l.locked ? 1 : 0,
+          l.opacity,
+          l.blendMode,
+          imageSig,
+        ].join(":")
+      })
+      .join("|")
+  }, [layers])
 
   // Function to calculate optimal canvas size based on all layers
   const calculateOptimalCanvasSize = React.useCallback(() => {
@@ -406,6 +490,21 @@ export function ImageEditorCanvas({
           }
         }
       }
+
+      // After images and dimensions are prepared, trigger a draw once
+      const hasWebGLReady =
+        !!glRef.current &&
+        !!programRef.current &&
+        !!positionBufferRef.current &&
+        !!texCoordBufferRef.current &&
+        !!textureRef.current
+
+      if (isWorkerReadyRef.current || hasWebGLReady) {
+        // Defer to next tick to ensure refs/maps are fully updated
+        setTimeout(() => {
+          drawRef.current?.()
+        }, 0)
+      }
     }
 
     loadLayerImages()
@@ -501,6 +600,17 @@ export function ImageEditorCanvas({
     if (!canvasRef?.current) return
 
     const canvas = canvasRef.current
+    const canvasStateManager = CanvasStateManager.getInstance()
+
+    // Check if canvas can be used for WebGL operations
+    if (!canvasStateManager.canUseForWebGL(canvas)) {
+      const error = canvasStateManager.getErrorMessage(canvas)
+      console.warn(
+        "Canvas cannot be used for WebGL operations:",
+        error || "Canvas has been transferred to OffscreenCanvas"
+      )
+      return
+    }
 
     const gl = canvas.getContext("webgl2", {
       alpha: true,
@@ -650,7 +760,7 @@ export function ImageEditorCanvas({
     [createTextureFromImageData]
   )
 
-  // Draw function using hybrid renderer for proper layer compositing
+  // Draw function using worker-based rendering for non-blocking GPU operations
   const draw = React.useCallback(async () => {
     // Prevent drawing during drag operations or if already drawing
     if (isDragActive || isDrawingRef.current) return
@@ -658,15 +768,82 @@ export function ImageEditorCanvas({
     // Set drawing flag to prevent overlapping draws
     isDrawingRef.current = true
 
-    const gl = glRef.current
-    const canvas = canvasRef?.current
-
-    if (!gl || !canvas || !hybridRendererRef.current) {
-      isDrawingRef.current = false
-      return
-    }
-
     try {
+      // Use worker-based rendering if available (always queue; manager cancels in-flight)
+      if (isWorkerReadyRef.current) {
+        const canvas = canvasRef?.current
+        if (!canvas) {
+          console.warn("No canvas available for worker rendering")
+          isDrawingRef.current = false
+          return
+        }
+
+        // Get canvas dimensions
+        const canvasWidth = canvas.width
+        const canvasHeight = canvas.height
+
+        // Use throttled values for immediate feedback during dragging
+        const activeToolsValues = isDragActive
+          ? throttledToolsValues
+          : debouncedToolsValues
+
+        // Use smooth values for rendering
+        const renderingToolsValues = smoothToolsValues
+
+        // Determine priority based on user interaction
+        const priority = isDragActive
+          ? TaskPriority.CRITICAL
+          : TaskPriority.HIGH
+
+        // Queue render task with worker
+        try {
+          const taskId = await renderLayersWithWorker(
+            layers,
+            renderingToolsValues,
+            selectedLayerId,
+            canvasWidth,
+            canvasHeight,
+            layerDimensionsRef.current,
+            priority
+          )
+
+          if (taskId) {
+            // Worker is handling the rendering
+            isDrawingRef.current = false
+            return
+          }
+        } catch (error) {
+          console.error("Error queuing render task:", error)
+        }
+      }
+
+      // Fallback to hybrid renderer if worker is not available
+      const gl = glRef.current
+      const canvas = canvasRef?.current
+
+      if (!gl || !canvas) {
+        isDrawingRef.current = false
+        return
+      }
+
+      const canvasStateManager = CanvasStateManager.getInstance()
+
+      // Check if canvas can be used for WebGL operations
+      if (!canvasStateManager.canUseForWebGL(canvas)) {
+        const error = canvasStateManager.getErrorMessage(canvas)
+        console.warn(
+          "Canvas cannot be used for hybrid renderer:",
+          error || "Canvas has been transferred to OffscreenCanvas"
+        )
+        isDrawingRef.current = false
+        return
+      }
+
+      if (!hybridRendererRef.current) {
+        isDrawingRef.current = false
+        return
+      }
+
       // Get canvas dimensions
       const canvasWidth = canvas.width
       const canvasHeight = canvas.height
@@ -759,67 +936,58 @@ export function ImageEditorCanvas({
     throttledToolsValues,
     smoothToolsValues,
     selectedLayerId,
+    renderLayersWithWorker,
   ])
 
+  // Keep a stable reference to the latest draw function
+  const drawRef = React.useRef<() => void>(() => {})
   React.useEffect(() => {
-    // Only draw if WebGL objects are ready
-    if (
-      glRef.current &&
-      programRef.current &&
-      positionBufferRef.current &&
-      texCoordBufferRef.current &&
-      textureRef.current
-    ) {
+    drawRef.current = draw
+  }, [draw])
+
+  React.useEffect(() => {
+    const hasWebGLReady =
+      !!glRef.current &&
+      !!programRef.current &&
+      !!positionBufferRef.current &&
+      !!texCoordBufferRef.current &&
+      !!textureRef.current
+
+    if (isWorkerReadyRef.current || hasWebGLReady) {
       draw()
     }
   }, [draw])
 
-  // Trigger redraw when layers change (for new dropped images)
-  React.useEffect(() => {
-    // Prevent updates during drag operations
-    if (isDragActive) return
+  // Removed explicit layer-change redraw; covered by [draw] effect which depends on layers
 
-    // Only redraw if WebGL objects are ready
-    if (
-      !glRef.current ||
-      !programRef.current ||
-      !positionBufferRef.current ||
-      !texCoordBufferRef.current ||
-      !textureRef.current
-    ) {
-      return
-    }
-
-    // Small delay to ensure layer dimensions are calculated
-    const timer = setTimeout(() => {
-      draw()
-    }, 100)
-    return () => clearTimeout(timer)
-  }, [draw, isDragActive])
-
-  // Trigger redraw when layers are reordered (even during drag)
-  React.useEffect(() => {
-    // Only redraw if WebGL objects are ready
-    if (
-      !glRef.current ||
-      !programRef.current ||
-      !positionBufferRef.current ||
-      !texCoordBufferRef.current ||
-      !textureRef.current
-    ) {
-      return
-    }
-
-    // Small delay to ensure layer dimensions are calculated
-    const timer = setTimeout(() => {
-      draw()
-    }, 50) // Shorter delay for reordering
-    return () => clearTimeout(timer)
-  }, [draw]) // Depend on draw function which already includes layers
+  // Removed explicit reorder redraw; covered by [draw] effect
 
   React.useEffect(() => {
     onDrawReady?.(() => draw())
   }, [draw, onDrawReady])
+
+  // Redraw when layer properties that affect visibility/compositing change
+  React.useEffect(() => {
+    if (isDragActive) return
+    if (!layersSignature) return
+    const timer = setTimeout(() => {
+      drawRef.current?.()
+    }, 0)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDragActive, layersSignature])
+
+  // Force a draw once worker is ready and layers exist (avoid depending on draw to prevent loops)
+  React.useEffect(() => {
+    if (!isWorkerReady) return
+    if (layers.length === 0) return
+    const timer = setTimeout(() => {
+      drawRef.current?.()
+    }, 100)
+    return () => clearTimeout(timer)
+    // Intentionally exclude draw from deps to avoid re-triggering on worker progress/state updates
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isWorkerReady, layers.length])
 
   // Drag and drop handlers
   const handleDragOver = React.useCallback(
@@ -927,6 +1095,27 @@ export function ImageEditorCanvas({
           }}
         />
       </motion.div>
+
+      {/* Worker error indicator */}
+      {workerError && (
+        <div className='absolute inset-0 flex items-center justify-center bg-red-500/20 backdrop-blur-sm'>
+          <div className='bg-white/90 rounded-lg p-4 shadow-lg max-w-sm'>
+            <div className='text-sm font-medium text-red-600 mb-2'>
+              Processing Error
+            </div>
+            <div className='text-xs text-gray-600'>{workerError}</div>
+            <button
+              type='button'
+              onClick={cancelCurrentTask}
+              className='mt-2 text-xs bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600'
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Legacy processing indicator */}
       {processing > 0 && (
         <div className='absolute inset-0 flex items-center justify-center'>
           <div className='text-sm '>Upscaling {processing}%</div>
