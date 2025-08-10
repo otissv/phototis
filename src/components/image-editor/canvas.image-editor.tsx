@@ -67,7 +67,19 @@ export function ImageEditorCanvas({
   const [processing, setProcessing] = React.useState(0)
   const [isElementDragging, setIsElementDragging] = React.useState(false)
 
+  console.log("layers", layers)
   // Worker-based rendering system
+  // Memoize worker config so hook callbacks remain stable across renders
+  const workerRendererConfig = React.useMemo(
+    () => ({
+      enableProgressiveRendering: true,
+      progressiveLevels: [0.25, 0.5, 1.0] as number[],
+      maxRetries: 3,
+      taskTimeout: 30000,
+    }),
+    []
+  )
+
   const {
     isReady: isWorkerReady,
     isProcessing: isWorkerProcessing,
@@ -78,12 +90,9 @@ export function ImageEditorCanvas({
     renderLayers: renderLayersWithWorker,
     cancelCurrentTask,
     canvasRef: workerCanvasRef,
-  } = useWorkerRenderer({
-    enableProgressiveRendering: true,
-    progressiveLevels: [0.25, 0.5, 1.0],
-    maxRetries: 3,
-    taskTimeout: 30000,
-  })
+  } = useWorkerRenderer(workerRendererConfig)
+
+  const [isWorkerInitialized, setIsWorkerInitialized] = React.useState(false)
 
   // Stable refs for worker state to avoid re-render loops in draw
   const isWorkerReadyRef = React.useRef(false)
@@ -110,25 +119,38 @@ export function ImageEditorCanvas({
     height: 600,
   })
 
-  // Initialize worker-based rendering system
+  // Use the actual ref for dependencies; avoid stringifying the ref
+
+  // Track canvases we've already initialized to avoid duplicate init
+  const initializedCanvasesRef = React.useRef<WeakSet<HTMLCanvasElement>>(
+    new WeakSet()
+  )
+
+  // Initialize worker-based rendering system once per canvas
   React.useEffect(() => {
-    if (!canvasRef?.current) return
-
-    const canvas = canvasRef.current
-
-    // Check if canvas has already been transferred
+    const canvas = canvasRef?.current
+    if (!canvas) return
+    // Skip if already initialized or worker is ready
+    if (
+      initializedCanvasesRef.current.has(canvas) ||
+      isWorkerReady ||
+      !isWorkerInitialized
+    ) {
+      return
+    }
     const canvasStateManager = CanvasStateManager.getInstance()
     if (!canvasStateManager.canTransferToOffscreen(canvas)) {
       return
     }
-
-    // Initialize worker renderer with canvas
-    initializeWorker(canvas).then((success) => {
-      if (!success) {
+    void initializeWorker(canvas).then((success) => {
+      if (success) {
+        initializedCanvasesRef.current.add(canvas)
+        setIsWorkerInitialized(true)
+      } else {
         console.error("Failed to initialize worker renderer")
       }
     })
-  }, [canvasRef?.current, initializeWorker])
+  }, [isWorkerReady, canvasRef?.current, isWorkerInitialized, initializeWorker])
 
   // Initialize hybrid renderer (fallback)
   React.useEffect(() => {
@@ -165,7 +187,7 @@ export function ImageEditorCanvas({
     if (!success) {
       console.error("Failed to initialize hybrid renderer")
     }
-  }, [canvasRef?.current, canvasDimensions])
+  }, [canvasRef?.current, canvasDimensions.width, canvasDimensions.height])
 
   // Motion values for smooth viewport handling
   const viewportX = useMotionValue(0)
@@ -194,6 +216,7 @@ export function ImageEditorCanvas({
   const animationRef = React.useRef<Map<string, number>>(new Map())
 
   // Animate tool values smoothly when they change
+  // biome-ignore lint/correctness/useExhaustiveDependencies: smoothToolsValues cause infinite loop
   React.useEffect(() => {
     const toolKeys = Object.keys(toolsValues) as (keyof typeof toolsValues)[]
 
@@ -241,7 +264,7 @@ export function ImageEditorCanvas({
         }
       }
     }
-  }, [toolsValues, smoothToolsValues])
+  }, [toolsValues])
 
   // Cleanup animations on unmount
   React.useEffect(() => {
@@ -292,37 +315,6 @@ export function ImageEditorCanvas({
       .join("|")
   }, [layers])
 
-  // Function to calculate optimal canvas size based on all layers
-  const calculateOptimalCanvasSize = React.useCallback(() => {
-    const layerDimensions = Array.from(layerDimensionsRef.current.values())
-
-    if (layerDimensions.length === 0) {
-      return { width: 800, height: 600 }
-    }
-
-    // Find the maximum dimensions needed to contain all layers
-    let maxWidth = 0
-    let maxHeight = 0
-
-    for (const layer of layerDimensions) {
-      const layerRight = layer.x + layer.width
-      const layerBottom = layer.y + layer.height
-
-      maxWidth = Math.max(maxWidth, layerRight)
-      maxHeight = Math.max(maxHeight, layerBottom)
-    }
-
-    // Ensure minimum dimensions and add some padding
-    maxWidth = Math.max(maxWidth, 800)
-    maxHeight = Math.max(maxHeight, 600)
-
-    // Add padding to ensure layers don't touch the edges
-    maxWidth += 100
-    maxHeight += 100
-
-    return { width: maxWidth, height: maxHeight }
-  }, [])
-
   // Update WebGL viewport when canvas dimensions change
   React.useEffect(() => {
     const gl = glRef.current
@@ -336,7 +328,7 @@ export function ImageEditorCanvas({
       // Update WebGL viewport
       gl.viewport(0, 0, canvasDimensions.width, canvasDimensions.height)
     }
-  }, [canvasDimensions, canvasRef?.current])
+  }, [canvasDimensions.width, canvasDimensions.height, canvasRef?.current])
 
   // Helper function to load image data directly from File objects
   const loadImageDataFromFile = React.useCallback(
@@ -349,25 +341,56 @@ export function ImageEditorCanvas({
           return
         }
 
-        const img = new Image()
-        img.onload = () => {
-          canvas.width = img.width
-          canvas.height = img.height
-          ctx.drawImage(img, 0, 0)
+        const loadWithBitmap = async () => {
+          try {
+            const bitmap = await createImageBitmap(file, {
+              imageOrientation: "from-image",
+            })
+            canvas.width = bitmap.width
+            canvas.height = bitmap.height
+            ctx.drawImage(bitmap, 0, 0)
+            if (typeof (bitmap as any).close === "function") {
+              try {
+                ;(bitmap as any).close()
+              } catch {}
+            }
+            const imageData = ctx.getImageData(
+              0,
+              0,
+              canvas.width,
+              canvas.height
+            )
+            resolve(imageData)
+          } catch {
+            loadWithImage()
+          }
+        }
 
-          const imageData = ctx.getImageData(0, 0, img.width, img.height)
-          resolve(imageData)
+        const loadWithImage = () => {
+          const img = new Image()
+          img.onload = () => {
+            canvas.width = img.width
+            canvas.height = img.height
+            ctx.drawImage(img, 0, 0)
+            const imageData = ctx.getImageData(0, 0, img.width, img.height)
+            if (img.src.startsWith("blob:")) URL.revokeObjectURL(img.src)
+            resolve(imageData)
+          }
+          img.onerror = () => {
+            if (img.src.startsWith("blob:")) URL.revokeObjectURL(img.src)
+            resolve(null)
+          }
+          img.src = URL.createObjectURL(file)
         }
-        img.onerror = (error) => {
-          resolve(null)
-        }
-        img.src = URL.createObjectURL(file)
+
+        loadWithBitmap()
       })
     },
     []
   )
 
   // Handle main image data loading
+  // biome-ignore lint/correctness/useExhaustiveDependencies: loadImageDataFromFile cause infinite loop
   React.useEffect(() => {
     const loadMainImage = async () => {
       if (!image) {
@@ -395,7 +418,7 @@ export function ImageEditorCanvas({
     }
 
     loadMainImage()
-  }, [image, loadImageDataFromFile])
+  }, [image])
 
   // Initialize hybrid renderer when WebGL context is ready
   React.useEffect(() => {
@@ -404,7 +427,6 @@ export function ImageEditorCanvas({
     }
 
     const gl = glRef.current
-    const canvas = canvasRef.current
 
     // Use canvas dimensions instead of canvas element size
     const width = canvasDimensions.width
@@ -425,9 +447,10 @@ export function ImageEditorCanvas({
       // Reset the hybrid renderer reference so we can try again
       hybridRendererRef.current = null
     }
-  }, [canvasRef?.current, canvasDimensions])
+  }, [canvasRef?.current, canvasDimensions.width, canvasDimensions.height])
 
   // Handle layer-specific image data loading
+  // biome-ignore lint/correctness/useExhaustiveDependencies: loadImageDataFromFile cause infinite loop
   React.useEffect(() => {
     // Prevent updates during drag operations
     if (isDragActive) return
@@ -440,6 +463,11 @@ export function ImageEditorCanvas({
       for (const [layerId, imageData] of oldData) {
         if (!currentLayerIds.has(layerId) && layerId !== "main") {
           imageDataCacheRef.current.delete(layerId)
+          const gl = glRef.current
+          const tex = textureCacheRef.current.get(layerId)
+          if (gl && tex) {
+            gl.deleteTexture(tex)
+          }
           textureCacheRef.current.delete(layerId)
         }
       }
@@ -508,7 +536,7 @@ export function ImageEditorCanvas({
     }
 
     loadLayerImages()
-  }, [layers, canvasDimensions, isDragActive, loadImageDataFromFile])
+  }, [layers, canvasDimensions.width, canvasDimensions.height, isDragActive])
 
   // Handle viewport updates based on zoom
   React.useEffect(() => {
@@ -517,8 +545,8 @@ export function ImageEditorCanvas({
     setViewport((prev) => ({ ...prev, scale: zoom }))
   }, [toolsValues.zoom, viewportScale])
 
-  // Function to center viewport on canvas
-  const centerViewport = React.useCallback(() => {
+  // Center viewport when canvas dimensions change
+  React.useEffect(() => {
     if (!containerRef.current) return
 
     const container = containerRef.current
@@ -538,25 +566,13 @@ export function ImageEditorCanvas({
       x: centerX,
       y: centerY,
     }))
-  }, [canvasDimensions, viewportScale, viewportX, viewportY])
-
-  // Function to reset viewport with smooth animation
-  const resetViewport = React.useCallback(() => {
-    viewportX.set(0)
-    viewportY.set(0)
-    viewportScale.set(1)
-
-    setViewport({
-      x: 0,
-      y: 0,
-      scale: 1,
-    })
-  }, [viewportX, viewportY, viewportScale])
-
-  // Center viewport when canvas dimensions change
-  React.useEffect(() => {
-    centerViewport()
-  }, [centerViewport])
+  }, [
+    canvasDimensions.width,
+    canvasDimensions.height,
+    viewportScale,
+    viewportX,
+    viewportY,
+  ])
 
   const handleWheel = React.useCallback(
     (e: React.WheelEvent) => {
@@ -592,8 +608,17 @@ export function ImageEditorCanvas({
 
   // Double-click to reset viewport
   const handleDoubleClick = React.useCallback(() => {
-    resetViewport()
-  }, [resetViewport])
+    // Function to reset viewport with smooth animation
+    viewportX.set(0)
+    viewportY.set(0)
+    viewportScale.set(1)
+
+    setViewport({
+      x: 0,
+      y: 0,
+      scale: 1,
+    })
+  }, [viewportX, viewportY, viewportScale])
 
   // Initialize WebGL context and shaders
   React.useEffect(() => {
@@ -624,7 +649,7 @@ export function ImageEditorCanvas({
     }
     glRef.current = gl
 
-    // Set WebGL to flip textures vertically (WebGL Y-axis is inverted)
+    // Centralized orientation: flip at unpack time
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true)
 
     // Initialize Shader Manager
@@ -744,6 +769,12 @@ export function ImageEditorCanvas({
       if (imageData) {
         const texture = createTextureFromImageData(imageData)
         if (texture) {
+          // Dispose previous texture if any to avoid leaks
+          const gl = glRef.current
+          const prev = textureCacheRef.current.get(layer.id)
+          if (gl && prev && prev !== texture) {
+            gl.deleteTexture(prev)
+          }
           textureCacheRef.current.set(layer.id, texture)
           return texture
         }
@@ -761,12 +792,34 @@ export function ImageEditorCanvas({
   )
 
   // Draw function using worker-based rendering for non-blocking GPU operations
-  const draw = React.useCallback(async () => {
+  const draw = async () => {
     // Prevent drawing during drag operations or if already drawing
     if (isDragActive || isDrawingRef.current) return
 
     // Set drawing flag to prevent overlapping draws
     isDrawingRef.current = true
+
+    // Periodic cleanup of unused cache entries to prevent memory leaks
+    try {
+      const currentLayerIds = new Set(layers.map((l) => l.id))
+      currentLayerIds.add("main") // Preserve main image cache
+
+      // Clean up imageData cache
+      for (const [key] of Array.from(imageDataCacheRef.current.entries())) {
+        if (!currentLayerIds.has(key)) {
+          imageDataCacheRef.current.delete(key)
+        }
+      }
+
+      // Clean up texture cache
+      const gl = glRef.current
+      for (const [key, tex] of Array.from(textureCacheRef.current.entries())) {
+        if (!currentLayerIds.has(key)) {
+          if (gl) gl.deleteTexture(tex)
+          textureCacheRef.current.delete(key)
+        }
+      }
+    } catch {}
 
     try {
       // Use worker-based rendering if available (always queue; manager cancels in-flight)
@@ -927,24 +980,22 @@ export function ImageEditorCanvas({
       // Always reset the drawing flag
       isDrawingRef.current = false
     }
-  }, [
-    layers,
-    loadLayerTexture,
-    canvasRef?.current,
-    isDragActive,
-    debouncedToolsValues,
-    throttledToolsValues,
-    smoothToolsValues,
-    selectedLayerId,
-    renderLayersWithWorker,
-  ])
+  }
 
-  // Keep a stable reference to the latest draw function
+  // Keep a stable reference to the latest draw function (no state update -> no render loop)
   const drawRef = React.useRef<() => void>(() => {})
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keep drawRef updated on relevant changes without depending on draw itself
   React.useEffect(() => {
     drawRef.current = draw
-  }, [draw])
+  }, [
+    layersSignature,
+    selectedLayerId,
+    isDragActive,
+    canvasDimensions.width,
+    canvasDimensions.height,
+  ])
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: draw cause infinite loop
   React.useEffect(() => {
     const hasWebGLReady =
       !!glRef.current &&
@@ -956,15 +1007,12 @@ export function ImageEditorCanvas({
     if (isWorkerReadyRef.current || hasWebGLReady) {
       draw()
     }
-  }, [draw])
+  }, [isWorkerReadyRef.current])
 
-  // Removed explicit layer-change redraw; covered by [draw] effect which depends on layers
-
-  // Removed explicit reorder redraw; covered by [draw] effect
-
+  // biome-ignore lint/correctness/useExhaustiveDependencies: draw cause infinite loop
   React.useEffect(() => {
     onDrawReady?.(() => draw())
-  }, [draw, onDrawReady])
+  }, [])
 
   // Redraw when layer properties that affect visibility/compositing change
   React.useEffect(() => {

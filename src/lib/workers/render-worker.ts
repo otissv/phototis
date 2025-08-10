@@ -104,6 +104,101 @@ let compUBlendModeLocation: WebGLUniformLocation | null = null
 // Texture cache
 const textureCache = new Map<string, WebGLTexture>()
 const textureSignatures = new Map<string, string>()
+const lastUsedFrame = new Map<string, number>()
+// Use const and mutate through object property to satisfy linter
+const frameCounterRef = { value: 0 }
+
+// Debug counters
+let dbgCreatedTextures = 0
+let dbgDeletedTextures = 0
+let dbgCreatedFbos = 0
+let dbgDeletedFbos = 0
+let dbgTexUploads = 0
+let dbgBitmapsCreated = 0
+let dbgBitmapsClosed = 0
+
+// Persistent compositing targets (ping/pong). We reuse these across frames to
+// avoid constant create/delete churn when compositing layers of the same size.
+type CompTarget = {
+  tex: WebGLTexture
+  fb: WebGLFramebuffer
+  width: number
+  height: number
+}
+let compPingTarget: CompTarget | null = null
+let compPongTarget: CompTarget | null = null
+
+function createCompTarget(width: number, height: number): CompTarget {
+  const glCtx = gl as WebGL2RenderingContext
+  const tex = glCtx.createTexture()
+  if (!tex) throw new Error("Failed to create comp texture")
+  glCtx.bindTexture(glCtx.TEXTURE_2D, tex)
+  glCtx.texParameteri(
+    glCtx.TEXTURE_2D,
+    glCtx.TEXTURE_WRAP_S,
+    glCtx.CLAMP_TO_EDGE
+  )
+  glCtx.texParameteri(
+    glCtx.TEXTURE_2D,
+    glCtx.TEXTURE_WRAP_T,
+    glCtx.CLAMP_TO_EDGE
+  )
+  glCtx.texParameteri(glCtx.TEXTURE_2D, glCtx.TEXTURE_MIN_FILTER, glCtx.LINEAR)
+  glCtx.texParameteri(glCtx.TEXTURE_2D, glCtx.TEXTURE_MAG_FILTER, glCtx.LINEAR)
+  glCtx.texImage2D(
+    glCtx.TEXTURE_2D,
+    0,
+    glCtx.RGBA,
+    width,
+    height,
+    0,
+    glCtx.RGBA,
+    glCtx.UNSIGNED_BYTE,
+    null
+  )
+  const fb = glCtx.createFramebuffer()
+  if (!fb) throw new Error("Failed to create comp framebuffer")
+  glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, fb)
+  glCtx.framebufferTexture2D(
+    glCtx.FRAMEBUFFER,
+    glCtx.COLOR_ATTACHMENT0,
+    glCtx.TEXTURE_2D,
+    tex,
+    0
+  )
+  dbgCreatedTextures++
+  dbgCreatedFbos++
+  return { tex, fb, width, height }
+}
+
+function ensureCompTarget(
+  target: CompTarget | null,
+  width: number,
+  height: number
+): CompTarget {
+  const glCtx = gl as WebGL2RenderingContext
+  if (!target) {
+    return createCompTarget(width, height)
+  }
+  if (target.width !== width || target.height !== height) {
+    // Reallocate the existing texture to the new size; framebuffer remains valid
+    glCtx.bindTexture(glCtx.TEXTURE_2D, target.tex)
+    glCtx.texImage2D(
+      glCtx.TEXTURE_2D,
+      0,
+      glCtx.RGBA,
+      width,
+      height,
+      0,
+      glCtx.RGBA,
+      glCtx.UNSIGNED_BYTE,
+      null
+    )
+    target.width = width
+    target.height = height
+  }
+  return target
+}
 
 function createShader(
   glCtx: WebGL2RenderingContext,
@@ -152,7 +247,7 @@ uniform int u_blendMode;\n
 out vec4 outColor;\n
 ${blendGLSL}\n
 void main(){\n
-  vec2 uv = vec2(v_texCoord.x, 1.0 - v_texCoord.y);\n
+  vec2 uv = v_texCoord;\n
   vec4 baseColor = texture(u_baseTexture, uv);\n
   vec4 topColor = texture(u_topTexture, uv);\n
   topColor.a *= u_opacity;\n
@@ -244,8 +339,8 @@ uniform sampler2D u_texture;\n
 uniform float u_opacity;\n
 out vec4 outColor;\n
 void main() {\n
-  // Flip Y in shader so we don't depend on UNPACK_FLIP_Y_WEBGL
-  vec2 uv = vec2(v_texCoord.x, 1.0 - v_texCoord.y);\n
+  // Use texture coordinates directly since we've corrected them in the buffer
+  vec2 uv = v_texCoord;\n
   vec4 c = texture(u_texture, uv);\n
   c.a *= u_opacity;\n
   outColor = c;\n
@@ -272,7 +367,6 @@ void main() {\n
   glCtx.vertexAttribPointer(aPosLoc, 2, glCtx.FLOAT, false, 0, 0)
 
   // Texture coordinates
-  // Use texcoords that map the image 1:1; flipping handled in shader
   const texCoords = new Float32Array([0, 0, 1, 0, 0, 1, 1, 1])
   blitTexCoordBuffer = glCtx.createBuffer()
   if (!blitTexCoordBuffer) throw new Error("Failed to create texcoord buffer")
@@ -376,6 +470,12 @@ function initializeWebGL(
           if (workerId) {
             postMessage({ type: "success", id: workerId } as SuccessMessage)
           }
+          // Clean mapping entries that point to this worker task id
+          try {
+            for (const [k, v] of Array.from(pipelineTaskToWorkerId.entries())) {
+              if (v === workerId) pipelineTaskToWorkerId.delete(k)
+            }
+          } catch {}
         }
       },
       onError: (taskId: string, error: string) => {
@@ -384,6 +484,17 @@ function initializeWebGL(
         if (workerId) {
           postMessage({ type: "error", id: workerId, error } as ErrorMessage)
         }
+        // Clean mapping for this task/worker association
+        try {
+          if (workerId) {
+            for (const [k, v] of Array.from(pipelineTaskToWorkerId.entries())) {
+              if (v === workerId || k === taskId)
+                pipelineTaskToWorkerId.delete(k)
+            }
+          } else {
+            pipelineTaskToWorkerId.delete(taskId)
+          }
+        } catch {}
       },
     })
     asynchronousPipeline.initialize({ gl, width, height })
@@ -409,6 +520,18 @@ async function renderLayers(
   messageId: string
 ): Promise<void> {
   try {
+    // Remove cached textures for layers that no longer exist to avoid leaking GPU memory
+    const aliveIds = new Set(layers.map((l) => l.id))
+    for (const [key, tex] of Array.from(textureCache.entries())) {
+      if (!aliveIds.has(key)) {
+        try {
+          ;(gl as WebGL2RenderingContext).deleteTexture(tex)
+          dbgDeletedTextures++
+        } catch {}
+        textureCache.delete(key)
+        textureSignatures.delete(key)
+      }
+    }
     if (!gl) {
       throw new Error("WebGL context not initialized")
     }
@@ -435,6 +558,7 @@ async function renderLayers(
     // Stage 1: Layer preprocessing and texture preparation
     const layerTextures = new Map<string, WebGLTexture>()
 
+    frameCounterRef.value++
     for (const layer of layers) {
       // Validate layer dimensions
       const layerDim = layerDimensionsMap.get(layer.id)
@@ -452,6 +576,7 @@ async function renderLayers(
           const texture = await loadLayerTexture(layer)
           if (texture) {
             layerTextures.set(layer.id, texture)
+            lastUsedFrame.set(layer.id, frameCounterRef.value)
           }
         } catch (error) {
           console.warn(`Failed to load texture for layer ${layer.id}:`, error)
@@ -507,6 +632,21 @@ async function renderLayers(
     let finalTexture: WebGLTexture | null = null
     let drewAnyLayer = false
     if (renderedLayers.size > 0) {
+      // Ensure persistent ping/pong comp targets sized to current canvas
+      compPingTarget = ensureCompTarget(
+        compPingTarget,
+        canvasWidth,
+        canvasHeight
+      )
+      compPongTarget = ensureCompTarget(
+        compPongTarget,
+        canvasWidth,
+        canvasHeight
+      )
+      // Local handles for this render pass
+      const ping: CompTarget = compPingTarget as CompTarget
+      const pong: CompTarget = compPongTarget as CompTarget
+      let writeTarget: CompTarget = ping
       try {
         if (
           !compProgram ||
@@ -517,59 +657,7 @@ async function renderLayers(
           throw new Error("Compositing resources not initialized")
         }
 
-        // Create two FBO/texture targets for ping-pong compositing
-        const makeTarget = () => {
-          const glCtx = gl as WebGL2RenderingContext
-          const tex = glCtx.createTexture()
-          if (!tex) throw new Error("Failed to create comp texture")
-          glCtx.bindTexture(glCtx.TEXTURE_2D, tex)
-          glCtx.texParameteri(
-            glCtx.TEXTURE_2D,
-            glCtx.TEXTURE_WRAP_S,
-            glCtx.CLAMP_TO_EDGE
-          )
-          glCtx.texParameteri(
-            glCtx.TEXTURE_2D,
-            glCtx.TEXTURE_WRAP_T,
-            glCtx.CLAMP_TO_EDGE
-          )
-          glCtx.texParameteri(
-            glCtx.TEXTURE_2D,
-            glCtx.TEXTURE_MIN_FILTER,
-            glCtx.LINEAR
-          )
-          glCtx.texParameteri(
-            glCtx.TEXTURE_2D,
-            glCtx.TEXTURE_MAG_FILTER,
-            glCtx.LINEAR
-          )
-          glCtx.texImage2D(
-            glCtx.TEXTURE_2D,
-            0,
-            glCtx.RGBA,
-            canvasWidth,
-            canvasHeight,
-            0,
-            glCtx.RGBA,
-            glCtx.UNSIGNED_BYTE,
-            null
-          )
-          const fb = glCtx.createFramebuffer()
-          if (!fb) throw new Error("Failed to create comp framebuffer")
-          glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, fb)
-          glCtx.framebufferTexture2D(
-            glCtx.FRAMEBUFFER,
-            glCtx.COLOR_ATTACHMENT0,
-            glCtx.TEXTURE_2D,
-            tex,
-            0
-          )
-          return { tex, fb }
-        }
-
-        const ping = makeTarget()
-        const pong = makeTarget()
-        let writeTarget = ping
+        // Targets are ready via ensureCompTarget above
         let readTexture: WebGLTexture | null = null
 
         // Clear first target
@@ -581,10 +669,15 @@ async function renderLayers(
           glCtx.clear(glCtx.COLOR_BUFFER_BIT)
         }
 
-        // Ordered draw bottom->top: assume incoming bottom->top order
-        for (const layer of layers) {
+        // Ordered draw bottom->top.
+        // The editor currently provides layers in top-first order (new layers are unshifted),
+        // so convert to bottom->top for correct compositing.
+        const orderedLayers = layers.slice().reverse()
+        for (const layer of orderedLayers) {
           const tex = renderedLayers.get(layer.id)
           if (!tex || layer.visible === false || layer.opacity <= 0) continue
+          // Mark as used this frame
+          lastUsedFrame.set(layer.id, frameCounterRef.value)
 
           if (!readTexture) {
             // First visible layer: blit to writeTarget
@@ -613,7 +706,7 @@ async function renderLayers(
           }
 
           // Composite current layer over accumulated result into the opposite target
-          const output = writeTarget === ping ? pong : ping
+          const output: CompTarget = writeTarget === ping ? pong : ping
           {
             const glCtx = gl as WebGL2RenderingContext
             glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, output.fb)
@@ -673,7 +766,20 @@ async function renderLayers(
       type: "progress",
       id: messageId,
       progress: 90,
-    } as ProgressMessage)
+      dbg: {
+        createdTextures: dbgCreatedTextures,
+        deletedTextures: dbgDeletedTextures,
+        createdFbos: dbgCreatedFbos,
+        deletedFbos: dbgDeletedFbos,
+        texUploads: dbgTexUploads,
+        bitmapsCreated: dbgBitmapsCreated,
+        bitmapsClosed: dbgBitmapsClosed,
+        cacheSize: textureCache.size,
+        numInputLayers: layers.length,
+        numPreparedTextures: layerTextures.size,
+        numRenderedLayers: renderedLayers.size,
+      },
+    } as any)
 
     // Try pipeline path for progressive rendering
     if (USE_PIPELINE && asynchronousPipeline) {
@@ -725,6 +831,45 @@ async function renderLayers(
       error: error instanceof Error ? error.message : "Unknown error",
     } as ErrorMessage)
   }
+
+  // Opportunistic LRU-style cleanup: delete textures not used in the last 120 frames
+  try {
+    const threshold = Math.max(0, frameCounterRef.value - 120)
+    for (const [key, tex] of Array.from(textureCache.entries())) {
+      const last = lastUsedFrame.get(key) ?? 0
+      if (last < threshold) {
+        ;(gl as WebGL2RenderingContext).deleteTexture(tex)
+        dbgDeletedTextures++
+        textureCache.delete(key)
+        textureSignatures.delete(key)
+        lastUsedFrame.delete(key)
+      }
+    }
+
+    // Additional cleanup: limit cache size to prevent unbounded growth
+    const maxCacheSize = 50 // Maximum number of cached textures
+    if (textureCache.size > maxCacheSize) {
+      // Remove oldest entries beyond the limit
+      const sortedEntries = Array.from(lastUsedFrame.entries()).sort(
+        (a, b) => a[1] - b[1]
+      ) // Sort by frame number (oldest first)
+
+      const entriesToRemove = sortedEntries.slice(
+        0,
+        textureCache.size - maxCacheSize
+      )
+      for (const [key] of entriesToRemove) {
+        const tex = textureCache.get(key)
+        if (tex) {
+          ;(gl as WebGL2RenderingContext).deleteTexture(tex)
+          dbgDeletedTextures++
+          textureCache.delete(key)
+          textureSignatures.delete(key)
+          lastUsedFrame.delete(key)
+        }
+      }
+    }
+  } catch {}
 }
 
 // Load layer texture with validation
@@ -758,12 +903,35 @@ async function loadLayerTexture(layer: Layer): Promise<WebGLTexture | null> {
 
     let imageBitmap: ImageBitmap
 
-    // Handle both File and ImageBitmap objects
-    if (layer.image instanceof ImageBitmap) {
-      imageBitmap = layer.image
-    } else if (layer.image instanceof File) {
-      // Convert File to ImageBitmap for efficient transfer
-      imageBitmap = await createImageBitmap(layer.image)
+    // Handle both ImageBitmap and Blob/File objects. Avoid fragile instanceof checks across realms.
+    const imgAny: any = (layer as any).image
+    const isImageBitmapLike =
+      imgAny &&
+      typeof imgAny === "object" &&
+      "width" in imgAny &&
+      "height" in imgAny &&
+      (typeof imgAny.close === "function" ||
+        typeof (self as any).ImageBitmap !== "undefined")
+
+    const isBlobLike =
+      imgAny &&
+      typeof imgAny === "object" &&
+      typeof imgAny.arrayBuffer === "function" &&
+      typeof imgAny.size === "number" &&
+      typeof imgAny.type === "string"
+
+    if (
+      isImageBitmapLike &&
+      (imgAny as ImageBitmap).width &&
+      (imgAny as ImageBitmap).height
+    ) {
+      imageBitmap = imgAny as ImageBitmap
+    } else if (isBlobLike) {
+      // Convert Blob/File to ImageBitmap respecting EXIF orientation
+      imageBitmap = await createImageBitmap(imgAny as Blob, {
+        imageOrientation: "from-image",
+      })
+      dbgBitmapsCreated++
     } else {
       console.warn("Unsupported image type for layer:", layer.id)
       return null
@@ -785,6 +953,15 @@ async function loadLayerTexture(layer: Layer): Promise<WebGLTexture | null> {
       gl.UNSIGNED_BYTE,
       imageBitmap
     )
+    dbgTexUploads++
+
+    // Once uploaded to GPU, the bitmap can be closed to free memory
+    if (typeof (imageBitmap as any).close === "function") {
+      try {
+        ;(imageBitmap as any).close()
+        dbgBitmapsClosed++
+      } catch {}
+    }
 
     // Cache texture
     textureCache.set(cacheKey, texture)
@@ -964,8 +1141,32 @@ self.onmessage = async (event: MessageEvent) => {
 // Cleanup function
 function cleanup(): void {
   if (gl) {
-    // Clean up WebGL resources
-    gl.deleteTexture(gl.createTexture()) // Placeholder cleanup
+    // Clean up cached textures
+    try {
+      for (const tex of textureCache.values()) {
+        ;(gl as WebGL2RenderingContext).deleteTexture(tex)
+      }
+      textureCache.clear()
+      textureSignatures.clear()
+    } catch {}
+    // Clean up persistent comp targets
+    try {
+      const glCtx = gl as WebGL2RenderingContext
+      if (compPingTarget) {
+        glCtx.deleteFramebuffer(compPingTarget.fb)
+        glCtx.deleteTexture(compPingTarget.tex)
+        dbgDeletedFbos++
+        dbgDeletedTextures++
+        compPingTarget = null
+      }
+      if (compPongTarget) {
+        glCtx.deleteFramebuffer(compPongTarget.fb)
+        glCtx.deleteTexture(compPongTarget.tex)
+        dbgDeletedFbos++
+        dbgDeletedTextures++
+        compPongTarget = null
+      }
+    } catch {}
     gl = null
   }
 

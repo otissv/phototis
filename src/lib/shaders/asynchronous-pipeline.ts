@@ -290,6 +290,13 @@ export class AsynchronousPipeline {
       this.completedTasks.set(task.id, task)
       this.activeTasks.delete(task.id)
       this.emitSuccess(task.id, task.result)
+
+      // Clean up completed task after short delay to prevent memory buildup
+      setTimeout(() => {
+        this.completedTasks.delete(task.id)
+        // Also clean up any cached data for this task
+        this.cache.delete(task.id)
+      }, 5000) // Keep for 5 seconds then clean up
     } catch (error) {
       // Task failed
       task.error = error instanceof Error ? error.message : "Unknown error"
@@ -536,6 +543,7 @@ export class AsynchronousPipeline {
 
   private async waitForMemory(): Promise<void> {
     // Wait for memory to become available
+
     return new Promise((resolve) => setTimeout(resolve, 100))
   }
 

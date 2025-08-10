@@ -54,6 +54,11 @@ export function ImageEditor({
     }
     return [defaultLayer]
   })
+
+  const layersMemo = React.useMemo(() => {
+    return layers
+  }, [layers])
+
   const [selectedLayerId, setSelectedLayerId] =
     React.useState<string>("layer-1")
 
@@ -62,8 +67,10 @@ export function ImageEditor({
 
   // Get the currently selected layer's filters
   const selectedLayer = React.useMemo(() => {
-    return layers.find((layer) => layer.id === selectedLayerId) || layers[0]
-  }, [layers, selectedLayerId])
+    return (
+      layersMemo.find((layer) => layer.id === selectedLayerId) || layersMemo[0]
+    )
+  }, [layersMemo, selectedLayerId])
 
   const toolsValues = React.useMemo(() => {
     return selectedLayer?.filters || initialState
@@ -74,12 +81,12 @@ export function ImageEditor({
       if (!selectedLayer) return
 
       const newFilters = imageEditorToolsReducer(selectedLayer.filters, action)
-      const newLayers = layers.map((layer) =>
+      const newLayers = layersMemo.map((layer) =>
         layer.id === selectedLayerId ? { ...layer, filters: newFilters } : layer
       )
       setLayers(newLayers)
     },
-    [selectedLayer, selectedLayerId, layers]
+    [selectedLayer, selectedLayerId, layersMemo]
   )
 
   const value = React.useMemo(() => {
@@ -185,7 +192,7 @@ export function ImageEditor({
       // Allow layer reordering during drag operations, but prevent other changes
       if (isDragActive) {
         // Check if this is just a reordering (same layers, different order)
-        const currentLayerIds = layers.map((layer) => layer.id).sort()
+        const currentLayerIds = layersMemo.map((layer) => layer.id).sort()
         const newLayerIds = newLayers.map((layer) => layer.id).sort()
         const isReordering =
           currentLayerIds.length === newLayerIds.length &&
@@ -198,7 +205,7 @@ export function ImageEditor({
       }
       setLayers(newLayers)
     },
-    [isDragActive, layers]
+    [isDragActive, layersMemo]
   )
 
   const handleSelectedLayerChange = React.useCallback(
@@ -210,22 +217,22 @@ export function ImageEditor({
 
   const handleLayerFiltersChange = React.useCallback(
     (layerId: string, filters: any) => {
-      const newLayers = layers.map((layer) =>
+      const newLayers = layersMemo.map((layer) =>
         layer.id === layerId ? { ...layer, filters } : layer
       )
       setLayers(newLayers)
     },
-    [layers]
+    [layersMemo]
   )
 
   const handleLayerBlendModeChange = React.useCallback(
     (layerId: string, blendMode: BlendMode) => {
-      const newLayers = layers.map((layer) =>
+      const newLayers = layersMemo.map((layer) =>
         layer.id === layerId ? { ...layer, blendMode } : layer
       )
       setLayers(newLayers)
     },
-    [layers]
+    [layersMemo]
   )
 
   const handleImageDrop = React.useCallback(
@@ -244,13 +251,13 @@ export function ImageEditor({
       }
 
       // Add the new layer to the top of the stack
-      const newLayers = [newLayer, ...layers]
+      const newLayers = [newLayer, ...layersMemo]
       setLayers(newLayers)
 
       // Select the new layer
       setSelectedLayerId(newLayer.id)
     },
-    [layers]
+    [layersMemo]
   )
 
   // Update background layer when initial image is provided
@@ -304,7 +311,7 @@ export function ImageEditor({
           <ImageEditorCanvas
             image={image}
             toolsValues={toolsValues}
-            layers={layers}
+            layers={layersMemo}
             onProgress={handleOnProgress}
             id='image-editor-canvas'
             canvasRef={canvasRef}
@@ -338,7 +345,7 @@ export function ImageEditor({
 
       {/* Layer System */}
       <LayerSystem
-        layers={layers}
+        layers={layersMemo}
         selectedLayerId={selectedLayerId}
         onLayersChange={handleLayersChange}
         onSelectedLayerChange={handleSelectedLayerChange}

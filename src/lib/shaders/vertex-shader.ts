@@ -42,8 +42,8 @@ export class VertexShaderPlugin extends BaseShaderPlugin {
       // Add layer position offset
       rotatedPos += u_layerPosition;
       
-      // Convert to normalized device coordinates
-      vec2 ndcPos = rotatedPos / u_canvasSize;
+      // Convert to normalized device coordinates [-1, 1]
+      vec2 ndcPos = (rotatedPos / u_canvasSize) * 2.0 - 1.0;
       
       gl_Position = vec4(ndcPos, 0, 1);
       v_texCoord = a_texCoord;

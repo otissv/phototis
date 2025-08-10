@@ -679,7 +679,7 @@ function LayerItemContent({
                 <Button
                   variant='ghost'
                   className={cn(
-                    "text-sm truncate flex items-center gap-1 h-6 flex-1 justify-start px-1 cursor-pointer rounded-sm cursor-grab",
+                    "text-sm truncate flex items-center gap-1 h-6 flex-1 justify-start px-1 rounded-sm cursor-grab",
                     "hover:bg-transparent"
                   )}
                   onDoubleClick={() => !isDragActive && setIsEditing(true)}
@@ -738,8 +738,10 @@ function LayerThumbnail({ layer }: { layer: Layer }) {
 
       return () => {
         URL.revokeObjectURL(url)
+        setThumbnailUrl(null)
       }
     }
+    // Clean up if no image
     setThumbnailUrl(null)
   }, [layer.image])
 

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Card, CardContent, CardFooter } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import {
@@ -37,6 +37,16 @@ export function ImageCard({
   const [format, setFormat] = useState<ImageOptions["format"]>()
 
   const [isProcessing, setIsProcessing] = useState(false)
+  const [previewUrl, setPreviewUrl] = useState<string>("")
+
+  // Create a single object URL for the preview and revoke it on change/unmount
+  useEffect(() => {
+    const url = URL.createObjectURL(image)
+    setPreviewUrl(url)
+    return () => {
+      URL.revokeObjectURL(url)
+    }
+  }, [image])
 
   const handleProcess = async () => {
     setIsProcessing(true)
@@ -82,7 +92,7 @@ export function ImageCard({
           role='button'
         >
           <img
-            src={URL.createObjectURL(image)}
+            src={previewUrl}
             alt={image.name}
             className='h-full w-full object-cover'
           />

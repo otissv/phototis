@@ -207,8 +207,12 @@ export class WorkerManager {
       // Do not return here; also route through the generic handlers below
     }
 
-    // Handle progress updates
+    // Handle progress updates (also relay debug info if present)
     if (message.type === "progress") {
+      if (message.dbg) {
+        // Surface worker debug counters in devtools
+        // developer diagnostics
+      }
       this.handleProgressUpdate(message)
       return
     }
@@ -241,6 +245,11 @@ export class WorkerManager {
   private handleProgressUpdate(message: ProgressMessage): void {
     // Emit progress event for UI updates
     this.emitProgress(message.id, message.progress)
+    if ((message as any).dbg) {
+      // Surface debug info in devtools for diagnostics
+      const dbg = (message as any).dbg
+      console.debug("[render-worker] progress", message.progress, dbg)
+    }
   }
 
   // Handle errors
@@ -290,32 +299,19 @@ export class WorkerManager {
   ): Promise<string> {
     const taskId = this.generateMessageId()
 
-    // Convert File objects to ImageBitmap for worker compatibility
-    const processedLayers = await Promise.all(
-      layers.map(async (layer) => {
-        if (layer.image instanceof File) {
-          try {
-            const file = layer.image
-            const imageBitmap = await createImageBitmap(file)
-            const imageSignature = `${file.name}:${file.size}:${file.lastModified}`
-            return {
-              ...layer,
-              // Replace File with ImageBitmap for worker consumption
-              image: imageBitmap,
-              // Attach a stable signature for caching/invalidation in worker
-              imageSignature,
-            } as any
-          } catch (error) {
-            console.warn(
-              `Failed to convert File to ImageBitmap for layer ${layer.id}:`,
-              error
-            )
-            return layer
-          }
-        }
-        return layer
-      })
-    )
+    // Do not convert to ImageBitmap on the main thread; let the worker handle it.
+    // Attach a stable signature for caching/invalidation in the worker.
+    const processedLayers = layers.map((layer) => {
+      if (layer.image instanceof File) {
+        const file = layer.image
+        const imageSignature = `${file.name}:${file.size}:${file.lastModified}`
+        return {
+          ...layer,
+          imageSignature,
+        } as any
+      }
+      return layer
+    })
 
     const task: RenderTask = {
       id: taskId,

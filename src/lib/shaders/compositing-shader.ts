@@ -26,8 +26,9 @@ export const COMPOSITING_FRAGMENT_SHADER = `
   ${BLEND_MODE_GLSL}
   
   void main() {
-    vec4 baseColor = texture2D(u_baseTexture, v_texCoord);
-    vec4 topColor = texture2D(u_topTexture, v_texCoord);
+    vec2 uv = v_texCoord;
+    vec4 baseColor = texture2D(u_baseTexture, uv);
+    vec4 topColor = texture2D(u_topTexture, uv);
     
     // Apply opacity to top layer
     topColor.a *= u_opacity / 100.0;
@@ -136,7 +137,7 @@ export const LAYER_RENDER_FRAGMENT_SHADER = `
     // Convert to texture coordinates for the layer
     vec2 uv = layerCoord / vec2(u_layerWidth, u_layerHeight);
     
-    // Apply flip transformations
+    // Apply flip transformations from tool settings only
     if (u_flipHorizontal) {
       uv.x = 1.0 - uv.x;
     }

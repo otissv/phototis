@@ -161,8 +161,6 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
     eventListenersRef.current.set("worker-success", successListener)
   }, [state.currentTaskId])
 
-  // (removed cleanupEventListeners; cleanup is handled inline in useEffect)
-
   // Render layers using worker
   const renderLayers = React.useCallback(
     async (
@@ -226,52 +224,49 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
   )
 
   // Apply filter to layer using worker
-  const applyFilter = React.useCallback(
-    (
-      layerId: string,
-      filterType: string,
-      parameters: any,
-      imageData: ImageBitmap,
-      priority: TaskPriority = TaskPriority.MEDIUM
-    ): string | null => {
-      const manager = workerManagerRef.current
-      if (!manager || !manager.isReady()) {
-        console.warn("Worker manager not ready")
-        return null
-      }
+  const applyFilter = (
+    layerId: string,
+    filterType: string,
+    parameters: any,
+    imageData: ImageBitmap,
+    priority: TaskPriority = TaskPriority.MEDIUM
+  ): string | null => {
+    const manager = workerManagerRef.current
+    if (!manager || !manager.isReady()) {
+      console.warn("Worker manager not ready")
+      return null
+    }
 
-      try {
-        // Queue filter task
-        const taskId = manager.queueFilterTask(
-          layerId,
-          filterType,
-          parameters,
-          imageData,
-          priority
-        )
+    try {
+      // Queue filter task
+      const taskId = manager.queueFilterTask(
+        layerId,
+        filterType,
+        parameters,
+        imageData,
+        priority
+      )
 
-        // Update state
-        setState((prev) => ({
-          ...prev,
-          queueStats: manager.getQueueStats(),
-        }))
+      // Update state
+      setState((prev) => ({
+        ...prev,
+        queueStats: manager.getQueueStats(),
+      }))
 
-        return taskId
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : "Unknown error"
-        setState((prev) => ({
-          ...prev,
-          error: errorMessage,
-        }))
-        return null
-      }
-    },
-    []
-  )
+      return taskId
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error"
+      setState((prev) => ({
+        ...prev,
+        error: errorMessage,
+      }))
+      return null
+    }
+  }
 
   // Cancel current task
-  const cancelCurrentTask = React.useCallback(() => {
+  const cancelCurrentTask = () => {
     const manager = workerManagerRef.current
     if (!manager || !state.currentTaskId) return
 
@@ -285,15 +280,15 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
         error: null,
       }))
     }
-  }, [state.currentTaskId])
+  }
 
   // Get task status
-  const getTaskStatus = React.useCallback((taskId: string) => {
+  const getTaskStatus = (taskId: string) => {
     const manager = workerManagerRef.current
     if (!manager) return "not-found"
 
     return manager.getTaskStatus(taskId)
-  }, [])
+  }
 
   // Update queue stats
 
@@ -311,6 +306,16 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
         manager.cleanup()
         workerManagerRef.current = null
       }
+
+      // Reset state to prevent memory leaks
+      setState({
+        isReady: false,
+        isProcessing: false,
+        currentTaskId: null,
+        progress: 0,
+        error: null,
+        queueStats: { queued: 0, active: 0, total: 0 },
+      })
     }
   }, [])
 

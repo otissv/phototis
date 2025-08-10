@@ -37,6 +37,9 @@ export class HybridRenderer {
     const { gl, width, height } = options
     this.gl = gl
 
+    // Centralized orientation: flip at unpack time
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true)
+
     // Initialize FBO manager
     this.fboManager.initialize(gl)
 
@@ -254,10 +257,10 @@ export class HybridRenderer {
         // Convert from [-1,1] quad to pixel space
         vec2 pixelPos = u_position + (a_position + 1.0) * 0.5 * u_size;
         
-        // Convert pixel position to clip space
+        // Convert pixel position (origin at top-left) to clip space (origin at center, Y up)
         vec2 clipPos = (pixelPos / u_canvasSize) * 2.0 - 1.0;
-        
-        // Flip Y coordinate for WebGL (Y-axis is inverted)
+        // Invert Y so that pixel Y=0 (top) maps to clip Y=+1 (top)
+        clipPos.y = -clipPos.y;
         gl_Position = vec4(clipPos, 0.0, 1.0);
         
         // Pass through texture coordinates
@@ -837,28 +840,19 @@ export class HybridRenderer {
     }
   }
 
-  // Helper method to get the rendering order for debugging
+  // Helper method to get the rendering order (bottom -> top) consistent with layer system
   private getRenderingOrder(layers: Layer[]): Layer[] {
+    // The editor provides layers in top-first order (new layers are unshifted)
+    // For correct compositing we must render bottom-first, so reverse here.
     return layers
       .filter((layer) => {
-        // Always include visible layers
         if (!layer.visible) return false
-
-        // For layer-1 (background), check if it has image data or is not empty
-        if (layer.id === "layer-1") {
-          return true // Always include background layer if visible
-        }
-
-        // For other layers, check if they have image content
+        if (layer.opacity <= 0) return false
+        if (layer.id === "layer-1") return true
         return !!layer.image || !layer.isEmpty
       })
-      .sort((a, b) => {
-        // Use original layer list index to maintain order
-        return (
-          layers.findIndex((layer) => layer.id === b.id) -
-          layers.findIndex((layer) => layer.id === a.id)
-        )
-      })
+      .slice()
+      .reverse()
   }
 
   // Method to render all layers with proper compositing using layer-specific FBOs
