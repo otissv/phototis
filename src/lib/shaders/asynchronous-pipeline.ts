@@ -499,7 +499,7 @@ export class AsynchronousPipeline {
       if (finalTexture) {
         return {
           success: true,
-          data: { finalTexture },
+          data: { finalTexture, originalTaskId: task.data.originalTaskId },
           progress: 100,
           stage: PipelineStage.FINAL_OUTPUT,
         }
@@ -508,7 +508,7 @@ export class AsynchronousPipeline {
       // Clear canvas if no layers
       return {
         success: true,
-        data: { finalTexture: null },
+        data: { finalTexture: null, originalTaskId: task.data.originalTaskId },
         progress: 100,
         stage: PipelineStage.FINAL_OUTPUT,
       }

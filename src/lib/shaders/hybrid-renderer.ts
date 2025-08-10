@@ -257,10 +257,8 @@ export class HybridRenderer {
         // Convert from [-1,1] quad to pixel space
         vec2 pixelPos = u_position + (a_position + 1.0) * 0.5 * u_size;
         
-        // Convert pixel position (origin at top-left) to clip space (origin at center, Y up)
+        // Convert pixel position to clip space (no extra Y flip here)
         vec2 clipPos = (pixelPos / u_canvasSize) * 2.0 - 1.0;
-        // Invert Y so that pixel Y=0 (top) maps to clip Y=+1 (top)
-        clipPos.y = -clipPos.y;
         gl_Position = vec4(clipPos, 0.0, 1.0);
         
         // Pass through texture coordinates

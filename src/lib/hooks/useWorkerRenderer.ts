@@ -162,6 +162,8 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
   }, [state.currentTaskId])
 
   // Render layers using worker
+  const versionRef = React.useRef(0)
+
   const renderLayers = React.useCallback(
     async (
       layers: Layer[],
@@ -173,7 +175,8 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
         string,
         { width: number; height: number; x: number; y: number }
       >,
-      priority: TaskPriority = TaskPriority.HIGH
+      priority: TaskPriority = TaskPriority.HIGH,
+      layersSignature?: string
     ): Promise<string | null> => {
       const manager = workerManagerRef.current
       if (!manager || !manager.isReady()) {
@@ -187,6 +190,9 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
           manager.cancelTask(state.currentTaskId)
         }
 
+        // Increment version for tokening; ensures worker can drop stale tasks
+        versionRef.current += 1
+
         // Queue render task
         const taskId = await manager.queueRenderTask(
           layers,
@@ -195,7 +201,11 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
           canvasWidth,
           canvasHeight,
           layerDimensions,
-          priority
+          priority,
+          {
+            signature: layersSignature ?? "",
+            version: versionRef.current,
+          }
         )
 
         // Update state

@@ -67,7 +67,6 @@ export function ImageEditorCanvas({
   const [processing, setProcessing] = React.useState(0)
   const [isElementDragging, setIsElementDragging] = React.useState(false)
 
-  console.log("layers", layers)
   // Worker-based rendering system
   // Memoize worker config so hook callbacks remain stable across renders
   const workerRendererConfig = React.useMemo(
@@ -857,7 +856,8 @@ export function ImageEditorCanvas({
             canvasWidth,
             canvasHeight,
             layerDimensionsRef.current,
-            priority
+            priority,
+            layersSignature
           )
 
           if (taskId) {

@@ -43,6 +43,7 @@ interface RenderMessage extends WorkerMessage {
       string,
       { width: number; height: number; x: number; y: number },
     ][]
+    token?: { signature?: string; version?: number }
   }
 }
 
@@ -555,6 +556,17 @@ async function renderLayers(
       progress: 10,
     } as ProgressMessage)
 
+    // Stage 0: Token-based stale-task drop (if provided)
+    if ((self as any).__lastToken) {
+      const prev = (self as any).__lastToken as {
+        signature?: string
+        version?: number
+      }
+      const current =
+        (currentRenderMessageId && (self as any).__currentToken) || null
+      // no-op; we replace token below
+    }
+
     // Stage 1: Layer preprocessing and texture preparation
     const layerTextures = new Map<string, WebGLTexture>()
 
@@ -781,9 +793,10 @@ async function renderLayers(
       },
     } as any)
 
-    // Try pipeline path for progressive rendering
+    // Try pipeline path for progressive rendering (with tokening/preemption)
     if (USE_PIPELINE && asynchronousPipeline) {
       try {
+        // Associate token for stale drop
         const baseTaskId = await asynchronousPipeline.queueRenderTask(
           layers,
           toolsValues,

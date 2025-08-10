@@ -295,7 +295,8 @@ export class WorkerManager {
       string,
       { width: number; height: number; x: number; y: number }
     >,
-    priority: TaskPriority = TaskPriority.HIGH
+    priority: TaskPriority = TaskPriority.HIGH,
+    token?: { signature?: string; version?: number }
   ): Promise<string> {
     const taskId = this.generateMessageId()
 
@@ -324,6 +325,10 @@ export class WorkerManager {
         canvasWidth,
         canvasHeight,
         layerDimensions: Array.from(layerDimensions.entries()),
+        token: {
+          signature: token?.signature ?? "",
+          version: token?.version ?? 0,
+        },
       },
       timestamp: Date.now(),
       retryCount: 0,
