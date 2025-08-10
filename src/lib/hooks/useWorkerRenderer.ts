@@ -41,6 +41,14 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
   const workerManagerRef = React.useRef<WorkerManager | null>(null)
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null)
   const eventListenersRef = React.useRef<Map<string, EventListener>>(new Map())
+  // Coalescing of rapid render requests
+  const coalesceTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  )
+  const pendingPromiseRef = React.useRef<{
+    resolve: (id: string | null) => void
+    promise: Promise<string | null>
+  } | null>(null)
 
   // Initialize worker manager with canvas
   const initialize = React.useCallback(
@@ -176,7 +184,8 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
         { width: number; height: number; x: number; y: number }
       >,
       priority: TaskPriority = TaskPriority.HIGH,
-      layersSignature?: string
+      layersSignature?: string,
+      interactive?: boolean
     ): Promise<string | null> => {
       const manager = workerManagerRef.current
       if (!manager || !manager.isReady()) {
@@ -193,32 +202,66 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
         // Increment version for tokening; ensures worker can drop stale tasks
         versionRef.current += 1
 
-        // Queue render task
-        const taskId = await manager.queueRenderTask(
-          layers,
-          toolsValues,
-          selectedLayerId,
-          canvasWidth,
-          canvasHeight,
-          layerDimensions,
-          priority,
-          {
-            signature: layersSignature ?? "",
-            version: versionRef.current,
-          }
-        )
+        // Coalesce rapid calls in a short window (~16ms)
+        if (coalesceTimerRef.current) {
+          clearTimeout(coalesceTimerRef.current)
+          coalesceTimerRef.current = null
+        }
 
-        // Update state
-        setState((prev) => ({
-          ...prev,
-          isProcessing: true,
-          currentTaskId: taskId,
-          progress: 0,
-          error: null,
-          queueStats: manager.getQueueStats(),
-        }))
+        if (!pendingPromiseRef.current) {
+          let resolver: (id: string | null) => void
+          const promise = new Promise<string | null>((resolve) => {
+            resolver = resolve
+          })
+          // @ts-expect-error resolver is assigned synchronously
+          pendingPromiseRef.current = { resolve: resolver, promise }
+        }
 
-        return taskId
+        return await new Promise<string | null>((outerResolve) => {
+          coalesceTimerRef.current = setTimeout(async () => {
+            try {
+              // Cancel previous task if still processing
+              if (state.currentTaskId) {
+                manager.cancelTask(state.currentTaskId)
+              }
+
+              const taskId = await manager.queueRenderTask(
+                layers,
+                toolsValues,
+                selectedLayerId,
+                canvasWidth,
+                canvasHeight,
+                layerDimensions,
+                priority,
+                {
+                  signature: layersSignature ?? "",
+                  version: versionRef.current,
+                },
+                interactive ?? false
+              )
+
+              setState((prev) => ({
+                ...prev,
+                isProcessing: true,
+                currentTaskId: taskId,
+                progress: 0,
+                error: null,
+                queueStats: manager.getQueueStats(),
+              }))
+
+              pendingPromiseRef.current?.resolve(taskId)
+              outerResolve(taskId)
+            } catch (e) {
+              const message = e instanceof Error ? e.message : "Unknown error"
+              setState((prev) => ({ ...prev, error: message }))
+              pendingPromiseRef.current?.resolve(null)
+              outerResolve(null)
+            } finally {
+              pendingPromiseRef.current = null
+              coalesceTimerRef.current = null
+            }
+          }, 16)
+        })
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : "Unknown error"

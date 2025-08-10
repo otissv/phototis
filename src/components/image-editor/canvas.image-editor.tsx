@@ -1089,7 +1089,7 @@ export function ImageEditorCanvas({
   return (
     <div
       ref={containerRef}
-      className='relative h-full overflow-auto flex items-center justify-center '
+      className='relative h-full  flex items-center justify-center '
       onWheel={handleWheel}
       onDoubleClick={handleDoubleClick}
     >
@@ -1103,12 +1103,12 @@ export function ImageEditorCanvas({
       <motion.div
         className='relative transition-all duration-200 image-editor-checkerboard'
         style={{
-          x: transformX,
-          y: transformY,
+          // x: transformX,
+          // y: transformY,
           scale: transformScale,
-          transformOrigin: "0 0",
-          width: canvasDimensions.width,
-          height: canvasDimensions.height,
+          // transformOrigin: "0 0",
+          // width: canvasDimensions.width,
+          // height: canvasDimensions.height,
         }}
       >
         <canvas

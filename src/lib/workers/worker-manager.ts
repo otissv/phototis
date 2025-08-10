@@ -60,6 +60,7 @@ export interface WorkerManagerConfig {
 
 export class WorkerManager {
   private workers: Worker[] = []
+  private filterWorker: Worker | null = null
   private taskQueue: RenderTask[] = []
   private activeTasks: Map<string, RenderTask> = new Map()
   private messageHandlers: Map<string, (message: any) => void> = new Map()
@@ -124,6 +125,16 @@ export class WorkerManager {
       worker.onerror = this.handleWorkerError.bind(this)
 
       this.workers.push(worker)
+
+      // Create and initialize filter worker
+      try {
+        this.filterWorker = new Worker(
+          new URL("./filter-worker.ts", import.meta.url),
+          { type: "module" }
+        )
+        // Best effort init; no offscreen needed
+        await this.sendMessage(this.filterWorker, { type: "initialize" })
+      } catch {}
 
       const initSuccess = await this.sendMessage(worker, {
         type: "initialize",
@@ -254,18 +265,23 @@ export class WorkerManager {
 
   // Handle errors
   private handleError(message: ErrorMessage): void {
-    // Find and retry failed task
+    // Structured error handling with simple backoff and token awareness
     const task = this.activeTasks.get(message.id)
     if (task && task.retryCount < task.maxRetries) {
       task.retryCount++
-      this.retryTask(task)
-    } else {
-      // Remove from active tasks
-      this.activeTasks.delete(message.id)
-
-      // Emit error event
-      this.emitError(message.id, message.error)
+      // Exponential backoff (capped)
+      const delay = Math.min(1000 * 2 ** (task.retryCount - 1), 4000)
+      setTimeout(() => this.retryTask(task), delay)
+      return
     }
+    // Remove from active tasks and emit structured error
+    this.activeTasks.delete(message.id)
+    const code = message.error?.includes("HYBRID_FALLBACK_USED")
+      ? "FALLBACK_USED"
+      : message.error?.includes("WebGL")
+        ? "WEBGL_ERROR"
+        : "RENDER_ERROR"
+    this.emitError(message.id, `${code}:${message.error}`)
   }
 
   // Handle success
@@ -296,7 +312,8 @@ export class WorkerManager {
       { width: number; height: number; x: number; y: number }
     >,
     priority: TaskPriority = TaskPriority.HIGH,
-    token?: { signature?: string; version?: number }
+    token?: { signature?: string; version?: number },
+    interactive?: boolean
   ): Promise<string> {
     const taskId = this.generateMessageId()
 
@@ -325,10 +342,12 @@ export class WorkerManager {
         canvasWidth,
         canvasHeight,
         layerDimensions: Array.from(layerDimensions.entries()),
+        priority,
         token: {
           signature: token?.signature ?? "",
           version: token?.version ?? 0,
         },
+        interactive: !!interactive,
       },
       timestamp: Date.now(),
       retryCount: 0,
@@ -348,22 +367,15 @@ export class WorkerManager {
     priority: TaskPriority = TaskPriority.MEDIUM
   ): string {
     const taskId = this.generateMessageId()
-
     const task: RenderTask = {
       id: taskId,
       priority,
       type: "filter",
-      data: {
-        layerId,
-        filterType,
-        parameters,
-        imageData,
-      },
+      data: { layerId, filterType, parameters, imageData },
       timestamp: Date.now(),
       retryCount: 0,
       maxRetries: this.config.maxRetries,
     }
-
     this.queueTask(task)
     return taskId
   }
@@ -393,7 +405,7 @@ export class WorkerManager {
     }
 
     // Find available worker
-    const worker = this.workers[0] // For now, use single worker
+    const worker = this.workers[0]
 
     // Process tasks
     while (
@@ -406,8 +418,12 @@ export class WorkerManager {
       // Add to active tasks
       this.activeTasks.set(task.id, task)
 
-      // Send to worker
-      this.sendTaskToWorker(worker, task)
+      // Route filter tasks to the dedicated filter worker
+      if (task.type === "filter" && this.filterWorker) {
+        this.sendTaskToWorker(this.filterWorker, task)
+      } else {
+        this.sendTaskToWorker(worker, task)
+      }
     }
   }
 

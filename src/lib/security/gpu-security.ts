@@ -1,3 +1,7 @@
+// GPU Security utilities: dimension and filter parameter validation/clamping
+
+// Keep only the comprehensive versions below to avoid duplicate exports
+
 // GPU Security utilities for validating operations and preventing memory issues
 // Implements security measures for WebGL operations in workers
 
@@ -51,8 +55,9 @@ export interface GPUCapabilities {
   maxTextureImageUnits: number
   maxVertexTextureImageUnits: number
   maxCombinedTextureImageUnits: number
-  maxVertexOutputVectors: number
-  maxFragmentInputVectors: number
+  // These are WebGL1 constants; in WebGL2 use UNIFORM_VECTORS variants
+  maxVertexOutputVectors?: number
+  maxFragmentInputVectors?: number
   minAliasedLineWidth: number
   maxAliasedLineWidth: number
   minAliasedPointSize: number
@@ -83,8 +88,9 @@ export function detectGPUCapabilities(
     maxCombinedTextureImageUnits: gl.getParameter(
       gl.MAX_COMBINED_TEXTURE_IMAGE_UNITS
     ),
-    maxVertexOutputVectors: gl.getParameter(gl.MAX_VERTEX_OUTPUT_VECTORS),
-    maxFragmentInputVectors: gl.getParameter(gl.MAX_FRAGMENT_INPUT_VECTORS),
+    // Not present in WebGL2; leave undefined for compatibility
+    maxVertexOutputVectors: undefined,
+    maxFragmentInputVectors: undefined,
     minAliasedLineWidth: gl.getParameter(gl.ALIASED_LINE_WIDTH_RANGE)[0],
     maxAliasedLineWidth: gl.getParameter(gl.ALIASED_LINE_WIDTH_RANGE)[1],
     minAliasedPointSize: gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE)[0],

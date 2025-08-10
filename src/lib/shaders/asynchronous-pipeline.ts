@@ -66,6 +66,7 @@ export interface PipelineConfig {
   stageTimeout: number
   enableCaching: boolean
   enableMemoryMonitoring: boolean
+  frameTimeTargetMs: number
 }
 
 export class AsynchronousPipeline {
@@ -81,6 +82,8 @@ export class AsynchronousPipeline {
   private cache: Map<string, any> = new Map()
   private memoryMonitor: MemoryMonitor | null = null
   private eventEmitter: PipelineEventEmitter | null = null
+  private isInteractive = false
+  private lastTaskDurationMs = 0
 
   constructor(config: Partial<PipelineConfig> = {}) {
     this.config = {
@@ -94,10 +97,30 @@ export class AsynchronousPipeline {
       stageTimeout: 30000,
       enableCaching: true,
       enableMemoryMonitoring: true,
+      frameTimeTargetMs: 16.7,
       ...config,
     }
 
     this.initializeStageProcessors()
+  }
+
+  // Cancellation APIs for preemption from worker
+  cancelAll(): void {
+    // Clear queues and active tasks; best-effort cancellation
+    this.taskQueue.length = 0
+    this.activeTasks.clear()
+  }
+
+  cancelFamily(originalTaskId: string): void {
+    // Remove queued tasks matching the family id and drop active entries
+    this.taskQueue = this.taskQueue.filter(
+      (t) => t.data?.originalTaskId !== originalTaskId
+    )
+    for (const [id, task] of Array.from(this.activeTasks.entries())) {
+      if (task.data?.originalTaskId === originalTaskId) {
+        this.activeTasks.delete(id)
+      }
+    }
   }
 
   // Optional event emitter override for environments without window (e.g., workers)
@@ -168,7 +191,7 @@ export class AsynchronousPipeline {
 
     if (this.config.enableProgressiveRendering) {
       // Create tasks for each progressive level
-      for (const level of this.config.progressiveLevels) {
+      for (const level of this.getAdaptiveLevels()) {
         const task: PipelineTask = {
           id: `${taskId}_level_${level.level}`,
           stage: PipelineStage.PREPROCESSING,
@@ -218,6 +241,22 @@ export class AsynchronousPipeline {
     return taskId
   }
 
+  // Determine adaptive levels based on recent frame-time and memory
+  private getAdaptiveLevels(): ProgressiveLevel[] {
+    const base = this.config.progressiveLevels
+    const memOK = this.memoryMonitor?.hasAvailableMemory?.() ?? true
+    if (!memOK) {
+      return base.filter((l) => l.level < 3)
+    }
+    if (this.isInteractive) {
+      return base.filter((l) => l.level <= 2)
+    }
+    if (this.lastTaskDurationMs > this.config.frameTimeTargetMs * 2) {
+      return base.filter((l) => l.level < 3)
+    }
+    return base
+  }
+
   // Queue a task
   private queueTask(task: PipelineTask): void {
     // Insert based on priority (lower number = higher priority)
@@ -259,6 +298,7 @@ export class AsynchronousPipeline {
   // Process a single task through all stages
   private async processTask(task: PipelineTask): Promise<void> {
     try {
+      const startTimeMs = Date.now()
       const stages = [
         PipelineStage.PREPROCESSING,
         PipelineStage.LAYER_RENDERING,
@@ -290,6 +330,7 @@ export class AsynchronousPipeline {
       this.completedTasks.set(task.id, task)
       this.activeTasks.delete(task.id)
       this.emitSuccess(task.id, task.result)
+      this.lastTaskDurationMs = Date.now() - startTimeMs
 
       // Clean up completed task after short delay to prevent memory buildup
       setTimeout(() => {
@@ -363,6 +404,11 @@ export class AsynchronousPipeline {
         stage: PipelineStage.PREPROCESSING,
       }
     }
+  }
+
+  // Public control to bias adaptive levels during user interaction
+  setInteractive(isInteractive: boolean): void {
+    this.isInteractive = isInteractive
   }
 
   // Stage 2: Individual layer rendering with filters

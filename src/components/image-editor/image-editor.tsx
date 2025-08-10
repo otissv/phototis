@@ -44,7 +44,7 @@ export function ImageEditor({
     // Initialize with a default layer
     const defaultLayer: Layer = {
       id: "layer-1",
-      name: "Background",
+      name: "Layer 1",
       visible: true,
       locked: false,
       filters: { ...initialState },
@@ -281,7 +281,7 @@ export function ImageEditor({
   return (
     <div
       {...props}
-      className='grid grid-cols-[80px_1fr_auto] grid-rows-[auto_1fr_auto]  justify-center'
+      className='grid grid-cols-[80px_1fr_auto] grid-rows-[auto_1fr_auto]  justify-center gap-x-4'
     >
       <ImageEditorSidebar
         selected={selectedSidebar}
@@ -306,7 +306,7 @@ export function ImageEditor({
         </div>
       </div>
 
-      <div className='col-start-2 row-start-2 flex flex-col items-center h-[calc(100vh-300px)] overflow-hidden'>
+      <div className='col-start-2 row-start-2 flex flex-col items-center h-[calc(100vh-300px)] overflow-auto border rounded-sm'>
         <div className='relative h-full'>
           <ImageEditorCanvas
             image={image}

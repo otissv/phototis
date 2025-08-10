@@ -35,7 +35,8 @@ export function ImageEditorSidebar({
     <ul className={cn("flex flex-col gap-2", className)} {...props}>
       <li>
         <Button
-          variant='outline'
+          title='Adjust'
+          variant='ghost'
           className={cn("flex flex-col rounded-md text-xs size-18", {
             "bg-accent text-accent-foreground": selected === "adjust",
           })}
@@ -54,7 +55,8 @@ export function ImageEditorSidebar({
       </li>
       <li>
         <Button
-          variant='outline'
+          title='Rotate'
+          variant='ghost'
           className={cn("flex flex-col rounded-md text-xs size-18", {
             "bg-accent text-accent-foreground": selected === "rotate",
           })}
@@ -74,7 +76,8 @@ export function ImageEditorSidebar({
 
       <li>
         <Button
-          variant='outline'
+          title='Scale'
+          variant='ghost'
           className={cn("flex flex-col rounded-md text-xs size-18", {
             "bg-accent text-accent-foreground": selected === "scale",
           })}
@@ -94,7 +97,8 @@ export function ImageEditorSidebar({
 
       <li>
         <Button
-          variant='outline'
+          title='Filters'
+          variant='ghost'
           className={cn("flex flex-col rounded-md text-xs size-18", {
             "bg-accent text-accent-foreground": selected === "effects",
           })}
@@ -113,7 +117,8 @@ export function ImageEditorSidebar({
       </li>
       <li>
         <Button
-          variant='outline'
+          title='Presets'
+          variant='ghost'
           className={cn("flex flex-col rounded-md text-xs size-18", {
             "bg-accent text-accent-foreground": selected === "presets",
           })}

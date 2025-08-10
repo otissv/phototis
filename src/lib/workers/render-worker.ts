@@ -5,6 +5,8 @@ import type { Layer } from "@/components/image-editor/layer-system"
 import type { ImageEditorToolsState } from "@/components/image-editor/state.image-editor"
 import type { PipelineStage } from "@/lib/shaders/asynchronous-pipeline"
 import { AsynchronousPipeline } from "@/lib/shaders/asynchronous-pipeline"
+import { HybridRenderer } from "@/lib/shaders/hybrid-renderer"
+import { ShaderManager } from "@/lib/shaders"
 import {
   validateImageDimensions,
   validateFilterParameters,
@@ -44,6 +46,7 @@ interface RenderMessage extends WorkerMessage {
       { width: number; height: number; x: number; y: number },
     ][]
     token?: { signature?: string; version?: number }
+    interactive?: boolean
   }
 }
 
@@ -79,10 +82,16 @@ interface SuccessMessage {
 let gl: WebGL2RenderingContext | null = null
 let canvas: OffscreenCanvas | null = null
 let asynchronousPipeline: AsynchronousPipeline | null = null
+let shaderManager: ShaderManager | null = null
+let hybridRendererInstance: HybridRenderer | null = null
 // Enable pipeline path; progressive rendering will render when final texture ready
 const USE_PIPELINE = true
 let currentRenderMessageId: string | null = null
 const pipelineTaskToWorkerId = new Map<string, string>()
+const familyToTokenVersion = new Map<string, number>()
+const familyToTokenSignature = new Map<string, string>()
+let latestTokenVersion = 0
+let latestTokenSignature = ""
 
 // Simple blit program resources (fullscreen textured quad)
 let blitProgram: WebGLProgram | null = null
@@ -128,6 +137,15 @@ type CompTarget = {
 }
 let compPingTarget: CompTarget | null = null
 let compPongTarget: CompTarget | null = null
+// FBO pool for reuse (LRU)
+const fboPool: Map<string, CompTarget[]> = new Map()
+const fboPoolLRU: Map<string, number> = new Map()
+let fboPoolFrameCounter = 0
+const MAX_FBO_POOL = 8
+// Dedicated VAO/buffers for layer filtering with ShaderManager
+let layerVAO: WebGLVertexArrayObject | null = null
+let layerPositionBuffer: WebGLBuffer | null = null
+let layerTexCoordBuffer: WebGLBuffer | null = null
 
 function createCompTarget(width: number, height: number): CompTarget {
   const glCtx = gl as WebGL2RenderingContext
@@ -199,6 +217,55 @@ function ensureCompTarget(
     target.height = height
   }
   return target
+}
+
+function poolKey(width: number, height: number): string {
+  return `${width}x${height}`
+}
+
+function checkoutCompTarget(width: number, height: number): CompTarget {
+  const key = poolKey(width, height)
+  const arr = fboPool.get(key)
+  if (arr && arr.length > 0) {
+    const target = arr.pop() as CompTarget
+    fboPoolLRU.set(key, ++fboPoolFrameCounter)
+    return target
+  }
+  const target = createCompTarget(width, height)
+  fboPoolLRU.set(key, ++fboPoolFrameCounter)
+  return target
+}
+
+function returnCompTarget(target: CompTarget): void {
+  const key = poolKey(target.width, target.height)
+  const arr = fboPool.get(key) || []
+  arr.push(target)
+  fboPool.set(key, arr)
+  fboPoolLRU.set(key, ++fboPoolFrameCounter)
+  // Evict if pool too large
+  let total = 0
+  fboPool.forEach((a) => {
+    total += a.length
+  })
+  if (total > MAX_FBO_POOL) {
+    // Remove least-recently-used bucket entry
+    const entries = Array.from(fboPoolLRU.entries()).sort((a, b) => a[1] - b[1])
+    for (const [k] of entries) {
+      const list = fboPool.get(k)
+      if (list && list.length > 0) {
+        const victim = list.shift() as CompTarget
+        const glCtx = gl as WebGL2RenderingContext
+        glCtx.deleteFramebuffer(victim.fb)
+        glCtx.deleteTexture(victim.tex)
+        dbgDeletedFbos++
+        if (list.length === 0) {
+          fboPool.delete(k)
+          fboPoolLRU.delete(k)
+        }
+        break
+      }
+    }
+  }
 }
 
 function createShader(
@@ -429,11 +496,45 @@ function initializeWebGL(
     initBlitResources(gl)
     initCompositingResources(gl)
 
+    // Initialize shared shader manager for layer filters
+    shaderManager = new ShaderManager()
+    shaderManager.initialize(gl)
+    // Build VAO for layer rendering
+    layerVAO = gl.createVertexArray()
+    if (!layerVAO) throw new Error("Failed to create layer VAO")
+    gl.bindVertexArray(layerVAO)
+    // Position buffer
+    layerPositionBuffer = gl.createBuffer()
+    if (!layerPositionBuffer)
+      throw new Error("Failed to create layer position buffer")
+    gl.bindBuffer(gl.ARRAY_BUFFER, layerPositionBuffer)
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]),
+      gl.STATIC_DRAW
+    )
+    // Texcoord buffer
+    layerTexCoordBuffer = gl.createBuffer()
+    if (!layerTexCoordBuffer)
+      throw new Error("Failed to create layer texcoord buffer")
+    gl.bindBuffer(gl.ARRAY_BUFFER, layerTexCoordBuffer)
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]),
+      gl.STATIC_DRAW
+    )
+    gl.bindVertexArray(null)
+
+    // Initialize HybridRenderer instance for fallback path
+    hybridRendererInstance = new HybridRenderer()
+    hybridRendererInstance.initialize({ gl, width, height })
+
     // Initialize asynchronous pipeline
     asynchronousPipeline = new AsynchronousPipeline({
       enableProgressiveRendering: true,
       maxConcurrentStages: 2,
       enableMemoryMonitoring: true,
+      frameTimeTargetMs: 16.7,
     })
     // Bridge events to main thread with the current worker message ID
     asynchronousPipeline.setEventEmitter({
@@ -444,6 +545,11 @@ function initializeWebGL(
         data?: any
       ) => {
         const original = data?.originalTaskId as string | undefined
+        // Drop stale: if this task family predates the latest token, ignore
+        if (original) {
+          const famVer = familyToTokenVersion.get(original) ?? 0
+          if (famVer < latestTokenVersion) return
+        }
         const workerId =
           (original && pipelineTaskToWorkerId.get(original)) ||
           pipelineTaskToWorkerId.get(taskId) ||
@@ -457,6 +563,11 @@ function initializeWebGL(
         }
       },
       onSuccess: async (taskId: string, result: any) => {
+        const original = result?.originalTaskId as string | undefined
+        if (original) {
+          const famVer = familyToTokenVersion.get(original) ?? 0
+          if (famVer < latestTokenVersion) return
+        }
         const workerId =
           pipelineTaskToWorkerId.get(taskId) || currentRenderMessageId
         try {
@@ -480,6 +591,8 @@ function initializeWebGL(
         }
       },
       onError: (taskId: string, error: string) => {
+        // Allow errors only for current family
+        const famVer = latestTokenVersion
         const workerId =
           pipelineTaskToWorkerId.get(taskId) || currentRenderMessageId
         if (workerId) {
@@ -565,6 +678,14 @@ async function renderLayers(
       const current =
         (currentRenderMessageId && (self as any).__currentToken) || null
       // no-op; we replace token below
+    }
+
+    // Stage 0b: preempt progressive pipeline tasks from older families
+    if (USE_PIPELINE && asynchronousPipeline) {
+      try {
+        // Cancel all existing families; new render supersedes
+        asynchronousPipeline.cancelAll()
+      } catch {}
     }
 
     // Stage 1: Layer preprocessing and texture preparation
@@ -666,6 +787,31 @@ async function renderLayers(
           !compUBaseLocation ||
           !compUTopLocation
         ) {
+          // If custom compositing resources fail, attempt HybridRenderer path
+          if (hybridRendererInstance) {
+            // Build textures map for hybrid renderer
+            const layerTexMap = new Map<string, WebGLTexture>()
+            for (const [id, tex] of renderedLayers) layerTexMap.set(id, tex)
+            // Use renderer to compose
+            const orderedLayers = layers.slice().reverse()
+            hybridRendererInstance.renderLayers(
+              orderedLayers,
+              layerTexMap,
+              toolsValues,
+              selectedLayerId,
+              canvasWidth,
+              canvasHeight
+            )
+            const result = (hybridRendererInstance as any).fboManager?.getFBO?.(
+              "result"
+            )
+            finalTexture = result?.texture || null
+            drewAnyLayer = !!finalTexture
+            if (drewAnyLayer && finalTexture) {
+              await renderToCanvas(finalTexture, canvasWidth, canvasHeight)
+            }
+            throw new Error("HYBRID_FALLBACK_USED")
+          }
           throw new Error("Compositing resources not initialized")
         }
 
@@ -790,13 +936,18 @@ async function renderLayers(
         numInputLayers: layers.length,
         numPreparedTextures: layerTextures.size,
         numRenderedLayers: renderedLayers.size,
+        fboPoolBuckets: Array.from(fboPool.keys()).length,
+        fboPoolItems: Array.from(fboPool.values()).reduce(
+          (a, b) => a + b.length,
+          0
+        ),
       },
     } as any)
 
     // Try pipeline path for progressive rendering (with tokening/preemption)
     if (USE_PIPELINE && asynchronousPipeline) {
       try {
-        // Associate token for stale drop
+        // Associate token for stale drop and schedule all levels
         const baseTaskId = await asynchronousPipeline.queueRenderTask(
           layers,
           toolsValues,
@@ -808,6 +959,8 @@ async function renderLayers(
         )
         // Map pipeline base task to current worker message ID
         pipelineTaskToWorkerId.set(baseTaskId, messageId)
+        familyToTokenVersion.set(baseTaskId, latestTokenVersion)
+        familyToTokenSignature.set(baseTaskId, latestTokenSignature)
         // Pipeline will emit progress/success which will finalize rendering
         return
       } catch (e) {
@@ -998,12 +1151,52 @@ async function renderLayerWithFilters(
     { width: number; height: number; x: number; y: number },
   ][]
 ): Promise<WebGLTexture | null> {
-  if (!gl) return null
+  if (!gl || !shaderManager) return null
 
   try {
-    // For now, just return the original texture
-    // TODO: Implement actual filter rendering using shaders
-    return layerTexture
+    const glCtx = gl as WebGL2RenderingContext
+    const program = shaderManager.getProgram()
+    if (!program) return layerTexture
+
+    glCtx.useProgram(program)
+    // Bind attributes
+    if (!layerVAO || !layerPositionBuffer || !layerTexCoordBuffer)
+      return layerTexture
+    glCtx.bindVertexArray(layerVAO)
+    const aPosLoc = glCtx.getAttribLocation(program, "a_position")
+    glCtx.bindBuffer(glCtx.ARRAY_BUFFER, layerPositionBuffer)
+    glCtx.enableVertexAttribArray(aPosLoc)
+    glCtx.vertexAttribPointer(aPosLoc, 2, glCtx.FLOAT, false, 0, 0)
+    const aTexLoc = glCtx.getAttribLocation(program, "a_texCoord")
+    glCtx.bindBuffer(glCtx.ARRAY_BUFFER, layerTexCoordBuffer)
+    glCtx.enableVertexAttribArray(aTexLoc)
+    glCtx.vertexAttribPointer(aTexLoc, 2, glCtx.FLOAT, false, 0, 0)
+
+    // Texture and uniforms
+    glCtx.activeTexture(glCtx.TEXTURE0)
+    glCtx.bindTexture(glCtx.TEXTURE_2D, layerTexture)
+    const uSampler = glCtx.getUniformLocation(program, "u_image")
+    if (uSampler) glCtx.uniform1i(uSampler, 0)
+
+    const { validatedParameters } = validateFilterParameters(toolsValues)
+    shaderManager.updateUniforms(validatedParameters)
+    shaderManager.setUniforms(glCtx, program)
+
+    // Draw to a comp target to avoid feedback
+    const ping = ensureCompTarget(compPingTarget, canvasWidth, canvasHeight)
+    compPingTarget = ping
+    glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, ping.fb)
+    glCtx.viewport(0, 0, canvasWidth, canvasHeight)
+    glCtx.clearColor(0, 0, 0, 0)
+    glCtx.clear(glCtx.COLOR_BUFFER_BIT)
+    glCtx.drawArrays(glCtx.TRIANGLE_STRIP, 0, 4)
+
+    // Cleanup binds
+    glCtx.bindVertexArray(null)
+    glCtx.useProgram(null)
+    glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, null)
+
+    return ping.tex
   } catch (error) {
     console.error("Failed to render layer with filters:", error)
     return null
@@ -1111,6 +1304,17 @@ self.onmessage = async (event: MessageEvent) => {
       case "render": {
         const renderMessage = message as RenderMessage
         currentRenderMessageId = message.id
+        // Update latest token
+        const token = renderMessage.data.token || { signature: "", version: 0 }
+        latestTokenVersion = Math.max(latestTokenVersion, token.version || 0)
+        latestTokenSignature = token.signature || latestTokenSignature
+
+        if (
+          asynchronousPipeline &&
+          typeof renderMessage.data.interactive === "boolean"
+        ) {
+          asynchronousPipeline.setInteractive(!!renderMessage.data.interactive)
+        }
 
         await renderLayers(
           renderMessage.data.layers,
