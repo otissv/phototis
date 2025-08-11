@@ -28,5 +28,14 @@ function VintageButton({
 }
 VintageButton.displayName = "VintageButton"
 
-const VintageControls = ImageEditorFooterSlider
+const VintageControls = (props: any) => {
+  const { history } = require("@/lib/editor/context").useEditorContext()
+  return (
+    <ImageEditorFooterSlider
+      {...props}
+      onDragStart={() => history.begin("Vintage Drag")}
+      onDragEnd={() => history.end(true)}
+    />
+  )
+}
 export { VintageButton, VintageControls }

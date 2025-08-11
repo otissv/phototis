@@ -1,0 +1,519 @@
+/**
+ * EditorState schema and invariants (canonical vs ephemeral)
+ *
+ * This module defines the canonical source-of-truth state for the image editor
+ * and a separate ephemeral interaction state. It includes runtime invariant
+ * checks and narrow, typed helper functions that preserve those invariants.
+ *
+ * Note: No external schema library (e.g., zod) is used. Validation is
+ * implemented via explicit runtime guards and strongly typed APIs.
+ */
+
+import type { BlendMode } from "@/lib/shaders/blend-modes"
+import type { ImageEditorToolsState } from "@/components/image-editor/state.image-editor"
+import type { SIDEBAR_TOOLS, TOOL_VALUES } from "@/constants"
+
+/**
+ * Canonical types
+ */
+
+export type LayerId = string
+
+export interface EditorLayer {
+  id: LayerId
+  name: string
+  visible: boolean
+  locked: boolean
+  /**
+   * Per-layer filter/transform parameters. These correspond to the existing
+   * tools state and are applied by the renderer deterministically.
+   */
+  filters: ImageEditorToolsState
+  /** Opacity in [0, 100] */
+  opacity: number
+  /** If true, the layer contains no image content. */
+  isEmpty: boolean
+  /** Optional image file payload for the layer. */
+  image?: File | null
+  /** Blend mode used when compositing this layer. */
+  blendMode: BlendMode
+}
+
+/**
+ * Layers collection uses an order array for deterministic z-order and a map
+ * for O(1) lookups. The order's head is the top-most layer.
+ */
+export interface LayersModel {
+  order: LayerId[]
+  byId: Record<LayerId, EditorLayer>
+}
+
+export interface DocumentMetadata {
+  width: number
+  height: number
+  /** Background description; transparent or a solid color */
+  background:
+    | { type: "transparent" }
+    | { type: "color"; rgba: [number, number, number, number] }
+  /** Optional color profile descriptor */
+  colorProfile?: "srgb" | "display-p3" | "adobe-rgb" | string
+  /** Optional DPI/PPI metadata */
+  dpi?: number
+}
+
+export interface SelectionModel {
+  /** Selected layer IDs; empty means no selection. */
+  layerIds: LayerId[]
+}
+
+export interface ViewportModel {
+  /** Zoom percentage (e.g., 100 = 100%). */
+  zoom: number
+  /** Canvas pan offsets in CSS pixels of the viewport. */
+  panX: number
+  panY: number
+  /** Feature toggles */
+  snappingEnabled: boolean
+  guidesVisible: boolean
+}
+
+export interface ActiveToolModel {
+  /** Currently selected sidebar (transform, effects, etc.). */
+  sidebar: keyof typeof SIDEBAR_TOOLS
+  /** Currently selected tool within the sidebar. */
+  tool: keyof typeof TOOL_VALUES
+}
+
+/**
+ * Canonical editor state. This is the single source of truth the renderer
+ * reads from. No transient UI/interaction state lives here.
+ */
+export interface CanonicalEditorState {
+  document: DocumentMetadata
+  layers: LayersModel
+  selection: SelectionModel
+  viewport: ViewportModel
+  activeTool: ActiveToolModel
+}
+
+/**
+ * Ephemeral interaction state that should not participate in undo/redo.
+ * This includes pointer drags, marquee previews, hover, and in-flight
+ * transactions prior to commit.
+ */
+export interface EphemeralEditorState {
+  interaction: {
+    isDragging: boolean
+    dragLayerId?: LayerId
+    dragStart?: { x: number; y: number }
+    hoverLayerId?: LayerId
+    marquee?: { x: number; y: number; width: number; height: number }
+  }
+  transaction: {
+    /** True while a tool interaction is accumulating changes prior to commit */
+    active: boolean
+    /** Optional user-friendly label for the pending transaction */
+    name?: string
+    /** Epoch millis of when the transaction began */
+    startedAt?: number
+  }
+  preview?: {
+    active: boolean
+    layerId?: LayerId
+    filters?: Partial<
+      import(
+        "@/components/image-editor/state.image-editor"
+      ).ImageEditorToolsState
+    >
+  }
+}
+
+/**
+ * Combined runtime container that holds both canonical and ephemeral state.
+ * Consumers can store this in a context/provider. History operates on
+ * canonical only; ephemeral is reset or ignored across do/undo.
+ */
+export interface EditorRuntimeState {
+  canonical: CanonicalEditorState
+  ephemeral: EphemeralEditorState
+}
+
+/**
+ * Defaults and constraints
+ */
+
+export const VIEWPORT = {
+  MIN_ZOOM: 5, // percent
+  MAX_ZOOM: 800, // percent
+} as const
+
+/**
+ * Factory helpers
+ */
+
+export function createEmptyLayers(): LayersModel {
+  return { order: [], byId: {} }
+}
+
+export function createDefaultDocument(
+  width = 800,
+  height = 600
+): DocumentMetadata {
+  return {
+    width,
+    height,
+    background: { type: "transparent" },
+    colorProfile: "srgb",
+    dpi: 72,
+  }
+}
+
+export function createDefaultViewport(): ViewportModel {
+  return {
+    zoom: 100,
+    panX: 0,
+    panY: 0,
+    snappingEnabled: true,
+    guidesVisible: false,
+  }
+}
+
+export function createDefaultSelection(): SelectionModel {
+  return { layerIds: [] }
+}
+
+export function createDefaultActiveTool(
+  sidebar: keyof typeof SIDEBAR_TOOLS,
+  tool: keyof typeof TOOL_VALUES
+): ActiveToolModel {
+  return { sidebar, tool }
+}
+
+export function createEphemeralState(): EphemeralEditorState {
+  return {
+    interaction: { isDragging: false },
+    transaction: { active: false },
+    preview: { active: false },
+  }
+}
+
+export function createEditorRuntimeState(params?: {
+  document?: Partial<DocumentMetadata>
+  layers?: LayersModel
+  selection?: SelectionModel
+  viewport?: Partial<ViewportModel>
+  activeTool?: Partial<ActiveToolModel> & {
+    sidebar: keyof typeof SIDEBAR_TOOLS
+    tool: keyof typeof TOOL_VALUES
+  }
+}): EditorRuntimeState {
+  const document = { ...createDefaultDocument(), ...(params?.document ?? {}) }
+  const layers = params?.layers ?? createEmptyLayers()
+  const selection = params?.selection ?? createDefaultSelection()
+  const viewport = { ...createDefaultViewport(), ...(params?.viewport ?? {}) }
+  const activeTool = params?.activeTool
+    ? ({ ...params.activeTool } as ActiveToolModel)
+    : createDefaultActiveTool(
+        "transform" as keyof typeof SIDEBAR_TOOLS,
+        "rotate" as keyof typeof TOOL_VALUES
+      )
+
+  const canonical: CanonicalEditorState = {
+    document,
+    layers,
+    selection,
+    viewport,
+    activeTool,
+  }
+
+  const runtime: EditorRuntimeState = {
+    canonical,
+    ephemeral: createEphemeralState(),
+  }
+
+  const result = validateEditorState(runtime.canonical)
+  if (!result.ok) {
+    // Throw early for programmer errors at construction time
+    throw new Error(
+      `Invalid initial EditorState: ${result.errors.map((e) => e.message).join("; ")}`
+    )
+  }
+
+  return runtime
+}
+
+/**
+ * Invariant validation
+ */
+
+export interface ValidationIssue {
+  path: string
+  message: string
+}
+
+export interface ValidationResult {
+  ok: boolean
+  errors: ValidationIssue[]
+}
+
+export function validateEditorState(
+  state: CanonicalEditorState
+): ValidationResult {
+  const errors: ValidationIssue[] = []
+
+  // Document
+  if (!Number.isFinite(state.document.width) || state.document.width <= 0) {
+    errors.push({
+      path: "document.width",
+      message: "Width must be a positive number",
+    })
+  }
+  if (!Number.isFinite(state.document.height) || state.document.height <= 0) {
+    errors.push({
+      path: "document.height",
+      message: "Height must be a positive number",
+    })
+  }
+  if (state.document.background.type === "color") {
+    const rgba = state.document.background.rgba
+    const valid =
+      rgba.length === 4 &&
+      rgba.every((v) => Number.isFinite(v) && v >= 0 && v <= 1)
+    if (!valid) {
+      errors.push({
+        path: "document.background.rgba",
+        message: "RGBA must be 4 numbers in [0,1]",
+      })
+    }
+  }
+
+  // Layers: unique IDs, order alignment, property ranges
+  const { order, byId } = state.layers
+  const idSet = new Set<string>()
+  for (const id of order) {
+    if (idSet.has(id)) {
+      errors.push({
+        path: "layers.order",
+        message: `Duplicate layer id in order: ${id}`,
+      })
+    }
+    idSet.add(id)
+    if (!byId[id]) {
+      errors.push({
+        path: `layers.byId.${id}`,
+        message: "Layer id in order must exist in byId",
+      })
+    }
+  }
+  for (const id of Object.keys(byId)) {
+    if (!idSet.has(id)) {
+      errors.push({
+        path: `layers.byId.${id}`,
+        message: "Layer exists in byId but not in order",
+      })
+    }
+  }
+
+  for (const id of order) {
+    const layer = byId[id]
+    if (!layer) continue
+    if (layer.id !== id) {
+      errors.push({
+        path: `layers.byId.${id}.id`,
+        message: "Layer.id must match its key",
+      })
+    }
+    if (typeof layer.name !== "string" || layer.name.length === 0) {
+      errors.push({
+        path: `layers.byId.${id}.name`,
+        message: "Layer.name must be a non-empty string",
+      })
+    }
+    if (
+      !Number.isFinite(layer.opacity) ||
+      layer.opacity < 0 ||
+      layer.opacity > 100
+    ) {
+      errors.push({
+        path: `layers.byId.${id}.opacity`,
+        message: "Opacity must be in [0,100]",
+      })
+    }
+    if (layer.isEmpty && layer.image) {
+      errors.push({
+        path: `layers.byId.${id}.isEmpty`,
+        message: "Empty layer must not have an image",
+      })
+    }
+  }
+
+  // Selection subset of layers
+  for (const selId of state.selection.layerIds) {
+    if (!idSet.has(selId)) {
+      errors.push({
+        path: "selection.layerIds",
+        message: `Selection id not in layers: ${selId}`,
+      })
+    }
+  }
+
+  // Viewport ranges
+  if (
+    !Number.isFinite(state.viewport.zoom) ||
+    state.viewport.zoom < VIEWPORT.MIN_ZOOM ||
+    state.viewport.zoom > VIEWPORT.MAX_ZOOM
+  ) {
+    errors.push({
+      path: "viewport.zoom",
+      message: `Zoom must be within [${VIEWPORT.MIN_ZOOM}, ${VIEWPORT.MAX_ZOOM}]`,
+    })
+  }
+  if (!Number.isFinite(state.viewport.panX)) {
+    errors.push({
+      path: "viewport.panX",
+      message: "panX must be a finite number",
+    })
+  }
+  if (!Number.isFinite(state.viewport.panY)) {
+    errors.push({
+      path: "viewport.panY",
+      message: "panY must be a finite number",
+    })
+  }
+
+  return { ok: errors.length === 0, errors }
+}
+
+export function assertInvariants(state: CanonicalEditorState): void {
+  const result = validateEditorState(state)
+  if (!result.ok) {
+    const details = result.errors
+      .map((e) => `${e.path}: ${e.message}`)
+      .join("\n")
+    throw new Error(`EditorState invariant violation:\n${details}`)
+  }
+}
+
+/**
+ * Mutation helpers (pure, return new state) that preserve invariants.
+ */
+
+export function addLayer(
+  state: CanonicalEditorState,
+  layer: EditorLayer,
+  position: "top" | "bottom" | number = "top"
+): CanonicalEditorState {
+  const next: CanonicalEditorState = {
+    ...state,
+    layers: {
+      order: [...state.layers.order],
+      byId: { ...state.layers.byId, [layer.id]: layer },
+    },
+  }
+
+  if (typeof position === "number") {
+    const clamped = Math.max(0, Math.min(next.layers.order.length, position))
+    next.layers.order.splice(clamped, 0, layer.id)
+  } else if (position === "top") {
+    next.layers.order.unshift(layer.id)
+  } else {
+    next.layers.order.push(layer.id)
+  }
+
+  assertInvariants(next)
+  return next
+}
+
+export function removeLayer(
+  state: CanonicalEditorState,
+  layerId: LayerId
+): CanonicalEditorState {
+  if (!state.layers.byId[layerId]) return state
+  const { [layerId]: _removed, ...rest } = state.layers.byId
+  const next: CanonicalEditorState = {
+    ...state,
+    layers: {
+      order: state.layers.order.filter((id) => id !== layerId),
+      byId: rest,
+    },
+    selection: {
+      layerIds: state.selection.layerIds.filter((id) => id !== layerId),
+    },
+  }
+  assertInvariants(next)
+  return next
+}
+
+export function reorderLayer(
+  state: CanonicalEditorState,
+  fromIndex: number,
+  toIndex: number
+): CanonicalEditorState {
+  const order = [...state.layers.order]
+  if (fromIndex < 0 || fromIndex >= order.length) return state
+  const [id] = order.splice(fromIndex, 1)
+  const clamped = Math.max(0, Math.min(order.length, toIndex))
+  order.splice(clamped, 0, id)
+  const next: CanonicalEditorState = {
+    ...state,
+    layers: { ...state.layers, order },
+  }
+  assertInvariants(next)
+  return next
+}
+
+export function setSelection(
+  state: CanonicalEditorState,
+  layerIds: LayerId[]
+): CanonicalEditorState {
+  const unique = Array.from(new Set(layerIds))
+  const next: CanonicalEditorState = {
+    ...state,
+    selection: { layerIds: unique },
+  }
+  assertInvariants(next)
+  return next
+}
+
+export function updateLayer(
+  state: CanonicalEditorState,
+  layerId: LayerId,
+  update: Partial<Omit<EditorLayer, "id">>
+): CanonicalEditorState {
+  const current = state.layers.byId[layerId]
+  if (!current) return state
+  const nextLayer: EditorLayer = { ...current, ...update, id: current.id }
+  const next: CanonicalEditorState = {
+    ...state,
+    layers: {
+      ...state.layers,
+      byId: { ...state.layers.byId, [layerId]: nextLayer },
+    },
+  }
+  assertInvariants(next)
+  return next
+}
+
+export function setViewport(
+  state: CanonicalEditorState,
+  viewport: Partial<ViewportModel>
+): CanonicalEditorState {
+  const nextViewport: ViewportModel = { ...state.viewport, ...viewport }
+  const next: CanonicalEditorState = { ...state, viewport: nextViewport }
+  assertInvariants(next)
+  return next
+}
+
+/**
+ * Utility to convert a flat array of layers (e.g., from existing components)
+ * to the normalized LayersModel structure.
+ */
+export function normalizeLayers(layers: EditorLayer[]): LayersModel {
+  const order: LayerId[] = []
+  const byId: Record<LayerId, EditorLayer> = {}
+  for (const layer of layers) {
+    order.push(layer.id)
+    byId[layer.id] = layer
+  }
+  return { order, byId }
+}

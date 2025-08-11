@@ -28,5 +28,14 @@ function NoiseButton({
 }
 NoiseButton.displayName = "NoiseButton"
 
-const NoiseControls = ImageEditorFooterSlider
+const NoiseControls = (props: any) => {
+  const { history } = require("@/lib/editor/context").useEditorContext()
+  return (
+    <ImageEditorFooterSlider
+      {...props}
+      onDragStart={() => history.begin("Noise Drag")}
+      onDragEnd={() => history.end(true)}
+    />
+  )
+}
 export { NoiseButton, NoiseControls }

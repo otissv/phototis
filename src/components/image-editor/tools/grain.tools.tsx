@@ -28,5 +28,14 @@ function GrainButton({
 }
 GrainButton.displayName = "GrainButton"
 
-const GrainControls = ImageEditorFooterSlider
+const GrainControls = (props: any) => {
+  const { history } = require("@/lib/editor/context").useEditorContext()
+  return (
+    <ImageEditorFooterSlider
+      {...props}
+      onDragStart={() => history.begin("Grain Drag")}
+      onDragEnd={() => history.end(true)}
+    />
+  )
+}
 export { GrainButton, GrainControls }

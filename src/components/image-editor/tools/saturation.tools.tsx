@@ -28,5 +28,25 @@ function SaturationButton({
 }
 SaturationButton.displayName = "SaturationButton"
 
-const SaturationControls = ImageEditorFooterSlider
+const SaturationControls = (props: any) => {
+  const { history } = require("@/lib/editor/context").useEditorContext()
+  const overlay = () =>
+    document.getElementById("image-editor-overlay") as HTMLCanvasElement | null
+  const clear = () => {
+    const c = overlay()
+    const ctx = c?.getContext("2d")
+    if (!c || !ctx) return
+    ctx.clearRect(0, 0, c.width, c.height)
+  }
+  return (
+    <ImageEditorFooterSlider
+      {...props}
+      onDragStart={() => history.begin("Saturation Drag")}
+      onDragEnd={() => {
+        history.end(true)
+        clear()
+      }}
+    />
+  )
+}
 export { SaturationButton, SaturationControls }

@@ -16,40 +16,17 @@ import { useDrag, useDrop } from "react-dnd"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
-import type { ImageEditorToolsState } from "./state.image-editor"
-import { initialState } from "./state.image-editor"
 import {
+  DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@radix-ui/react-dropdown-menu"
-import { DropdownMenu } from "../ui/dropdown-menu"
+} from "../ui/dropdown-menu"
 import { BLEND_MODE_NAMES, type BlendMode } from "@/lib/shaders/blend-modes"
+import { useEditorContext } from "@/lib/editor/context"
+import type { EditorLayer } from "@/lib/editor/state"
 
-export interface Layer extends React.ComponentProps<"div"> {
-  id: string
-  name: string
-  visible: boolean
-  locked: boolean
-  filters: ImageEditorToolsState
-  opacity: number
-  isEmpty: boolean // New property to track if layer is empty/transparent
-  image?: File | null // Optional image data for the layer
-  blendMode: BlendMode // Blend mode for layer compositing
-}
-
-export interface LayerSystemProps extends React.ComponentProps<"div"> {
-  layers: Layer[]
-  selectedLayerId: string | null
-  onLayersChange: (layers: Layer[]) => void
-  onSelectedLayerChange: (layerId: string | null) => void
-  onLayerFiltersChange: (
-    layerId: string,
-    filters: ImageEditorToolsState
-  ) => void
-  onLayerBlendModeChange?: (layerId: string, blendMode: BlendMode) => void
-  onDragStateChange?: (isDragging: boolean) => void
-}
+export interface LayerSystemProps extends React.ComponentProps<"div"> {}
 
 // Drag item type for react-dnd
 const ItemTypes = {
@@ -65,42 +42,33 @@ interface DragItem {
 // Global drag state to prevent updates during drag
 let isGlobalDragActive = false
 
-export function LayerSystem({
-  className,
-  layers,
-  selectedLayerId,
-  onLayersChange,
-  onSelectedLayerChange,
-  onLayerFiltersChange,
-  onLayerBlendModeChange,
-  onDragStateChange,
-}: LayerSystemProps) {
-  // Track if any drag operation is active
-  const [isDragActive, setIsDragActive] = React.useState(false)
+export function LayerSystem({ className, ...rest }: LayerSystemProps) {
+  const {
+    getOrderedLayers,
+    getSelectedLayerId,
+    selectLayer,
+    addEmptyLayer,
+    addImageLayer,
+    removeLayer,
+    duplicateLayer,
+    reorderLayers,
+    setBlendMode,
+    toggleVisibility,
+    toggleLock,
+    setLayerName,
+    setOpacity,
+    state,
+    setEphemeral,
+  } = useEditorContext()
 
-  // Cleanup on unmount to prevent React DnD issues
-  React.useEffect(() => {
-    return () => {
-      setIsDragActive(false)
-      isGlobalDragActive = false
-    }
-  }, [])
+  const layers = getOrderedLayers()
+  const selectedLayerId = getSelectedLayerId()
+  const isDragActive = state.ephemeral.interaction.isDragging
 
   const handleAddLayer = React.useCallback(() => {
-    if (isDragActive || isGlobalDragActive) return
-    const newLayer: Layer = {
-      id: `layer-${Date.now()}`,
-      name: `Layer ${layers.length + 1}`,
-      visible: true,
-      locked: false,
-      filters: { ...initialState },
-      opacity: 100,
-      isEmpty: true, // New layers are empty/transparent
-      blendMode: "normal", // Default blend mode
-    }
-    onLayersChange([newLayer, ...layers])
-    onSelectedLayerChange(newLayer.id)
-  }, [layers, onLayersChange, onSelectedLayerChange, isDragActive])
+    if (isDragActive) return
+    addEmptyLayer()
+  }, [addEmptyLayer, isDragActive])
 
   const handleFileUpload = React.useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -116,121 +84,67 @@ export function LayerSystem({
       }
 
       // Create a new layer with the uploaded image
-      const newLayer: Layer = {
-        id: `layer-${Date.now()}`,
-        name: file.name || `Image Layer ${layers.length + 1}`,
-        visible: true,
-        locked: false,
-        filters: { ...initialState },
-        opacity: 100,
-        isEmpty: false, // Layer has image content
-        image: file, // Store the image file
-        blendMode: "normal", // Default blend mode
-      }
-
-      onLayersChange([newLayer, ...layers])
-      onSelectedLayerChange(newLayer.id)
+      addImageLayer(file)
 
       // Reset the input value to allow selecting the same file again
       event.target.value = ""
     },
-    [layers, onLayersChange, onSelectedLayerChange, isDragActive]
+    [addImageLayer, isDragActive]
   )
 
   const handleDeleteLayer = React.useCallback(
     (layerId: string) => {
-      if (isDragActive || isGlobalDragActive) return
-
-      const newLayers = layers.filter((layer) => layer.id !== layerId)
-      onLayersChange(newLayers)
-
-      if (selectedLayerId === layerId) {
-        onSelectedLayerChange(newLayers.length > 0 ? newLayers[0].id : null)
-      }
+      if (isDragActive) return
+      removeLayer(layerId)
     },
-    [
-      layers,
-      selectedLayerId,
-      onLayersChange,
-      onSelectedLayerChange,
-      isDragActive,
-    ]
+    [isDragActive, removeLayer]
   )
 
   const handleDuplicateLayer = React.useCallback(
     (layerId: string) => {
-      if (isDragActive || isGlobalDragActive) return
-
-      const layerToDuplicate = layers.find((layer) => layer.id === layerId)
-      if (!layerToDuplicate) return
-
-      const duplicatedLayer: Layer = {
-        ...layerToDuplicate,
-        id: `layer-${Date.now()}`,
-        name: `${layerToDuplicate.name} (Copy)`,
-        isEmpty: layerToDuplicate.isEmpty, // Preserve the empty state
-      }
-      onLayersChange([...layers, duplicatedLayer])
-      onSelectedLayerChange(duplicatedLayer.id)
+      if (isDragActive) return
+      duplicateLayer(layerId)
     },
-    [layers, onLayersChange, onSelectedLayerChange, isDragActive]
+    [duplicateLayer, isDragActive]
   )
 
   const handleToggleVisibility = React.useCallback(
     (layerId: string) => {
-      if (isDragActive || isGlobalDragActive) return
-      const newLayers = layers.map((layer) =>
-        layer.id === layerId ? { ...layer, visible: !layer.visible } : layer
-      )
-      onLayersChange(newLayers)
+      if (isDragActive) return
+      toggleVisibility(layerId)
     },
-    [layers, onLayersChange, isDragActive]
+    [toggleVisibility, isDragActive]
   )
 
   const handleToggleLock = React.useCallback(
     (layerId: string) => {
-      if (isDragActive || isGlobalDragActive) return
-
-      const newLayers = layers.map((layer) =>
-        layer.id === layerId ? { ...layer, locked: !layer.locked } : layer
-      )
-      onLayersChange(newLayers)
+      if (isDragActive) return
+      toggleLock(layerId)
     },
-    [layers, onLayersChange, isDragActive]
+    [toggleLock, isDragActive]
   )
 
   const handleLayerNameChange = React.useCallback(
     (layerId: string, name: string) => {
-      if (isDragActive || isGlobalDragActive) return
-
-      const newLayers = layers.map((layer) =>
-        layer.id === layerId ? { ...layer, name } : layer
-      )
-      onLayersChange(newLayers)
+      if (isDragActive) return
+      setLayerName(layerId, name)
     },
-    [layers, onLayersChange, isDragActive]
+    [setLayerName, isDragActive]
   )
 
   const handleOpacityChange = React.useCallback(
     (layerId: string, opacity: number) => {
-      if (isDragActive || isGlobalDragActive) return
-      const newLayers = layers.map((layer) =>
-        layer.id === layerId ? { ...layer, opacity } : layer
-      )
-      onLayersChange(newLayers)
+      if (isDragActive) return
+      setOpacity(layerId, opacity)
     },
-    [layers, onLayersChange, isDragActive]
+    [setOpacity, isDragActive]
   )
 
   const handleMoveLayer = React.useCallback(
     (fromIndex: number, toIndex: number) => {
-      // Allow layer movement during drag operations
-      const newLayers = [...layers]
-      const [movedLayer] = newLayers.splice(fromIndex, 1)
-      newLayers.splice(toIndex, 0, movedLayer)
-      onLayersChange(newLayers)
+      reorderLayers(fromIndex, toIndex)
     },
-    [layers, onLayersChange]
+    [reorderLayers]
   )
 
   const currentLayer = React.useMemo(() => {
@@ -238,169 +152,155 @@ export function LayerSystem({
   }, [layers, selectedLayerId])
 
   return (
-    <div className={cn("w-[320px]", className)}>
-      <div className='border p-1 rounded-sm'>
-        <div className='flex items-center justify-between h-10 px-2'>
-          <h3 className='text-sm font-medium flex items-center gap-2'>
-            <Layers className='w-4 h-4' />
-            Layers
-          </h3>
+    <div className={cn("w-full space-y-2", className)}>
+      <div className='flex items-center  h-12 p-2 text-xs justify-between border-b'>
+        <div className='flex items-center gap-2'>
+          <div>Blend:</div>
+          {/* Blend Mode Selector */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant='ghost'
+                size='sm'
+                className='h-8 px-2 text-xs'
+                disabled={isDragActive || isGlobalDragActive}
+              >
+                {currentLayer?.blendMode
+                  ? BLEND_MODE_NAMES[currentLayer.blendMode]
+                  : "Normal"}
+                <ChevronDown className='w-3 h-3 ml-1' />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className='bg-background p-2 border rounded-sm flex flex-col'>
+              {Object.entries(BLEND_MODE_NAMES).map(([mode, name]) => (
+                <Button
+                  key={mode}
+                  variant='ghost'
+                  size='sm'
+                  className='text-xs h-8 justify-start'
+                  onClick={() =>
+                    selectedLayerId &&
+                    setBlendMode(selectedLayerId, mode as BlendMode)
+                  }
+                >
+                  {name}
+                </Button>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
-        <div className='flex items-center gap-2 h-12 p-2 text-xs justify-between'>
-          <div className='flex items-center gap-2'>
-            <div>Blend:</div>
-            {/* Blend Mode Selector */}
+        {/* Opacity Control */}
+        <div className='flex items-center gap-1'>
+          <span className='text-xs text-muted-foreground'>Opacity:</span>
+          <div className='flex items-center border rounded-sm h-9'>
+            <Input
+              type='number'
+              min='0'
+              max='100'
+              value={currentLayer?.opacity || 100}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                handleOpacityChange(
+                  selectedLayerId as string,
+                  Number(e.target.value)
+                )
+              }
+              className=' px-2 py-1 h-8 border-none'
+              disabled={isDragActive || isGlobalDragActive}
+            />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
                   variant='ghost'
                   size='sm'
-                  className='h-8 px-2 text-xs'
+                  className='size-8 p-0 rounded-sm'
                   disabled={isDragActive || isGlobalDragActive}
                 >
-                  {currentLayer?.blendMode
-                    ? BLEND_MODE_NAMES[currentLayer.blendMode]
-                    : "Normal"}
-                  <ChevronDown className='w-3 h-3 ml-1' />
+                  <ChevronDown className='w-3 h-3' />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent className='bg-background p-2 border rounded-sm flex flex-col'>
-                {Object.entries(BLEND_MODE_NAMES).map(([mode, name]) => (
-                  <Button
-                    key={mode}
-                    variant='ghost'
-                    size='sm'
-                    className='text-xs h-8 justify-start'
-                    onClick={() =>
-                      onLayerBlendModeChange?.(
+              <DropdownMenuContent>
+                <div className='z-10 flex items-center gap-2 border rounded-sm h-10 bg-background p-2'>
+                  <input
+                    type='range'
+                    min='0'
+                    max='100'
+                    value={currentLayer?.opacity || 0}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                      handleOpacityChange(
                         selectedLayerId as string,
-                        mode as BlendMode
+                        Number(e.target.value)
                       )
                     }
-                  >
-                    {name}
-                  </Button>
-                ))}
+                    onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                    onKeyDown={(e: React.KeyboardEvent) => e.stopPropagation()}
+                    onKeyUp={(e: React.KeyboardEvent) => e.stopPropagation()}
+                    className='h-1 bg-secondary rounded-lg appearance-none cursor-pointer'
+                    disabled={isDragActive || isGlobalDragActive}
+                  />
+                  <span className='text-xs w-8'>
+                    {currentLayer?.opacity || 0}%
+                  </span>
+                </div>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-
-          {/* Opacity Control */}
-          <div className='flex items-center gap-1'>
-            <span className='text-xs text-muted-foreground'>Opacity:</span>
-            <div className='flex items-center border rounded-sm h-9'>
-              <Input
-                type='number'
-                min='0'
-                max='100'
-                value={currentLayer?.opacity || 100}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  handleOpacityChange(
-                    selectedLayerId as string,
-                    Number(e.target.value)
-                  )
-                }
-                className=' px-2 py-1 h-8 border-none'
-                disabled={isDragActive || isGlobalDragActive}
-              />
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant='ghost'
-                    size='sm'
-                    className='size-8 p-0 rounded-sm'
-                    disabled={isDragActive || isGlobalDragActive}
-                  >
-                    <ChevronDown className='w-3 h-3' />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  <div className='z-10 flex items-center gap-2 border rounded-sm h-10 bg-background p-2'>
-                    <input
-                      type='range'
-                      min='0'
-                      max='100'
-                      value={currentLayer?.opacity || 0}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                        handleOpacityChange(
-                          selectedLayerId as string,
-                          Number(e.target.value)
-                        )
-                      }
-                      onClick={(e: React.MouseEvent) => e.stopPropagation()}
-                      onKeyDown={(e: React.KeyboardEvent) =>
-                        e.stopPropagation()
-                      }
-                      onKeyUp={(e: React.KeyboardEvent) => e.stopPropagation()}
-                      className='h-1 bg-secondary rounded-lg appearance-none cursor-pointer'
-                      disabled={isDragActive || isGlobalDragActive}
-                    />
-                    <span className='text-xs w-8'>
-                      {currentLayer?.opacity || 0}%
-                    </span>
-                  </div>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          </div>
         </div>
+      </div>
 
-        <div className='space-y-2 transition-all'>
-          {layers.map((layer, index) => (
-            <DraggableLayerItem
-              key={layer.id}
-              layer={layer}
-              index={index}
-              isSelected={selectedLayerId === layer.id}
-              onSelect={() => onSelectedLayerChange(layer.id)}
-              onDelete={() => handleDeleteLayer(layer.id)}
-              onDuplicate={() => handleDuplicateLayer(layer.id)}
-              onToggleVisibility={() => handleToggleVisibility(layer.id)}
-              onToggleLock={() => handleToggleLock(layer.id)}
-              onNameChange={(name) => handleLayerNameChange(layer.id, name)}
-              onOpacityChange={(opacity) =>
-                handleOpacityChange(layer.id, opacity)
-              }
-              onMoveLayer={handleMoveLayer}
-              onDragStateChange={onDragStateChange || (() => {})}
-            />
-          ))}
-        </div>
+      <div className='space-y-2 px-2 transition-all'>
+        {layers.map((layer, index) => (
+          <DraggableLayerItem
+            key={layer.id}
+            layer={layer}
+            index={index}
+            isSelected={selectedLayerId === layer.id}
+            onSelect={() => selectLayer(layer.id)}
+            onDelete={() => handleDeleteLayer(layer.id)}
+            onDuplicate={() => handleDuplicateLayer(layer.id)}
+            onToggleVisibility={() => handleToggleVisibility(layer.id)}
+            onToggleLock={() => handleToggleLock(layer.id)}
+            onNameChange={(name) => handleLayerNameChange(layer.id, name)}
+            onOpacityChange={(opacity) =>
+              handleOpacityChange(layer.id, opacity)
+            }
+            onMoveLayer={handleMoveLayer}
+          />
+        ))}
+      </div>
 
-        <div className='flex items-center gap-1 border-t border-border pt-2'>
-          {/* File upload button */}
-          <div className='relative h-8 w-8 p-0 flex items-center justify-center rounded-sm hover:bg-muted'>
-            <Camera className='w-4 h-4' />
-            <input
-              type='file'
-              accept='image/*'
-              onChange={handleFileUpload}
-              className='absolute inset-0 w-full h-full opacity-0 cursor-pointer'
-              disabled={isDragActive || isGlobalDragActive}
-              title='Upload image to new layer'
-            />
-          </div>
-
-          {/* Empty layer button */}
-          <Button
-            variant='ghost'
-            size='sm'
-            onClick={handleAddLayer}
-            className='h-8 w-8 p-0'
+      <div className='flex items-center gap-1 border-t border-border pt-2'>
+        {/* File upload button */}
+        <div className='relative h-8 w-8 p-0 flex items-center justify-center rounded-sm hover:bg-muted'>
+          <Camera className='w-4 h-4' />
+          <input
+            type='file'
+            accept='image/*'
+            onChange={handleFileUpload}
+            className='absolute inset-0 w-full h-full opacity-0 cursor-pointer'
             disabled={isDragActive || isGlobalDragActive}
-            title='Add empty layer'
-          >
-            <Layers className='w-4 h-4' />
-          </Button>
+            title='Upload image to new layer'
+          />
         </div>
+
+        {/* Empty layer button */}
+        <Button
+          variant='ghost'
+          size='sm'
+          onClick={handleAddLayer}
+          className='h-8 w-8 p-0'
+          disabled={isDragActive || isGlobalDragActive}
+          title='Add empty layer'
+        >
+          <Layers className='w-4 h-4' />
+        </Button>
       </div>
     </div>
   )
 }
 
 interface DraggableLayerItemProps {
-  layer: Layer
+  layer: EditorLayer
   index: number
   isSelected: boolean
   onSelect: () => void
@@ -411,7 +311,6 @@ interface DraggableLayerItemProps {
   onNameChange: (name: string) => void
   onOpacityChange: (opacity: number) => void
   onMoveLayer: (fromIndex: number, toIndex: number) => void
-  onDragStateChange: (isDragging: boolean) => void
 }
 
 function DraggableLayerItem({
@@ -426,8 +325,8 @@ function DraggableLayerItem({
   onNameChange,
   onOpacityChange,
   onMoveLayer,
-  onDragStateChange,
 }: DraggableLayerItemProps) {
+  const { setEphemeral } = useEditorContext()
   const [{ isDragging }, drag] = useDrag<
     DragItem,
     void,
@@ -444,13 +343,30 @@ function DraggableLayerItem({
   React.useEffect(() => {
     if (isDragging) {
       isGlobalDragActive = true
-      onDragStateChange(true)
     } else {
       isGlobalDragActive = false
-      onDragStateChange(false)
     }
-  }, [isDragging, onDragStateChange])
+    setEphemeral((e) => {
+      const nextDragging = isDragging
+      const nextId = isDragging ? layer.id : undefined
+      if (
+        e.interaction.isDragging === nextDragging &&
+        e.interaction.dragLayerId === nextId
+      ) {
+        return e
+      }
+      return {
+        ...e,
+        interaction: {
+          ...e.interaction,
+          isDragging: nextDragging,
+          dragLayerId: nextId,
+        },
+      }
+    })
+  }, [isDragging, layer.id, setEphemeral])
 
+  const { history } = useEditorContext()
   const [{ isOver }, drop] = useDrop({
     accept: ItemTypes.LAYER,
     hover: (item: DragItem, monitor) => {
@@ -500,6 +416,7 @@ function DraggableLayerItem({
           return
         }
 
+        // transaction handled by drag state effect
         // Time to actually perform the action
         onMoveLayer(dragIndex, hoverIndex)
 
@@ -526,6 +443,25 @@ function DraggableLayerItem({
 
   const ref = React.useRef<HTMLDivElement>(null)
   drag(drop(ref))
+
+  // Manage transaction lifecycle for drag start/end
+  const dragTxnStartedRef = React.useRef(false)
+  React.useEffect(() => {
+    if (isDragging && !dragTxnStartedRef.current) {
+      dragTxnStartedRef.current = true
+      history.begin("Reorder Layers")
+    }
+    if (!isDragging && dragTxnStartedRef.current) {
+      dragTxnStartedRef.current = false
+      history.end(true)
+    }
+  }, [isDragging, history])
+
+  React.useEffect(() => {
+    if (!isDragging) {
+      history.end(true)
+    }
+  }, [isDragging, history])
 
   return (
     <div
@@ -563,7 +499,7 @@ function DraggableLayerItem({
 }
 
 interface LayerItemProps {
-  layer: Layer
+  layer: EditorLayer
   isSelected: boolean
   onSelect: () => void
   onDelete: () => void
@@ -728,16 +664,20 @@ function LayerItemContent({
 }
 
 // Thumbnail component for layer preview
-function LayerThumbnail({ layer }: { layer: Layer }) {
+function LayerThumbnail({ layer }: { layer: EditorLayer }) {
   const [thumbnailUrl, setThumbnailUrl] = React.useState<string | null>(null)
 
   React.useEffect(() => {
-    if (layer.image) {
-      const url = URL.createObjectURL(layer.image)
+    const file = layer.image
+    // Only accept Blob/File instances
+    if (file && typeof window !== "undefined" && file instanceof Blob) {
+      const url = URL.createObjectURL(file)
       setThumbnailUrl(url)
 
       return () => {
-        URL.revokeObjectURL(url)
+        try {
+          URL.revokeObjectURL(url)
+        } catch {}
         setThumbnailUrl(null)
       }
     }

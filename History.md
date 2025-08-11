@@ -119,8 +119,5 @@
 
 Short status update: Proposed a command-based, transactional undo/redo design covering layers, canvas, and tools with full state restoration, coalescing, and persistence. Ready to map this to your current modules when you’re ready.
 
-- Command-driven history with transactions and coalescing for all edits (layers, canvas, tools).
-- Single source of truth EditorState; renderer derives z-order from layers.order.
-- Diff-based storage with memory limits, checkpoints, and full serialization for restore.
-- Tools emit commands; previews are ephemeral and committed on interaction end.
-- Deterministic, testable, and performant with clear UX semantics for undo/redo.
+
+

@@ -28,5 +28,14 @@ function VibranceButton({
 }
 VibranceButton.displayName = "VibranceButton"
 
-const VibranceControls = ImageEditorFooterSlider
+const VibranceControls = (props: any) => {
+  const { history } = require("@/lib/editor/context").useEditorContext()
+  return (
+    <ImageEditorFooterSlider
+      {...props}
+      onDragStart={() => history.begin("Vibrance Drag")}
+      onDragEnd={() => history.end(true)}
+    />
+  )
+}
 export { VibranceButton, VibranceControls }

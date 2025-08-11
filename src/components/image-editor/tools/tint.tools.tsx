@@ -28,5 +28,14 @@ function TintButton({
 }
 TintButton.displayName = "TintButton"
 
-const TintControls = ImageEditorFooterSlider
+const TintControls = (props: any) => {
+  const { history } = require("@/lib/editor/context").useEditorContext()
+  return (
+    <ImageEditorFooterSlider
+      {...props}
+      onDragStart={() => history.begin("Tint Drag")}
+      onDragEnd={() => history.end(true)}
+    />
+  )
+}
 export { TintButton, TintControls }

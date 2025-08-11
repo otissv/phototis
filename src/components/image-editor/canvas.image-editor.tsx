@@ -8,27 +8,24 @@ import { useDebounce } from "use-debounce"
 import type { ImageEditorToolsState } from "@/components/image-editor/state.image-editor"
 import { initialState } from "@/components/image-editor/state.image-editor"
 import { upscaleTool } from "./tools/upscaler"
-import type { Layer } from "./layer-system"
+import type { EditorLayer } from "@/lib/editor/state"
+import { useEditorContext } from "@/lib/editor/context"
 import { ShaderManager } from "@/lib/shaders"
 import { HybridRenderer } from "@/lib/shaders/hybrid-renderer"
 import { useWorkerRenderer } from "@/lib/hooks/useWorkerRenderer"
 import { TaskPriority } from "@/lib/workers/worker-manager"
 import { CanvasStateManager } from "@/lib/canvas-state-manager"
+import { SetViewportCommand } from "@/lib/editor/commands"
 
 // Shader manager instance
 const shaderManager = new ShaderManager()
 
 export interface ImageEditorCanvasProps
   extends Omit<React.ComponentProps<"canvas">, "onProgress"> {
-  image: File | null
-  toolsValues: ImageEditorToolsState
-  layers?: Layer[]
   onProgress?: (progress: number) => void
   canvasRef?: React.RefObject<HTMLCanvasElement | null>
   onDrawReady?: (draw: () => void) => void
   onImageDrop?: (file: File) => void
-  isDragActive?: boolean
-  selectedLayerId: string
 }
 
 // Interface for layer dimensions and positioning
@@ -47,17 +44,18 @@ interface ViewportState {
 }
 
 export function ImageEditorCanvas({
-  image,
-  toolsValues,
-  layers = [],
   onProgress,
   canvasRef,
   onDrawReady,
   onImageDrop,
-  isDragActive,
-  selectedLayerId,
   ...props
 }: ImageEditorCanvasProps) {
+  const { history } = useEditorContext()
+  const { getOrderedLayers, getSelectedLayerId, state, addImageLayer } =
+    useEditorContext()
+  const selectedLayerId = getSelectedLayerId() || "layer-1"
+  const isDragActive = state.ephemeral.interaction.isDragging
+  const canonicalLayers = getOrderedLayers()
   const glRef = React.useRef<WebGL2RenderingContext | null>(null)
   const programRef = React.useRef<WebGLProgram | null>(null)
   const textureRef = React.useRef<WebGLTexture | null>(null)
@@ -99,6 +97,7 @@ export function ImageEditorCanvas({
   React.useEffect(() => {
     isWorkerReadyRef.current = isWorkerReady
   }, [isWorkerReady])
+
   React.useEffect(() => {
     isWorkerProcessingRef.current = isWorkerProcessing
   }, [isWorkerProcessing])
@@ -200,29 +199,37 @@ export function ImageEditorCanvas({
     scale: 1,
   })
 
-  // Debounce tool values to prevent excessive redraws
-  const [debouncedToolsValues] = useDebounce(toolsValues, 100) // Increased from 50ms to 100ms
+  // Derive selected layer filters from EditorState
+  const selectedFilters = React.useMemo(() => {
+    const layer = state.canonical.layers.byId[selectedLayerId]
+    return (
+      (layer?.filters as ImageEditorToolsState) ||
+      (initialState as ImageEditorToolsState)
+    )
+  }, [state.canonical.layers.byId, selectedLayerId])
 
-  // Add throttling for rapid value changes
-  const [throttledToolsValues] = useDebounce(toolsValues, 16) // ~60fps throttling
+  const [debouncedToolsValues] = useDebounce(selectedFilters, 100)
+  const [throttledToolsValues] = useDebounce(selectedFilters, 16)
 
   // Track if we're currently drawing to prevent overlapping draws
   const isDrawingRef = React.useRef(false)
 
   // Smooth transition state for tool values
   const [smoothToolsValues, setSmoothToolsValues] =
-    React.useState<ImageEditorToolsState>(toolsValues)
+    React.useState<ImageEditorToolsState>(selectedFilters)
   const animationRef = React.useRef<Map<string, number>>(new Map())
 
   // Animate tool values smoothly when they change
   // biome-ignore lint/correctness/useExhaustiveDependencies: smoothToolsValues cause infinite loop
   React.useEffect(() => {
-    const toolKeys = Object.keys(toolsValues) as (keyof typeof toolsValues)[]
+    const toolKeys = Object.keys(
+      selectedFilters
+    ) as (keyof typeof selectedFilters)[]
 
     for (const key of toolKeys) {
-      if (typeof toolsValues[key] === "number") {
+      if (typeof selectedFilters[key] === "number") {
         const currentValue = smoothToolsValues[key] as number
-        const targetValue = toolsValues[key] as number
+        const targetValue = selectedFilters[key] as number
 
         if (currentValue !== targetValue) {
           // Cancel any existing animation for this tool
@@ -263,7 +270,7 @@ export function ImageEditorCanvas({
         }
       }
     }
-  }, [toolsValues])
+  }, [selectedFilters])
 
   // Cleanup animations on unmount
   React.useEffect(() => {
@@ -292,10 +299,11 @@ export function ImageEditorCanvas({
 
   // Container ref for viewport calculations
   const containerRef = React.useRef<HTMLDivElement>(null)
+  const overlayRef = React.useRef<HTMLCanvasElement>(null)
 
   // Create a compact signature representing layers order and relevant props
   const layersSignature = React.useMemo(() => {
-    return layers
+    return canonicalLayers
       .map((l) => {
         const imageSig = l.image
           ? `img:${(l.image as File).name}:${(l.image as File).size}:$${
@@ -312,7 +320,7 @@ export function ImageEditorCanvas({
         ].join(":")
       })
       .join("|")
-  }, [layers])
+  }, [canonicalLayers])
 
   // Update WebGL viewport when canvas dimensions change
   React.useEffect(() => {
@@ -329,9 +337,9 @@ export function ImageEditorCanvas({
     }
   }, [canvasDimensions.width, canvasDimensions.height, canvasRef?.current])
 
-  // Helper function to load image data directly from File objects
+  // Helper function to load image data from various sources (Blob/File or string URL)
   const loadImageDataFromFile = React.useCallback(
-    async (file: File): Promise<ImageData | null> => {
+    async (source: File | Blob | string): Promise<ImageData | null> => {
       return new Promise((resolve) => {
         const canvas = document.createElement("canvas")
         const ctx = canvas.getContext("2d")
@@ -340,9 +348,30 @@ export function ImageEditorCanvas({
           return
         }
 
-        const loadWithBitmap = async () => {
+        const loadFromUrl = (url: string) => {
+          const img = new Image()
+          img.onload = () => {
+            canvas.width = img.width
+            canvas.height = img.height
+            ctx.drawImage(img, 0, 0)
+            const imageData = ctx.getImageData(0, 0, img.width, img.height)
+            try {
+              if (url.startsWith("blob:")) URL.revokeObjectURL(url)
+            } catch {}
+            resolve(imageData)
+          }
+          img.onerror = () => {
+            try {
+              if (url.startsWith("blob:")) URL.revokeObjectURL(url)
+            } catch {}
+            resolve(null)
+          }
+          img.src = url
+        }
+
+        const loadWithBitmap = async (blob: Blob) => {
           try {
-            const bitmap = await createImageBitmap(file, {
+            const bitmap = await createImageBitmap(blob, {
               imageOrientation: "from-image",
             })
             canvas.width = bitmap.width
@@ -361,63 +390,32 @@ export function ImageEditorCanvas({
             )
             resolve(imageData)
           } catch {
-            loadWithImage()
+            // Fallback to <img> pipeline
+            const url = URL.createObjectURL(blob)
+            loadFromUrl(url)
           }
         }
 
-        const loadWithImage = () => {
-          const img = new Image()
-          img.onload = () => {
-            canvas.width = img.width
-            canvas.height = img.height
-            ctx.drawImage(img, 0, 0)
-            const imageData = ctx.getImageData(0, 0, img.width, img.height)
-            if (img.src.startsWith("blob:")) URL.revokeObjectURL(img.src)
-            resolve(imageData)
+        try {
+          // Blob/File path
+          if (typeof Blob !== "undefined" && source instanceof Blob) {
+            void loadWithBitmap(source)
+            return
           }
-          img.onerror = () => {
-            if (img.src.startsWith("blob:")) URL.revokeObjectURL(img.src)
-            resolve(null)
+          // URL/path string
+          if (typeof source === "string") {
+            loadFromUrl(source)
+            return
           }
-          img.src = URL.createObjectURL(file)
-        }
-
-        loadWithBitmap()
+        } catch {}
+        // Unsupported type
+        resolve(null)
       })
     },
     []
   )
 
-  // Handle main image data loading
-  // biome-ignore lint/correctness/useExhaustiveDependencies: loadImageDataFromFile cause infinite loop
-  React.useEffect(() => {
-    const loadMainImage = async () => {
-      if (!image) {
-        return
-      }
-
-      const imageData = await loadImageDataFromFile(image)
-      if (imageData) {
-        imageDataCacheRef.current.set("main", imageData)
-
-        // Store dimensions for the background layer
-        layerDimensionsRef.current.set("layer-1", {
-          width: imageData.width,
-          height: imageData.height,
-          x: 0,
-          y: 0,
-        })
-
-        // Set canvas dimensions to background image size
-        setCanvasDimensions({
-          width: imageData.width,
-          height: imageData.height,
-        })
-      }
-    }
-
-    loadMainImage()
-  }, [image])
+  // Remove main image prop loading. Background handled via layer loading below
 
   // Initialize hybrid renderer when WebGL context is ready
   React.useEffect(() => {
@@ -456,7 +454,9 @@ export function ImageEditorCanvas({
 
     const loadLayerImages = async () => {
       // Clean up old data
-      const currentLayerIds = new Set(layers.map((layer: Layer) => layer.id))
+      const currentLayerIds = new Set(
+        canonicalLayers.map((layer: EditorLayer) => layer.id)
+      )
       const oldData = new Map(imageDataCacheRef.current)
 
       for (const [layerId, imageData] of oldData) {
@@ -471,36 +471,39 @@ export function ImageEditorCanvas({
         }
       }
 
-      // Load new layer images
-      for (const layer of layers) {
+      // Load new layer images (including background layer-1)
+      for (const layer of canonicalLayers) {
         if (layer.image && !imageDataCacheRef.current.has(layer.id)) {
           const imageData = await loadImageDataFromFile(layer.image)
           if (imageData) {
             imageDataCacheRef.current.set(layer.id, imageData)
 
-            // Calculate layer dimensions
             const currentCanvasWidth = canvasDimensions.width
             const currentCanvasHeight = canvasDimensions.height
 
             let layerX = 0
             let layerY = 0
 
+            // Center non-background layers
             if (layer.id !== "layer-1") {
-              // For new layers, center them on the canvas
-              // If the layer is larger than the canvas, position it so the center is visible
-              if (imageData.width > currentCanvasWidth) {
-                layerX = (currentCanvasWidth - imageData.width) / 2
-              } else {
-                layerX = Math.max(0, (currentCanvasWidth - imageData.width) / 2)
-              }
-
-              if (imageData.height > currentCanvasHeight) {
-                layerY = (currentCanvasHeight - imageData.height) / 2
-              } else {
-                layerY = Math.max(
-                  0,
-                  (currentCanvasHeight - imageData.height) / 2
-                )
+              layerX =
+                imageData.width > currentCanvasWidth
+                  ? (currentCanvasWidth - imageData.width) / 2
+                  : Math.max(0, (currentCanvasWidth - imageData.width) / 2)
+              layerY =
+                imageData.height > currentCanvasHeight
+                  ? (currentCanvasHeight - imageData.height) / 2
+                  : Math.max(0, (currentCanvasHeight - imageData.height) / 2)
+            } else {
+              // For background, set canvas size if not yet initialized
+              if (
+                canvasDimensions.width === 800 &&
+                canvasDimensions.height === 600
+              ) {
+                setCanvasDimensions({
+                  width: imageData.width,
+                  height: imageData.height,
+                })
               }
             }
 
@@ -511,9 +514,6 @@ export function ImageEditorCanvas({
               y: layerY,
             }
             layerDimensionsRef.current.set(layer.id, dimensions)
-
-            // Don't resize canvas - keep it at the background image size
-            // Layers that are larger will be cropped, smaller layers will have transparent areas
           }
         }
       }
@@ -535,14 +535,19 @@ export function ImageEditorCanvas({
     }
 
     loadLayerImages()
-  }, [layers, canvasDimensions.width, canvasDimensions.height, isDragActive])
+  }, [
+    canonicalLayers,
+    canvasDimensions.width,
+    canvasDimensions.height,
+    isDragActive,
+  ])
 
   // Handle viewport updates based on zoom
   React.useEffect(() => {
-    const zoom = toolsValues.zoom / 100
+    const zoom = selectedFilters.zoom / 100
     viewportScale.set(zoom)
     setViewport((prev) => ({ ...prev, scale: zoom }))
-  }, [toolsValues.zoom, viewportScale])
+  }, [selectedFilters.zoom, viewportScale])
 
   // Center viewport when canvas dimensions change
   React.useEffect(() => {
@@ -596,13 +601,14 @@ export function ImageEditorCanvas({
       viewportY.set(newY)
       viewportScale.set(newScale)
 
-      setViewport({
-        x: newX,
-        y: newY,
-        scale: newScale,
-      })
+      setViewport({ x: newX, y: newY, scale: newScale })
+
+      // Emit coalesced viewport zoom as a transaction
+      history.begin("Wheel Zoom")
+      history.push(new SetViewportCommand({ zoom: Math.round(newScale * 100) }))
+      history.end(true)
     },
-    [viewportX, viewportY, viewportScale]
+    [viewportX, viewportY, viewportScale, history]
   )
 
   // Double-click to reset viewport
@@ -748,7 +754,7 @@ export function ImageEditorCanvas({
 
   // Helper function to load texture for a layer
   const loadLayerTexture = React.useCallback(
-    async (layer: Layer): Promise<WebGLTexture | null> => {
+    async (layer: EditorLayer): Promise<WebGLTexture | null> => {
       const gl = glRef.current
       if (!gl) return null
 
@@ -800,7 +806,7 @@ export function ImageEditorCanvas({
 
     // Periodic cleanup of unused cache entries to prevent memory leaks
     try {
-      const currentLayerIds = new Set(layers.map((l) => l.id))
+      const currentLayerIds = new Set(canonicalLayers.map((l) => l.id))
       currentLayerIds.add("main") // Preserve main image cache
 
       // Clean up imageData cache
@@ -850,7 +856,7 @@ export function ImageEditorCanvas({
         // Queue render task with worker
         try {
           const taskId = await renderLayersWithWorker(
-            layers,
+            canonicalLayers,
             renderingToolsValues,
             selectedLayerId,
             canvasWidth,
@@ -903,7 +909,7 @@ export function ImageEditorCanvas({
 
       // Pass all layers to the hybrid renderer and let it handle the ordering
       // The hybrid renderer will filter visible layers and sort them properly
-      const allLayersToRender = layers
+      const allLayersToRender = canonicalLayers
 
       // If no layers are available, just clear the canvas and return
       if (allLayersToRender.length === 0) {
@@ -925,13 +931,7 @@ export function ImageEditorCanvas({
 
       // Load textures for layers that have content (the hybrid renderer will filter visible ones)
       for (const layer of allLayersToRender) {
-        // For the background layer, check if main image data is available
-        if (layer.id === "layer-1") {
-          const mainImageData = imageDataCacheRef.current.get("main")
-          if (!mainImageData && layer.isEmpty && !layer.image) {
-            continue
-          }
-        } else if (layer.isEmpty && !layer.image) {
+        if (layer.isEmpty && !layer.image) {
           continue
         }
 
@@ -1022,20 +1022,18 @@ export function ImageEditorCanvas({
       drawRef.current?.()
     }, 0)
     return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDragActive, layersSignature])
 
   // Force a draw once worker is ready and layers exist (avoid depending on draw to prevent loops)
   React.useEffect(() => {
     if (!isWorkerReady) return
-    if (layers.length === 0) return
+    if (canonicalLayers.length === 0) return
     const timer = setTimeout(() => {
       drawRef.current?.()
     }, 100)
     return () => clearTimeout(timer)
     // Intentionally exclude draw from deps to avoid re-triggering on worker progress/state updates
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isWorkerReady, layers.length])
+  }, [isWorkerReady, canonicalLayers.length])
 
   // Drag and drop handlers
   const handleDragOver = React.useCallback(
@@ -1128,6 +1126,20 @@ export function ImageEditorCanvas({
           title='Drop image files here to add them as new layers'
           {...props}
           id='image-editor-canvas'
+        />
+        {/* Preview overlay canvas for tool previews */}
+        <canvas
+          className={cn(
+            "absolute inset-0 pointer-events-none transition-all duration-200"
+          )}
+          style={{
+            width: canvasDimensions.width,
+            height: canvasDimensions.height,
+          }}
+          width={canvasDimensions.width}
+          height={canvasDimensions.height}
+          id='image-editor-overlay'
+          ref={overlayRef}
         />
         {/* Drag overlay indicator */}
         <div

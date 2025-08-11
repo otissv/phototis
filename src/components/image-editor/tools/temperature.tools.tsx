@@ -28,5 +28,14 @@ function TemperatureButton({
 }
 TemperatureButton.displayName = "TemperatureButton"
 
-const TemperatureControls = ImageEditorFooterSlider
+const TemperatureControls = (props: any) => {
+  const { history } = require("@/lib/editor/context").useEditorContext()
+  return (
+    <ImageEditorFooterSlider
+      {...props}
+      onDragStart={() => history.begin("Temperature Drag")}
+      onDragEnd={() => history.end(true)}
+    />
+  )
+}
 export { TemperatureButton, TemperatureControls }

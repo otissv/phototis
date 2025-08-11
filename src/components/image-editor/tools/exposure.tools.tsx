@@ -28,5 +28,14 @@ function ExposureButton({
 }
 ExposureButton.displayName = "ExposureButton"
 
-const ExposureControls = ImageEditorFooterSlider
+const ExposureControls = (props: any) => {
+  const { history } = require("@/lib/editor/context").useEditorContext()
+  return (
+    <ImageEditorFooterSlider
+      {...props}
+      onDragStart={() => history.begin("Exposure Drag")}
+      onDragEnd={() => history.end(true)}
+    />
+  )
+}
 export { ExposureButton, ExposureControls }

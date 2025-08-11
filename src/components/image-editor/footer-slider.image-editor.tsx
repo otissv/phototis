@@ -48,8 +48,16 @@ export function ImageEditorFooterSlider({
       })}
       label={label}
       disabled={disabled}
-      onDragEnd={onDragEnd}
-      onDragStart={onDragStart}
+      onDragEnd={(v) => {
+        try {
+          onDragEnd?.(v)
+        } catch {}
+      }}
+      onDragStart={(v) => {
+        try {
+          onDragStart?.(v)
+        } catch {}
+      }}
     />
   )
 }

@@ -1,7 +1,7 @@
 "use client"
 
 import React from "react"
-import { PlusIcon, MinusIcon } from "lucide-react"
+import { PlusIcon, MinusIcon, Layers, History } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -15,8 +15,12 @@ import {
   type ImageEditorToolsActions,
 } from "@/components/image-editor/state.image-editor"
 
-import { LayerSystem, type Layer } from "./layer-system"
+import { LayerSystem } from "./layer-system"
 import type { BlendMode } from "@/lib/shaders/blend-modes"
+import { EditorProvider, useEditorContext } from "@/lib/editor/context"
+import type { EditorLayer } from "@/lib/editor/state"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs"
+import { HistoryControls } from "./history-controls.image-editor"
 
 export interface ImageEditorProps extends React.ComponentProps<"div"> {
   image: File | null
@@ -24,7 +28,7 @@ export interface ImageEditorProps extends React.ComponentProps<"div"> {
   onDragStateChange?: (isDragging: boolean) => void
 }
 
-export function ImageEditor({
+function ImageEditorInner({
   image,
   onImageDrop,
   onDragStateChange,
@@ -34,43 +38,29 @@ export function ImageEditor({
   const drawFnRef = React.useRef<() => void>(() => {})
 
   const [selectedSidebar, setSelectedSidebar] =
-    React.useState<keyof typeof SIDEBAR_TOOLS>("transform")
+    React.useState<keyof typeof SIDEBAR_TOOLS>("rotate")
   const [selectedTool, setSelectedTool] =
     React.useState<keyof typeof TOOL_VALUES>("rotate")
   const [progress, setProgress] = React.useState(0)
 
-  // Layer system state
-  const [layers, setLayers] = React.useState<Layer[]>(() => {
-    // Initialize with a default layer
-    const defaultLayer: Layer = {
-      id: "layer-1",
-      name: "Layer 1",
-      visible: true,
-      locked: false,
-      filters: { ...initialState },
-      opacity: 100,
-      isEmpty: true, // Background layer starts empty until image is loaded
-      blendMode: "normal", // Default blend mode
-    }
-    return [defaultLayer]
-  })
-
-  const layersMemo = React.useMemo(() => {
-    return layers
-  }, [layers])
-
-  const [selectedLayerId, setSelectedLayerId] =
-    React.useState<string>("layer-1")
-
-  // Track drag state to prevent canvas updates during drag
-  const [isDragActive, setIsDragActive] = React.useState(false)
+  const {
+    getOrderedLayers,
+    getSelectedLayer,
+    getSelectedLayerId,
+    updateLayer,
+    setBlendMode,
+    setZoomPercent,
+    state,
+    setEphemeral,
+    duplicateLayer,
+    removeLayer,
+    history,
+  } = useEditorContext()
 
   // Get the currently selected layer's filters
   const selectedLayer = React.useMemo(() => {
-    return (
-      layersMemo.find((layer) => layer.id === selectedLayerId) || layersMemo[0]
-    )
-  }, [layersMemo, selectedLayerId])
+    return getSelectedLayer() || null
+  }, [getSelectedLayer])
 
   const toolsValues = React.useMemo(() => {
     return selectedLayer?.filters || initialState
@@ -78,15 +68,13 @@ export function ImageEditor({
 
   const dispatch = React.useCallback(
     (action: ImageEditorToolsActions) => {
-      if (!selectedLayer) return
-
-      const newFilters = imageEditorToolsReducer(selectedLayer.filters, action)
-      const newLayers = layersMemo.map((layer) =>
-        layer.id === selectedLayerId ? { ...layer, filters: newFilters } : layer
-      )
-      setLayers(newLayers)
+      const current = selectedLayer
+      const selectedId = getSelectedLayerId()
+      if (!current || !selectedId) return
+      const newFilters = imageEditorToolsReducer(current.filters, action)
+      updateLayer(selectedId, { filters: newFilters })
     },
-    [selectedLayer, selectedLayerId, layersMemo]
+    [selectedLayer, getSelectedLayerId, updateLayer]
   )
 
   const value = React.useMemo(() => {
@@ -187,96 +175,100 @@ export function ImageEditor({
     drawFnRef.current = d
   }, [])
 
-  const handleLayersChange = React.useCallback(
-    (newLayers: Layer[]) => {
-      // Allow layer reordering during drag operations, but prevent other changes
-      if (isDragActive) {
-        // Check if this is just a reordering (same layers, different order)
-        const currentLayerIds = layersMemo.map((layer) => layer.id).sort()
-        const newLayerIds = newLayers.map((layer) => layer.id).sort()
-        const isReordering =
-          currentLayerIds.length === newLayerIds.length &&
-          currentLayerIds.every((id, index) => id === newLayerIds[index])
+  const handleImageDrop = React.useCallback(
+    (file: File) => {
+      // Forward to provider's handler by calling through Canvas (which now handles internally)
+      // Kept for API compatibility; no-op here
+      onImageDrop?.(file)
+    },
+    [onImageDrop]
+  )
 
-        if (isReordering) {
-          setLayers(newLayers)
+  // Keep drag state observable to parent if requested
+  React.useEffect(() => {
+    onDragStateChange?.(state.ephemeral.interaction.isDragging)
+  }, [onDragStateChange, state.ephemeral.interaction.isDragging])
+
+  // Global keyboard shortcuts
+  // biome-ignore lint/correctness/useExhaustiveDependencies: history methods are stable via internal refs; intentional minimal deps
+  React.useEffect(() => {
+    const isTextInput = (el: EventTarget | null): boolean => {
+      const node = el as HTMLElement | null
+      if (!node) return false
+      const tag = node.tagName?.toLowerCase()
+      const editable = (node as any).isContentEditable
+      return (
+        editable ||
+        tag === "input" ||
+        tag === "textarea" ||
+        tag === "select" ||
+        (node.getAttribute && node.getAttribute("role") === "textbox")
+      )
+    }
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (isTextInput(e.target)) return
+      const isMac = /(Mac|iPhone|iPod|iPad)/i.test(navigator.platform)
+      const meta = isMac ? e.metaKey : e.ctrlKey
+      const shift = e.shiftKey
+      const key = e.key
+
+      // Undo / Redo
+      if (meta && !shift && (key === "z" || key === "Z")) {
+        e.preventDefault()
+        history.undo()
+        return
+      }
+      if (
+        meta &&
+        ((shift && (key === "z" || key === "Z")) || key.toLowerCase() === "y")
+      ) {
+        e.preventDefault()
+        history.redo()
+        return
+      }
+
+      // Duplicate layer (Photoshop-style: Cmd/Ctrl+J)
+      if (meta && key.toLowerCase() === "j") {
+        e.preventDefault()
+        const id = getSelectedLayerId()
+        if (id) duplicateLayer(id)
+        return
+      }
+
+      // Delete layer
+      if (key === "Delete" || key === "Backspace") {
+        const id = getSelectedLayerId()
+        if (id) {
+          e.preventDefault()
+          removeLayer(id)
         }
         return
       }
-      setLayers(newLayers)
-    },
-    [isDragActive, layersMemo]
-  )
 
-  const handleSelectedLayerChange = React.useCallback(
-    (layerId: string | null) => {
-      setSelectedLayerId(layerId || "")
-    },
-    []
-  )
-
-  const handleLayerFiltersChange = React.useCallback(
-    (layerId: string, filters: any) => {
-      const newLayers = layersMemo.map((layer) =>
-        layer.id === layerId ? { ...layer, filters } : layer
-      )
-      setLayers(newLayers)
-    },
-    [layersMemo]
-  )
-
-  const handleLayerBlendModeChange = React.useCallback(
-    (layerId: string, blendMode: BlendMode) => {
-      const newLayers = layersMemo.map((layer) =>
-        layer.id === layerId ? { ...layer, blendMode } : layer
-      )
-      setLayers(newLayers)
-    },
-    [layersMemo]
-  )
-
-  const handleImageDrop = React.useCallback(
-    (file: File) => {
-      // Create a new layer with the dropped image
-      const newLayer: Layer = {
-        id: `layer-${Date.now()}`,
-        name: file.name || `Layer ${layers.length + 1}`,
-        visible: true,
-        locked: false,
-        filters: { ...initialState },
-        opacity: 100,
-        isEmpty: false, // Layer has image content
-        image: file, // Attach the image to this layer
-        blendMode: "normal", // Default blend mode
+      // Zoom controls
+      if (meta && (key === "=" || key === "+")) {
+        e.preventDefault()
+        const next = Math.min(800, state.canonical.viewport.zoom + 25)
+        setZoomPercent(next)
+        return
       }
-
-      // Add the new layer to the top of the stack
-      const newLayers = [newLayer, ...layersMemo]
-      setLayers(newLayers)
-
-      // Select the new layer
-      setSelectedLayerId(newLayer.id)
-    },
-    [layersMemo]
-  )
-
-  // Update background layer when initial image is provided
-  React.useEffect(() => {
-    if (image) {
-      setLayers((prevLayers) => {
-        const updatedLayers = prevLayers.map((layer) =>
-          layer.id === "layer-1"
-            ? {
-                ...layer,
-                isEmpty: false, // Background layer now has content
-                image: image, // Attach the initial image to background layer
-              }
-            : layer
-        )
-        return updatedLayers
-      })
+      if (meta && (key === "-" || key === "_")) {
+        e.preventDefault()
+        const next = Math.max(13, state.canonical.viewport.zoom - 25)
+        setZoomPercent(next)
+        return
+      }
+      if (meta && key === "0") {
+        e.preventDefault()
+        setZoomPercent(100)
+        return
+      }
     }
-  }, [image])
+
+    window.addEventListener("keydown", onKeyDown, { passive: false })
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [getSelectedLayerId, setZoomPercent, state.canonical.viewport.zoom])
 
   return (
     <div
@@ -309,16 +301,10 @@ export function ImageEditor({
       <div className='col-start-2 row-start-2 flex flex-col items-center h-[calc(100vh-300px)] overflow-auto border rounded-sm'>
         <div className='relative h-full'>
           <ImageEditorCanvas
-            image={image}
-            toolsValues={toolsValues}
-            layers={layersMemo}
             onProgress={handleOnProgress}
             id='image-editor-canvas'
             canvasRef={canvasRef}
             onDrawReady={handleDrawReady}
-            onImageDrop={handleImageDrop}
-            isDragActive={isDragActive}
-            selectedLayerId={selectedLayerId}
           />
         </div>
       </div>
@@ -339,35 +325,39 @@ export function ImageEditor({
 
       <ZoomControls
         className='col-start-1 row-start-3'
-        dispatch={dispatch}
-        value={toolsValues.zoom}
+        onZoomChange={setZoomPercent}
+        value={state.canonical.viewport.zoom}
       />
 
-      {/* Layer System */}
-      <LayerSystem
-        layers={layersMemo}
-        selectedLayerId={selectedLayerId}
-        onLayersChange={handleLayersChange}
-        onSelectedLayerChange={handleSelectedLayerChange}
-        onLayerFiltersChange={handleLayerFiltersChange}
-        onLayerBlendModeChange={handleLayerBlendModeChange}
-        className='row-span-3'
-        onDragStateChange={(isDragging) => {
-          setIsDragActive(isDragging)
-          onDragStateChange?.(isDragging)
-        }}
-      />
+      <Tabs className='row-span-3' defaultValue='layers'>
+        <TabsList>
+          <TabsTrigger value='history' className='flex gap-2'>
+            <History className='w-4 h-4' /> History
+          </TabsTrigger>
+          <TabsTrigger value='layers' className='flex gap-2'>
+            <Layers className='w-4 h-4' /> Layers
+          </TabsTrigger>
+        </TabsList>
+        <div className='border rounded-sm w-[320px]'>
+          <TabsContent value='history'>
+            <HistoryControls />
+          </TabsContent>
+          <TabsContent value='layers'>
+            <LayerSystem />
+          </TabsContent>
+        </div>
+      </Tabs>
     </div>
   )
 }
 
 function ZoomControls({
   className,
-  dispatch,
+  onZoomChange,
   value,
 }: {
   className: string
-  dispatch: React.Dispatch<ImageEditorToolsActions>
+  onZoomChange: (zoom: number) => void
   value: number
 }) {
   const handleZoom = React.useCallback(
@@ -377,9 +367,9 @@ function ZoomControls({
         return
       }
 
-      dispatch({ type: "zoom", payload })
+      onZoomChange(payload)
     },
-    [value, dispatch]
+    [value, onZoomChange]
   )
 
   return (
@@ -402,5 +392,23 @@ function ZoomControls({
         <PlusIcon className='w-3 h-3' />
       </Button>
     </div>
+  )
+}
+
+export function ImageEditor({
+  image,
+  onImageDrop,
+  onDragStateChange,
+  ...props
+}: ImageEditorProps) {
+  return (
+    <EditorProvider initialImage={image}>
+      <ImageEditorInner
+        image={image}
+        onImageDrop={onImageDrop}
+        onDragStateChange={onDragStateChange}
+        {...props}
+      />
+    </EditorProvider>
   )
 }

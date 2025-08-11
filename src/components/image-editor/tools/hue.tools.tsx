@@ -28,5 +28,14 @@ function HueButton({
 }
 HueButton.displayName = "HueButton"
 
-const HueControls = ImageEditorFooterSlider
+const HueControls = (props: any) => {
+  const { history } = require("@/lib/editor/context").useEditorContext()
+  return (
+    <ImageEditorFooterSlider
+      {...props}
+      onDragStart={() => history.begin("Hue Drag")}
+      onDragEnd={() => history.end(true)}
+    />
+  )
+}
 export { HueButton, HueControls }

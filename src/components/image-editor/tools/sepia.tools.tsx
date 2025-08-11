@@ -28,5 +28,14 @@ function SepiaButton({
 }
 SepiaButton.displayName = "SepiaButton"
 
-const SepiaControls = ImageEditorFooterSlider
+const SepiaControls = (props: any) => {
+  const { history } = require("@/lib/editor/context").useEditorContext()
+  return (
+    <ImageEditorFooterSlider
+      {...props}
+      onDragStart={() => history.begin("Sepia Drag")}
+      onDragEnd={() => history.end(true)}
+    />
+  )
+}
 export { SepiaButton, SepiaControls }

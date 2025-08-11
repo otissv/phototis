@@ -28,5 +28,14 @@ function InvertButton({
 }
 InvertButton.displayName = "InvertButton"
 
-const InvertControls = ImageEditorFooterSlider
+const InvertControls = (props: any) => {
+  const { history } = require("@/lib/editor/context").useEditorContext()
+  return (
+    <ImageEditorFooterSlider
+      {...props}
+      onDragStart={() => history.begin("Invert Drag")}
+      onDragEnd={() => history.end(true)}
+    />
+  )
+}
 export { InvertButton, InvertControls }

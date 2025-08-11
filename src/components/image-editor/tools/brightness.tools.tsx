@@ -28,6 +28,26 @@ function BrightnessButton({
 }
 BrightnessButton.displayName = "BrightnessButton"
 
-const BrightnessControls = ImageEditorFooterSlider
+const BrightnessControls = (props: any) => {
+  const { history } = require("@/lib/editor/context").useEditorContext()
+  const overlay = () =>
+    document.getElementById("image-editor-overlay") as HTMLCanvasElement | null
+  const clear = () => {
+    const c = overlay()
+    const ctx = c?.getContext("2d")
+    if (!c || !ctx) return
+    ctx.clearRect(0, 0, c.width, c.height)
+  }
+  return (
+    <ImageEditorFooterSlider
+      {...props}
+      onDragStart={() => history.begin("Brightness Drag")}
+      onDragEnd={() => {
+        history.end(true)
+        clear()
+      }}
+    />
+  )
+}
 
 export { BrightnessButton, BrightnessControls }
