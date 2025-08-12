@@ -26,12 +26,14 @@ export interface ImageEditorProps extends React.ComponentProps<"div"> {
   image: File | null
   onImageDrop?: (file: File) => void
   onDragStateChange?: (isDragging: boolean) => void
+  notify?: (props: { message: string; title?: string }) => void
 }
 
 function ImageEditorInner({
   image,
   onImageDrop,
   onDragStateChange,
+  notify,
   ...props
 }: ImageEditorProps) {
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null)
@@ -186,6 +188,31 @@ function ImageEditorInner({
 
   // Keep drag state observable to parent if requested
   React.useEffect(() => {
+    // Provide a thumbnail provider to history to capture tiny previews per step
+    const makeThumb = (): string | null => {
+      const canvas = canvasRef.current
+      if (!canvas) return null
+      try {
+        const w = 64
+        const h = Math.max(1, Math.round((canvas.height / canvas.width) * w))
+        const off = document.createElement("canvas")
+        off.width = w
+        off.height = h
+        const ctx = off.getContext("2d")
+        if (!ctx) return null
+        ctx.drawImage(canvas, 0, 0, w, h)
+        return off.toDataURL("image/jpeg", 0.5)
+      } catch {
+        return null
+      }
+    }
+    ;(history as any)?.setThumbnailProvider?.(makeThumb)
+    return () => {
+      ;(history as any)?.setThumbnailProvider?.(null)
+    }
+  }, [history])
+
+  React.useEffect(() => {
     onDragStateChange?.(state.ephemeral.interaction.isDragging)
   }, [onDragStateChange, state.ephemeral.interaction.isDragging])
 
@@ -225,6 +252,22 @@ function ImageEditorInner({
       ) {
         e.preventDefault()
         history.redo()
+        return
+      }
+
+      // Create checkpoint: Ctrl/Cmd+K
+      if (meta && key.toLowerCase() === "k") {
+        e.preventDefault()
+        ;(history as any)?.addCheckpoint?.("Checkpoint")
+        return
+      }
+
+      // Optional: Clear history/redo with confirm: Ctrl/Cmd+Backspace
+      if (meta && key === "Backspace") {
+        if (confirm("Clear history and redo?")) {
+          e.preventDefault()
+          ;(history as any)?.clearHistory?.()
+        }
         return
       }
 
@@ -340,7 +383,7 @@ function ImageEditorInner({
         </TabsList>
         <div className='border rounded-sm w-[320px]'>
           <TabsContent value='history'>
-            <HistoryControls />
+            <HistoryControls notify={notify} />
           </TabsContent>
           <TabsContent value='layers'>
             <LayerSystem />

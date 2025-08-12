@@ -76,22 +76,22 @@ export function ImageEditorSidebar({
 
       <li>
         <Button
-          title='Scale'
+          title='Resize'
           variant='ghost'
           className={cn("flex flex-col rounded-md text-xs size-18", {
-            "bg-accent text-accent-foreground": selected === "scale",
+            "bg-accent text-accent-foreground": selected === "resize",
           })}
           onClick={() => {
-            onChange("scale")
+            onChange("resize")
 
-            if (!SIDEBAR_TOOLS.scale.includes(selected)) {
-              onSelectedToolChange("scale")
+            if (!SIDEBAR_TOOLS.resize.includes(selected)) {
+              onSelectedToolChange("resize")
             }
           }}
           disabled={progress}
         >
           <ImageUpscale />
-          scale
+          Resize
         </Button>
       </li>
 

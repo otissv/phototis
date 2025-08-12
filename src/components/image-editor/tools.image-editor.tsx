@@ -56,6 +56,7 @@ import { InvertButton, InvertControls } from "./tools/invert.tools"
 import { SepiaButton, SepiaControls } from "./tools/sepia.tools"
 import { GrayscaleButton, GrayscaleControls } from "./tools/grayscale.tools"
 import { NoiseButton, NoiseControls } from "./tools/noise.tools"
+import { CropButton, CropControls } from "./tools/crop.tools"
 
 export function getEditorTools({
   selectedSidebar,
@@ -100,7 +101,7 @@ export function getEditorTools({
           />
         ),
       }
-    case "scale":
+    case "resize":
       return {
         header: (_props: ImageEditorHeaderProps) => <></>,
         footer: (props: ImageEditorFooterProps) => (
@@ -903,6 +904,8 @@ export function ScaleFooter({
       onChange: handleOnChange,
     }
     switch (selectedTool) {
+      case "crop":
+        return <CropControls {...controlProps} />
       case "scale":
         return <ScaleControls {...controlProps} />
       case "resize":
@@ -931,6 +934,16 @@ export function ScaleFooter({
       </div>
       <ul className='flex gap-2 w-full justify-center'>
         <li>
+          <CropButton
+            onSelectedToolChange={onSelectedToolChange}
+            selectedTool={selectedTool}
+            progress={progress}
+            canvasRef={canvasRef}
+            drawFnRef={drawFnRef}
+          />
+        </li>
+
+        <li>
           <ScaleButton
             onSelectedToolChange={onSelectedToolChange}
             selectedTool={selectedTool}
@@ -949,6 +962,7 @@ export function ScaleFooter({
             progress={progress}
           />
         </li>
+
         <li>
           <UpscaleButton
             value={toolsValues?.upscale || 0}

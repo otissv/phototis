@@ -1,10 +1,10 @@
 import {
   TOOL_VALUES,
+  type ToolValueCropType,
   type ToolValueBooleanType,
   type ToolValueDimensionType,
   type ToolValueStepType,
 } from "@/constants"
-import React from "react"
 
 export type ImageEditorToolsAction = {
   type: keyof typeof TOOL_VALUES | "reset" | "zoom"
@@ -37,7 +37,7 @@ export type HistoryToolsState = {
   historyPosition: number
 }
 
-export type TransformToolsState = {
+export type RotateToolsState = {
   rotate: number
   scale: number
   flipVertical: boolean
@@ -67,9 +67,15 @@ export type FinetuneToolsState = {
   vintage: number
 }
 
-export type ImageEditorToolsState = TransformToolsState &
+export type ImageEditorToolsState = RotateToolsState &
   FinetuneToolsState &
   HistoryToolsState & {
+    crop: {
+      x: number
+      y: number
+      width: number
+      height: number
+    }
     zoom: number
     upscale: number
     resize: {
@@ -124,6 +130,7 @@ export const initialState: ImageEditorToolsState = {
     .defaultValue as ToolValueStepType["defaultValue"],
   resize: TOOL_VALUES.resize
     .defaultValue as ToolValueDimensionType["defaultValue"],
+  crop: TOOL_VALUES.crop.defaultValue as ToolValueCropType["defaultValue"],
 }
 
 export function imageEditorToolsReducer(

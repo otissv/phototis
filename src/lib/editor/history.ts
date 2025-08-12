@@ -115,6 +115,8 @@ export interface HistoryEntry {
   forward: Command
   inverse: Command
   bytes: number
+  /** Optional tiny thumbnail (data URL) for quick visual recall */
+  thumbnail?: string | null
 }
 
 export interface Checkpoint {
@@ -163,6 +165,9 @@ export class HistoryManager {
     startedAt: number
   }> = []
   private lastCoalesceAt = 0
+  private thumbnailProvider:
+    | (() => Promise<string | null> | string | null)
+    | null = null
 
   constructor(
     getState: () => CanonicalEditorState,
@@ -193,15 +198,53 @@ export class HistoryManager {
     return this.future.length > 0 && this.transactions.length === 0
   }
 
+  get isTransactionActive(): boolean {
+    return this.transactions.length > 0
+  }
+
   /**
    * Lightweight snapshot of the timeline for UI purposes.
    * - past: oldest -> newest applied labels
    * - future: next redo first -> oldest redo last (reversed for intuitive display)
    */
-  inspect(): { past: string[]; future: string[] } {
-    const past = this.past.map((e) => e.label)
-    const future = [...this.future].reverse().map((e) => e.label)
-    return { past, future }
+  inspect(): {
+    past: Array<{
+      label: string
+      thumbnail?: string | null
+      scope?: CommandScope
+      timestamp?: number
+    }>
+    future: Array<{
+      label: string
+      thumbnail?: string | null
+      scope?: CommandScope
+      timestamp?: number
+    }>
+    checkpoints: Checkpoint[]
+    counts: { past: number; future: number }
+    usedBytes: number
+    transactionActive: boolean
+  } {
+    const past = this.past.map((e) => ({
+      label: e.label,
+      thumbnail: e.thumbnail,
+      scope: e.forward.meta.scope,
+      timestamp: e.forward.meta.timestamp,
+    }))
+    const future = [...this.future].reverse().map((e) => ({
+      label: e.label,
+      thumbnail: e.thumbnail,
+      scope: e.forward.meta.scope,
+      timestamp: e.forward.meta.timestamp,
+    }))
+    return {
+      past,
+      future,
+      checkpoints: this.getCheckpoints(),
+      counts: { past: this.past.length, future: this.future.length },
+      usedBytes: this.usedBytes,
+      transactionActive: this.isTransactionActive,
+    }
   }
 
   getPastSize(): number {
@@ -244,6 +287,12 @@ export class HistoryManager {
     this.future = []
     this.usedBytes += entry.bytes
     this.enforceMemoryBudget()
+    // capture thumbnail in background
+    void this.tryCaptureThumbnail().then((thumb) => {
+      if (thumb && this.past.length > 0) {
+        this.past[this.past.length - 1].thumbnail = thumb
+      }
+    })
   }
 
   /** Begin a transaction. Transactions can be nested. */
@@ -316,15 +365,27 @@ export class HistoryManager {
     const popped = this.past.pop()
     if (!popped) return
     const entry = popped
-    const prev = this.getState()
-    const next = entry.inverse.apply(prev)
-    this.setState(() => next)
-    this.future.push({
-      label: entry.label,
-      forward: entry.inverse,
-      inverse: entry.forward,
-      bytes: entry.bytes,
-    })
+    try {
+      const prev = this.getState()
+      const next = entry.inverse.apply(prev)
+      this.setState(() => next)
+      this.future.push({
+        label: entry.label,
+        forward: entry.inverse,
+        inverse: entry.forward,
+        bytes: entry.bytes,
+      })
+    } catch {
+      // rollback to last safe checkpoint
+      const fallback = this.checkpoints[0] || this.baseline
+      if (fallback) {
+        this.setState(() => fallback.state)
+        this.past = this.past.slice(0, fallback.atIndex)
+        this.future = []
+        this.baseline = fallback
+        this.recomputeUsedBytes()
+      }
+    }
   }
 
   redo(): void {
@@ -332,15 +393,122 @@ export class HistoryManager {
     const popped = this.future.pop()
     if (!popped) return
     const entry = popped
-    const prev = this.getState()
-    const next = entry.inverse.apply(prev) // inverse here is the original forward
-    this.setState(() => next)
-    this.past.push({
-      label: entry.label,
-      forward: entry.inverse,
-      inverse: entry.forward,
-      bytes: entry.bytes,
-    })
+    try {
+      const prev = this.getState()
+      const next = entry.inverse.apply(prev) // inverse here is the original forward
+      this.setState(() => next)
+      this.past.push({
+        label: entry.label,
+        forward: entry.inverse,
+        inverse: entry.forward,
+        bytes: entry.bytes,
+      })
+    } catch {
+      const fallback = this.checkpoints[0] || this.baseline
+      if (fallback) {
+        this.setState(() => fallback.state)
+        this.past = this.past.slice(0, fallback.atIndex)
+        this.future = []
+        this.baseline = fallback
+        this.recomputeUsedBytes()
+      }
+    }
+  }
+
+  /** Clear redo branch */
+  clearRedo(): void {
+    this.future = []
+  }
+
+  /** Clear entire history while preserving current state as a new baseline checkpoint */
+  clearHistory(): void {
+    const current = this.getState()
+    const cp = this.createCheckpoint("Baseline", 0, current)
+    this.past = []
+    this.future = []
+    this.checkpoints = [cp]
+    this.baseline = cp
+    this.usedBytes = cp.bytes
+  }
+
+  /** Jump directly to a past index (0..past.length-1). Uses undo/redo loops for correctness */
+  jumpToIndex(targetPastIndex: number): void {
+    const currentIndex = this.past.length - 1
+    if (targetPastIndex < 0 || targetPastIndex > currentIndex) return
+    const steps = currentIndex - targetPastIndex
+    for (let i = 0; i < steps; i += 1) this.undo()
+  }
+
+  /** Delete steps after the given past index (exclusive). Keeps current state consistent by performing undos as needed */
+  deleteStepsAfterIndex(targetPastIndex: number): void {
+    const currentIndex = this.past.length - 1
+    if (targetPastIndex < 0 || targetPastIndex > currentIndex) return
+    const steps = currentIndex - targetPastIndex
+    for (let i = 0; i < steps; i += 1) this.undo()
+  }
+
+  /** Delete steps before the given past index (inclusive) without changing current state */
+  deleteStepsBeforeIndex(targetPastIndex: number): void {
+    if (targetPastIndex <= 0) return
+    this.past = this.past.slice(targetPastIndex)
+    // Update checkpoints to reflect trimmed history
+    this.checkpoints = this.checkpoints.map((cp) => ({
+      ...cp,
+      atIndex: Math.max(0, cp.atIndex - targetPastIndex),
+    }))
+    this.recomputeUsedBytes()
+  }
+
+  /** Compute the document state at a specific past index (0..past.length-1) without mutating current */
+  computeStateAtIndex(targetPastIndex: number): CanonicalEditorState {
+    const base = this.baseline ?? this.checkpoints[0]
+    if (!base) return this.getState()
+    // Start from baseline state and apply entries from baseline.atIndex..targetPastIndex
+    let current = base.state
+    const start = Math.max(base.atIndex, 0)
+    const end = Math.min(targetPastIndex, this.past.length - 1)
+    for (let i = start; i <= end; i += 1) {
+      const entry = this.past[i]
+      if (!entry) break
+      current = entry.forward.apply(current)
+    }
+    return current
+  }
+
+  /** Build a serialized document at a specific past index */
+  exportDocumentAtIndex(targetPastIndex: number): SerializedEditorDocumentV1 {
+    const state = this.computeStateAtIndex(targetPastIndex)
+    return {
+      version: 1,
+      schema: "phototis.editor.v1",
+      savedAt: Date.now(),
+      state,
+      history: { past: [], future: [], checkpoints: [], baseline: null },
+    }
+  }
+
+  /** Register a provider that can produce a tiny thumbnail for the current state */
+  setThumbnailProvider(
+    provider: (() => Promise<string | null> | string | null) | null
+  ): void {
+    this.thumbnailProvider = provider
+  }
+
+  /** Update maximum memory budget in bytes and enforce immediately */
+  setMaxBytes(maxBytes: number): void {
+    this.options.maxBytes = Math.max(1 * 1024 * 1024, maxBytes)
+    this.enforceMemoryBudget()
+  }
+
+  private async tryCaptureThumbnail(): Promise<string | null> {
+    try {
+      const p = this.thumbnailProvider
+      if (!p) return null
+      const res = typeof p === "function" ? await p() : p
+      return res ?? null
+    } catch {
+      return null
+    }
   }
 
   addCheckpoint(name: string): Checkpoint {
@@ -382,7 +550,8 @@ export class HistoryManager {
       (typeof inverse.estimateSize === "function"
         ? inverse.estimateSize()
         : estimateCommandSize(inverse))
-    return { label, forward, inverse, bytes }
+    // thumbnails are captured lazily by UI trigger to avoid blocking; initialize as undefined
+    return { label, forward, inverse, bytes, thumbnail: undefined }
   }
 
   private createCheckpoint(
@@ -459,6 +628,7 @@ export class HistoryManager {
       forward: (e.forward as any).serialize?.() as SerializedCommand,
       inverse: (e.inverse as any).serialize?.() as SerializedCommand,
       bytes: e.bytes,
+      thumbnail: e.thumbnail ?? null,
     })
     return {
       past: this.past.map(serializeEntry),
@@ -493,6 +663,7 @@ export class HistoryManager {
       forward: revive(e.forward),
       inverse: revive(e.inverse),
       bytes: e.bytes,
+      thumbnail: e.thumbnail ?? null,
     })
     this.past = (serial.past || []).map(reviveEntry)
     this.future = (serial.future || []).map(reviveEntry)

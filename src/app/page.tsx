@@ -7,19 +7,7 @@ import { Dropzone } from "@/components/Dropzone"
 import { ImageCard } from "@/components/ImageCard"
 import { Button } from "@/components/ui/button"
 import { ImageEditor } from "@/components/image-editor/image-editor"
-
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-  SheetClose,
-  SheetTrigger,
-} from "@/components/ui/sheet"
-import { Label } from "@/components/ui/label"
-import { Input } from "@/components/ui/input"
+import { toast } from "@/components/ui/sonner"
 
 // Global drag state to prevent conflicts
 let globalDragActive = false
@@ -128,6 +116,10 @@ function Router({ route, setRoute }: RouterProps) {
     URL.revokeObjectURL(url)
   }
 
+  const handleNotify = (props: { message: string; title: string }) => {
+    toast.error({ message: props.message, title: props.title })
+  }
+
   switch (route) {
     case "dropzone":
       return (
@@ -183,6 +175,7 @@ function Router({ route, setRoute }: RouterProps) {
         <ImageEditor
           image={selectedImage}
           onDragStateChange={setGlobalDragActive}
+          notify={toast.error}
         />
       )
   }

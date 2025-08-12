@@ -71,7 +71,35 @@ type EditorContextValue = {
     redo: () => void
     canUndo: () => boolean
     canRedo: () => boolean
-    inspect: () => { past: string[]; future: string[] }
+    inspect: () => {
+      past: Array<{
+        label: string
+        thumbnail?: string | null
+        scope?: string
+        timestamp?: number
+      }>
+      future: Array<{
+        label: string
+        thumbnail?: string | null
+        scope?: string
+        timestamp?: number
+      }>
+      checkpoints: any[]
+      counts: { past: number; future: number }
+      usedBytes: number
+    }
+    addCheckpoint?: (name: string) => void
+    jumpToCheckpoint?: (id: string) => void
+    clearHistory?: () => void
+    clearRedo?: () => void
+    setMaxBytes?: (bytes: number) => void
+    setThumbnailProvider?: (
+      provider: (() => Promise<string | null> | string | null) | null
+    ) => void
+    isTransactionActive?: () => boolean
+    deleteStepsBeforeIndex?: (idx: number) => void
+    deleteStepsAfterIndex?: (idx: number) => void
+    exportDocumentAtIndex?: (idx: number) => any
   }
 }
 
@@ -372,7 +400,31 @@ export function EditorProvider({
         canUndo: () => Boolean(historyRef.current?.canUndo),
         canRedo: () => Boolean(historyRef.current?.canRedo),
         inspect: () =>
-          historyRef.current?.inspect() ?? { past: [], future: [] },
+          historyRef.current?.inspect() ?? {
+            past: [],
+            future: [],
+            checkpoints: [],
+            counts: { past: 0, future: 0 },
+            usedBytes: 0,
+          },
+        addCheckpoint: (name: string) =>
+          historyRef.current?.addCheckpoint(name),
+        jumpToCheckpoint: (id: string) =>
+          historyRef.current?.jumpToCheckpoint(id),
+        clearHistory: () => historyRef.current?.clearHistory(),
+        clearRedo: () => historyRef.current?.clearRedo(),
+        setMaxBytes: (bytes: number) => historyRef.current?.setMaxBytes(bytes),
+        setThumbnailProvider: (
+          provider: (() => Promise<string | null> | string | null) | null
+        ) => historyRef.current?.setThumbnailProvider(provider),
+        isTransactionActive: () =>
+          Boolean(historyRef.current?.isTransactionActive),
+        deleteStepsBeforeIndex: (idx: number) =>
+          historyRef.current?.deleteStepsBeforeIndex(idx),
+        deleteStepsAfterIndex: (idx: number) =>
+          historyRef.current?.deleteStepsAfterIndex(idx),
+        exportDocumentAtIndex: (idx: number) =>
+          historyRef.current?.exportDocumentAtIndex(idx),
       },
       save: () => historyRef.current?.save().catch(() => {}),
     }),

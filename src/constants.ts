@@ -18,12 +18,25 @@ export type ToolValueDimensionType = {
     height: number
   }
 }
+export type ToolValueCropType = {
+  x: number
+  y: number
+  width: number
+  height: number
+  defaultValue: {
+    x: number
+    y: number
+    width: number
+    height: number
+  }
+}
 
 export type ToolValueTypes =
   | ToolValueStepType
   | ToolValueBooleanType
   | ToolValueNumberType
   | ToolValueDimensionType
+  | ToolValueCropType
 
 type ToolValueKeys =
   | "brightness"
@@ -53,6 +66,7 @@ type ToolValueKeys =
   | "zoom"
   | "upscale"
   | "resize"
+  | "crop"
 
 export const TOOL_VALUES: Record<ToolValueKeys, ToolValueTypes> = {
   brightness: {
@@ -207,11 +221,23 @@ export const TOOL_VALUES: Record<ToolValueKeys, ToolValueTypes> = {
       height: 0,
     },
   },
+  crop: {
+    x: 0,
+    y: 0,
+    width: 0,
+    height: 0,
+    defaultValue: {
+      x: 0,
+      y: 0,
+      width: 0,
+      height: 0,
+    },
+  },
 }
 
 export const SIDEBAR_TOOLS = {
   rotate: ["rotate", "flipVertical", "flipHorizontal"],
-  scale: ["scale", "resize", "upscale"],
+  resize: ["scale", "resize", "upscale", "crop"],
   actions: ["actions"],
   layers: ["layers"],
   adjust: [

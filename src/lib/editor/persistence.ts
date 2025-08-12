@@ -7,6 +7,8 @@ export interface SerializedHistoryEntry {
   forward: SerializedCommand
   inverse: SerializedCommand
   bytes: number
+  /** Optional tiny thumbnail (data URL) for quick visual recall */
+  thumbnail?: string | null
 }
 
 export interface SerializedCheckpoint {
@@ -90,7 +92,6 @@ export async function persistDocument(
   history: SerializedEditorDocumentV1["history"],
   storage: StorageAdapter = new LocalStorageAdapter()
 ): Promise<void> {
-  // TODO: persisted to server
   // const doc = serializeV1(state, history)
   // await storage.save(key, JSON.stringify(doc))
 }
@@ -99,7 +100,6 @@ export async function loadDocument(
   key: string,
   storage: StorageAdapter = new LocalStorageAdapter()
 ): Promise<SerializedEditorDocumentV1 | null> {
-  //TODO: persisted to server
   // const raw = await storage.load(key)
   // if (!raw) return null
   // const parsed = JSON.parse(raw) as AnySerialized

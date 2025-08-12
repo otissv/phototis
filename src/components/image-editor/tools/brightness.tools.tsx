@@ -42,6 +42,14 @@ const BrightnessControls = (props: any) => {
     <ImageEditorFooterSlider
       {...props}
       onDragStart={() => history.begin("Brightness Drag")}
+      onChange={(v: number) => {
+        // Coalesced scrubs: push during drag
+        const { getSelectedLayerId, pushLayerUpdate } =
+          require("@/lib/editor/context").useEditorContext()
+        const id = getSelectedLayerId()
+        if (!id) return
+        pushLayerUpdate(id, { filters: { brightness: v } as any })
+      }}
       onDragEnd={() => {
         history.end(true)
         clear()

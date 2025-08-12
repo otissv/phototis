@@ -42,6 +42,13 @@ const ContrastControls = (props: any) => {
     <ImageEditorFooterSlider
       {...props}
       onDragStart={() => history.begin("Contrast Drag")}
+      onChange={(v: number) => {
+        const { getSelectedLayerId, pushLayerUpdate } =
+          require("@/lib/editor/context").useEditorContext()
+        const id = getSelectedLayerId()
+        if (!id) return
+        pushLayerUpdate(id, { filters: { contrast: v } as any })
+      }}
       onDragEnd={() => {
         history.end(true)
         clear()
