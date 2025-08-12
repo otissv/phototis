@@ -31,7 +31,7 @@ export default function Home() {
 
   return (
     <DndProvider backend={HTML5Backend}>
-      <nav className='container flex justify-center mx-auto p-4 space-y-8'>
+      {/* <nav className='container flex justify-center mx-auto p-4 space-y-8'>
         <ul className='flex gap-4'>
           <li>
             <Button
@@ -52,9 +52,9 @@ export default function Home() {
             </Button>
           </li>
         </ul>
-      </nav>
+      </nav> */}
 
-      <main className='container mx-auto px-4 space-y-8'>
+      <main className='p-2 h-full relative'>
         <Router route={route} setRoute={handleRouteChange} />
       </main>
     </DndProvider>

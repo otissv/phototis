@@ -26,9 +26,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { timeAgo } from "@/lib/time-ago"
 
 export interface HistoryControlsProps extends React.ComponentProps<"div"> {
-  notify: ({ message, title }: { message: string; title?: string }) => void
+  notify?: ({ message, title }: { message: string; title?: string }) => void
   className?: string
 }
 
@@ -91,9 +92,9 @@ export function HistoryControls({
 
   const createCheckpoint = React.useCallback(() => {
     try {
-      ;(history as any)?.addCheckpoint?.(new Date().toLocaleTimeString())
+      ; (history as any)?.addCheckpoint?.(new Date().toLocaleTimeString())
     } catch (e) {
-      notify({ message: "Failed to create checkpoint" })
+      notify?.({ message: "Failed to create checkpoint" })
     }
   }, [history, notify])
 
@@ -137,7 +138,7 @@ export function HistoryControls({
 
   return (
     <div className={cn("w-full space-y-2", className)} {...props}>
-      <div className='flex items-center gap-2 border-b pb-2'>
+      <div className='flex items-center gap-2 border-b px-2 h-12'>
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -190,7 +191,7 @@ export function HistoryControls({
             size='sm'
             variant='outline'
             onClick={createCheckpoint}
-            className='h-8 px-2'
+            className='h-8 px-2 text-xs'
             title='Create checkpoint'
           >
             <Flag className='w-4 h-4 mr-1' />
@@ -225,7 +226,6 @@ export function HistoryControls({
         onScroll={onListScroll as any}
         onKeyDown={onKeyDown as any}
       >
-        <div className='text-xs text-muted-foreground p-2'>Timeline</div>
 
         {/* Checkpoints */}
         {checkpoints.length > 0 &&
@@ -257,58 +257,6 @@ export function HistoryControls({
             const label = entry.label || "Step"
             const thumb = showThumbnails ? entry.thumbnail : null
 
-            const content = (
-              <button
-                type='button'
-                className={cn(
-                  "w-full text-left flex items-center gap-2 px-2 rounded-sm",
-                  dense ? "text-[11px] py-1" : "text-xs py-1.5",
-                  "bg-muted/30 hover:bg-muted",
-                  isCurrent ? "cursor-default" : "cursor-pointer"
-                )}
-                aria-current={isCurrent ? "step" : undefined}
-                aria-disabled={isCurrent || transactionActive}
-                onClick={() =>
-                  !isCurrent && !transactionActive && jumpToPast(idx)
-                }
-                disabled={isCurrent || transactionActive}
-              >
-                <Dot className='w-4 h-4 text-muted-foreground' />
-                {entry.scope ? (
-                  <Badge
-                    variant='outline'
-                    className='text-[10px] px-1 rounded-sm'
-                  >
-                    {entry.scope}
-                  </Badge>
-                ) : null}
-                {thumb ? (
-                  <img
-                    src={thumb}
-                    alt=''
-                    width={24}
-                    height={24}
-                    className='rounded border object-cover'
-                    aria-hidden='true'
-                  />
-                ) : null}
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger
-                      asChild
-                      className='w-full h-8 flex items-center'
-                    >
-                      <span className='truncate'>{label} xxxx</span>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      {entry.timestamp
-                        ? new Date(entry.timestamp).toLocaleString()
-                        : ""}
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </button>
-            )
             return (
               <li
                 key={`past-${entry.label}-${idx}`}
@@ -318,7 +266,21 @@ export function HistoryControls({
                 )}
               >
                 <ContextMenu>
-                  <ContextMenuTrigger asChild>{content}</ContextMenuTrigger>
+                  <ContextMenuTrigger asChild>
+                    <HistoryItem
+                      label={label}
+                      thumbnail={entry.thumbnail}
+                      timestamp={entry.timestamp}
+                      scope={entry.scope}
+                      isCurrent={isCurrent}
+                      dense={dense}
+                      showThumbnails={showThumbnails}
+                      disabled={isCurrent || transactionActive}
+                      onClick={() =>
+                        !isCurrent && !transactionActive && jumpToPast(idx)
+                      }
+                    />
+                  </ContextMenuTrigger>
                   <ContextMenuContent>
                     <ContextMenuItem
                       onClick={() => !isCurrent && jumpToPast(idx)}
@@ -346,7 +308,7 @@ export function HistoryControls({
                       onClick={() => {
                         if (transactionActive) return
                         if (confirm("Delete steps before this?")) {
-                          ;(history as any)?.deleteStepsBeforeIndex?.(idx)
+                          ; (history as any)?.deleteStepsBeforeIndex?.(idx)
                         }
                       }}
                     >
@@ -407,13 +369,16 @@ export function HistoryControls({
                 key={`future-${entry.label}-${idx}`}
                 className='list-none rounded-sm'
               >
-                <button
-                  type='button'
-                  className={cn(
-                    "w-full text-left flex items-center gap-2 px-2 rounded-sm ",
-                    dense ? "text-[11px] py-1" : "text-xs py-1.5",
-                    "hover:bg-muted"
-                  )}
+                <HistoryItem
+                  dense={dense}
+                  disabled={!history.canRedo() || transactionActive}
+                  isCurrent={false}
+                  label={entry.label}
+                  scope={entry.scope}
+                  showThumbnails={showThumbnails}
+                  thumbnail={entry.thumbnail}
+                  timestamp={entry.timestamp}
+                  title='Click to redo'
                   onClick={() => {
                     try {
                       jumpToFuture(idx)
@@ -421,46 +386,7 @@ export function HistoryControls({
                       notify?.({ message: "Failed to redo" })
                     }
                   }}
-                  disabled={!history.canRedo() || transactionActive}
-                  title='Click to redo'
-                >
-                  <Dot className='w-4 h-4 text-muted-foreground' />
-                  {entry.scope ? (
-                    <Badge
-                      variant='outline'
-                      className='text-[10px] px-1 rounded-sm'
-                    >
-                      {entry.scope}
-                    </Badge>
-                  ) : null}
-                  {showThumbnails && entry.thumbnail ? (
-                    <img
-                      src={entry.thumbnail}
-                      alt=''
-                      width={24}
-                      height={24}
-                      className='rounded border object-cover'
-                      aria-hidden='true'
-                    />
-                  ) : null}
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger
-                        asChild
-                        className='w-full h-8 flex items-center'
-                      >
-                        <span className='truncate text-muted-foreground'>
-                          {entry.label || "Step"}
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        {entry.timestamp
-                          ? new Date(entry.timestamp).toLocaleString()
-                          : ""}
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </button>
+                />
               </li>
             )
           })}
@@ -468,7 +394,7 @@ export function HistoryControls({
         </ul>
       </section>
 
-      <div className='flex items-center justify-between text-[11px] text-muted-foreground pt-1'>
+      <div className='flex items-center justify-between text-[11px] text-muted-foreground p-2 border'>
         <div>
           {inspected.counts?.past ?? past.length} steps,{" "}
           {inspected.counts?.future ?? future.length} redo
@@ -484,4 +410,91 @@ export function HistoryControls({
       </div>
     </div>
   )
+}
+
+
+function HistoryItem({
+  dense,
+  disabled,
+  isCurrent,
+  label,
+  scope,
+  showThumbnails,
+  thumbnail,
+  timestamp,
+  title,
+  onClick
+}: {
+  dense: boolean
+  disabled: boolean
+  isCurrent: boolean
+  label: string
+  scope: HistoryEntry['scope']
+  showThumbnails: boolean
+  thumbnail: HistoryEntry['thumbnail']
+  timestamp: HistoryEntry['timestamp']
+  title: string
+  onClick: () => void
+}) {
+  const [time, setTime] = React.useState<string | null>(null)
+
+
+  React.useEffect(() => {
+    if (timestamp) {
+      timeAgo(new Date(timestamp), true, setTime)
+    }
+  }, [timestamp])
+
+  return <button
+    type='button'
+    className={cn(
+      "w-full text-left flex items-center gap-2 px-2 rounded-sm",
+      dense ? "text-[11px] py-1" : "text-xs py-1.5",
+      "bg-muted/30 hover:bg-muted",
+      isCurrent ? "cursor-default" : "cursor-pointer"
+    )}
+    aria-current={isCurrent ? "step" : undefined}
+    aria-disabled={disabled}
+    onClick={onClick}
+    disabled={disabled}
+    title={title}
+  >
+    <Dot className='w-4 h-4 text-muted-foreground' />
+    {scope ? (
+      <Badge
+        variant='outline'
+        className='text-[10px] px-1 rounded-sm'
+      >
+        {scope}
+      </Badge>
+    ) : null}
+
+    {showThumbnails && thumbnail ? (
+      <img
+        src={thumbnail}
+        alt=''
+        width={24}
+        height={24}
+        className='rounded border object-cover'
+        aria-hidden='true'
+      />
+    ) : null}
+
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger
+          asChild
+          className='w-full h-8 flex items-center'
+        >
+          <div className='flex items-center gap-2'>
+            <span className='truncate'>{label || "Step"}</span>
+            <span className='text-xs text-muted-foreground'>{time}</span>
+          </div>
+        </TooltipTrigger>
+        <TooltipContent>
+          {time}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  </button>
 }

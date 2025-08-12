@@ -153,9 +153,9 @@ export function LayerSystem({ className, ...rest }: LayerSystemProps) {
 
   return (
     <div className={cn("w-full space-y-2", className)}>
-      <div className='flex items-center  h-12 p-2 text-xs justify-between border-b'>
-        <div className='flex items-center gap-2'>
-          <div>Blend:</div>
+      <div className='flex items-center  h-12 p-2 text-xs justify-between border-b gap-2'>
+        <div className='flex items-center gap-1'>
+          <div className='text-xs'>Blend:</div>
           {/* Blend Mode Selector */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -165,9 +165,11 @@ export function LayerSystem({ className, ...rest }: LayerSystemProps) {
                 className='h-8 px-2 text-xs'
                 disabled={isDragActive || isGlobalDragActive}
               >
-                {currentLayer?.blendMode
-                  ? BLEND_MODE_NAMES[currentLayer.blendMode]
-                  : "Normal"}
+                <span className='whitespace-nowrap'>
+                  {currentLayer?.blendMode
+                    ? BLEND_MODE_NAMES[currentLayer.blendMode]
+                    : "Normal"}
+                </span>
                 <ChevronDown className='w-3 h-3 ml-1' />
               </Button>
             </DropdownMenuTrigger>
@@ -177,7 +179,7 @@ export function LayerSystem({ className, ...rest }: LayerSystemProps) {
                   key={mode}
                   variant='ghost'
                   size='sm'
-                  className='text-xs h-8 justify-start'
+                  className='text-xs h-8 justify-start whitespace-nowrap'
                   onClick={() =>
                     selectedLayerId &&
                     setBlendMode(selectedLayerId, mode as BlendMode)
@@ -191,8 +193,8 @@ export function LayerSystem({ className, ...rest }: LayerSystemProps) {
         </div>
 
         {/* Opacity Control */}
-        <div className='flex items-center gap-1'>
-          <span className='text-xs text-muted-foreground'>Opacity:</span>
+        <div className='flex items-center gap-2'>
+          <span className='text-xs'>Opacity:</span>
           <div className='flex items-center border rounded-sm h-9'>
             <Input
               type='number'
@@ -269,7 +271,7 @@ export function LayerSystem({ className, ...rest }: LayerSystemProps) {
         ))}
       </div>
 
-      <div className='flex items-center gap-1 border-t border-border pt-2'>
+      <div className='flex items-center gap-1 border-t border-border p-2'>
         {/* File upload button */}
         <div className='relative h-8 w-8 p-0 flex items-center justify-center rounded-sm hover:bg-muted'>
           <Camera className='w-4 h-4' />
@@ -283,8 +285,10 @@ export function LayerSystem({ className, ...rest }: LayerSystemProps) {
           />
         </div>
 
+        <div className='text-xs ml-auto text-muted-foreground'>{layers.length === 1 ? "1 layer" : `${layers.length} layers`}</div>
+
         {/* Empty layer button */}
-        <Button
+        {/* <Button
           variant='ghost'
           size='sm'
           onClick={handleAddLayer}
@@ -293,7 +297,7 @@ export function LayerSystem({ className, ...rest }: LayerSystemProps) {
           title='Add empty layer'
         >
           <Layers className='w-4 h-4' />
-        </Button>
+        </Button> */}
       </div>
     </div>
   )

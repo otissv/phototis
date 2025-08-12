@@ -1,7 +1,7 @@
 "use client"
 
 import React from "react"
-import { PlusIcon, MinusIcon, Layers, History } from "lucide-react"
+import { PlusIcon, MinusIcon, Layers, History, Menu } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -21,6 +21,9 @@ import { EditorProvider, useEditorContext } from "@/lib/editor/context"
 import type { EditorLayer } from "@/lib/editor/state"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs"
 import { HistoryControls } from "./history-controls.image-editor"
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "../ui/sheet"
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover"
+import { ImageEditorPanels } from "./panels"
 
 export interface ImageEditorProps extends React.ComponentProps<"div"> {
   image: File | null
@@ -37,7 +40,10 @@ function ImageEditorInner({
   ...props
 }: ImageEditorProps) {
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null)
-  const drawFnRef = React.useRef<() => void>(() => {})
+  const drawFnRef = React.useRef<() => void>(() => { })
+
+  const [isSidebarOpen, setIsSidebarOpen] = React.useState(false)
+  const [isPanelsOpen, setIsPanelsOpen] = React.useState(false)
 
   const [selectedSidebar, setSelectedSidebar] =
     React.useState<keyof typeof SIDEBAR_TOOLS>("rotate")
@@ -206,9 +212,9 @@ function ImageEditorInner({
         return null
       }
     }
-    ;(history as any)?.setThumbnailProvider?.(makeThumb)
+      ; (history as any)?.setThumbnailProvider?.(makeThumb)
     return () => {
-      ;(history as any)?.setThumbnailProvider?.(null)
+      ; (history as any)?.setThumbnailProvider?.(null)
     }
   }, [history])
 
@@ -258,7 +264,7 @@ function ImageEditorInner({
       // Create checkpoint: Ctrl/Cmd+K
       if (meta && key.toLowerCase() === "k") {
         e.preventDefault()
-        ;(history as any)?.addCheckpoint?.("Checkpoint")
+          ; (history as any)?.addCheckpoint?.("Checkpoint")
         return
       }
 
@@ -266,7 +272,7 @@ function ImageEditorInner({
       if (meta && key === "Backspace") {
         if (confirm("Clear history and redo?")) {
           e.preventDefault()
-          ;(history as any)?.clearHistory?.()
+            ; (history as any)?.clearHistory?.()
         }
         return
       }
@@ -316,18 +322,57 @@ function ImageEditorInner({
   return (
     <div
       {...props}
-      className='grid grid-cols-[80px_1fr_auto] grid-rows-[auto_1fr_auto]  justify-center gap-x-4'
+      className='lg:grid lg:grid-cols-[80px_1fr_auto] lg:grid-rows-[auto_1fr_auto] justify-center gap-x-4 h-full'
     >
-      <ImageEditorSidebar
-        selected={selectedSidebar}
-        onSelectedToolChange={handleSelectedToolChange}
-        onChange={handleSelectedSidebarChange}
-        className='col-start-1 row-start-1 row-end-3'
-        dispatch={dispatch}
-        progress={progress}
-      />
+      <div className='lg:col-start-1 lg:row-start-1 lg:row-end-3 flex'>
+        <div className='lg:hidden'>
+          <Popover open={isSidebarOpen} onOpenChange={setIsSidebarOpen}>
+            <PopoverTrigger asChild>
+              <Button variant='ghost' size='icon' className='w-8 h-8 rounded-sm'
+                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              >
+                <Menu className='w-4 h-4' />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className='w-fit p-2 rounded-sm lg:hidden'>
+              <ImageEditorSidebar
+                selected={selectedSidebar}
+                onSelectedToolChange={handleSelectedToolChange}
+                onChange={handleSelectedSidebarChange}
+                dispatch={dispatch}
+                progress={progress}
+              />
+            </PopoverContent>
+          </Popover>
+        </div>
 
-      <div className='col-start-2 row-start-1 w-full flex flex-col'>
+        <div className='hidden lg:block'>
+          <ImageEditorSidebar
+            selected={selectedSidebar}
+            onSelectedToolChange={handleSelectedToolChange}
+            onChange={handleSelectedSidebarChange}
+            dispatch={dispatch}
+            progress={progress}
+          />
+        </div>
+
+        <div className=' lg:hidden ml-auto'>
+          <Popover open={isPanelsOpen} onOpenChange={setIsPanelsOpen}>
+            <PopoverTrigger asChild>
+              <Button variant='ghost' size='icon' className='w-8 h-8 rounded-sm'
+                onClick={() => setIsPanelsOpen(!isPanelsOpen)}
+              >
+                <Menu className='w-4 h-4' />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className='w-[320px] p-2 rounded-sm lg:hidden'>
+              <ImageEditorPanels className='lg:row-span-3 w-full' defaultValue='layers'/>
+            </PopoverContent>
+          </Popover>
+        </div>
+      </div>
+
+      <div className='lg:col-start-2 lg:row-start-1 w-full flex flex-col'>
         <div className='flex flex-col items-center'>
           <Header
             dispatch={dispatch}
@@ -341,7 +386,7 @@ function ImageEditorInner({
         </div>
       </div>
 
-      <div className='col-start-2 row-start-2 flex flex-col items-center h-[calc(100vh-300px)] overflow-auto border rounded-sm'>
+      <div className='lg:col-start-2 lg:row-start-1 lg:row-span-2 flex flex-col items-center overflow-auto border rounded-sm h-full'>
         <div className='relative h-full'>
           <ImageEditorCanvas
             onProgress={handleOnProgress}
@@ -358,7 +403,7 @@ function ImageEditorInner({
         selectedTool={selectedTool}
         value={value}
         onSelectedToolChange={handleSelectedToolChange}
-        className='col-start-2 row-start-3 mx-auto'
+        className='lg:col-start-2 lg:row-start-3 mx-auto'
         toolsValues={toolsValues}
         onProgress={handleOnProgress}
         progress={progress}
@@ -367,29 +412,15 @@ function ImageEditorInner({
       />
 
       <ZoomControls
-        className='col-start-1 row-start-3'
+        className='lg:col-start-1 lg:row-start-3'
         onZoomChange={setZoomPercent}
         value={state.canonical.viewport.zoom}
       />
 
-      <Tabs className='row-span-3' defaultValue='layers'>
-        <TabsList>
-          <TabsTrigger value='history' className='flex gap-2'>
-            <History className='w-4 h-4' /> History
-          </TabsTrigger>
-          <TabsTrigger value='layers' className='flex gap-2'>
-            <Layers className='w-4 h-4' /> Layers
-          </TabsTrigger>
-        </TabsList>
-        <div className='border rounded-sm w-[320px]'>
-          <TabsContent value='history'>
-            <HistoryControls notify={notify} />
-          </TabsContent>
-          <TabsContent value='layers'>
-            <LayerSystem />
-          </TabsContent>
-        </div>
-      </Tabs>
+      <div className='hidden lg:block lg:col-start-3'>
+        <ImageEditorPanels className='lg:row-span-3 w-full' defaultValue='layers' notify={notify} />
+      </div>
+
     </div>
   )
 }
