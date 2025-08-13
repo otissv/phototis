@@ -219,6 +219,19 @@ export function ImageEditorCanvas({
     React.useState<ImageEditorToolsState>(selectedFilters)
   const animationRef = React.useRef<Map<string, number>>(new Map())
 
+  // Keep latest filters in refs so draw() sees current values without needing to rebind
+  const selectedFiltersRef =
+    React.useRef<ImageEditorToolsState>(selectedFilters)
+  React.useEffect(() => {
+    selectedFiltersRef.current = selectedFilters
+  }, [selectedFilters])
+
+  const smoothToolsValuesRef =
+    React.useRef<ImageEditorToolsState>(smoothToolsValues)
+  React.useEffect(() => {
+    smoothToolsValuesRef.current = smoothToolsValues
+  }, [smoothToolsValues])
+
   // Animate tool values smoothly when they change
   // biome-ignore lint/correctness/useExhaustiveDependencies: smoothToolsValues cause infinite loop
   React.useEffect(() => {
@@ -271,6 +284,22 @@ export function ImageEditorCanvas({
       }
     }
   }, [selectedFilters])
+
+  // Force redraw on flip/rotate changes (these are instant toggles and should reflect immediately)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: we only want to react to orientation tools here
+  React.useEffect(() => {
+    // Avoid spamming draws during drags; draw loop already handles that case
+    if (isDragActive) return
+    const timer = setTimeout(() => {
+      drawRef.current?.()
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [
+    selectedFilters.flipHorizontal,
+    selectedFilters.flipVertical,
+    selectedFilters.rotate,
+    isDragActive,
+  ])
 
   // Cleanup animations on unmount
   React.useEffect(() => {
@@ -798,8 +827,8 @@ export function ImageEditorCanvas({
 
   // Draw function using worker-based rendering for non-blocking GPU operations
   const draw = async () => {
-    // Prevent drawing during drag operations or if already drawing
-    if (isDragActive || isDrawingRef.current) return
+    // Prevent overlapping draws; allow during drags for live preview
+    if (isDrawingRef.current) return
 
     // Set drawing flag to prevent overlapping draws
     isDrawingRef.current = true
@@ -845,8 +874,12 @@ export function ImageEditorCanvas({
           ? throttledToolsValues
           : debouncedToolsValues
 
-        // Use smooth values for rendering
-        const renderingToolsValues = smoothToolsValues
+        // Use smooth values for numbers, but keep flips from latest selected filters (booleans can toggle instantly)
+        const renderingToolsValues = {
+          ...smoothToolsValuesRef.current,
+          flipHorizontal: selectedFiltersRef.current.flipHorizontal,
+          flipVertical: selectedFiltersRef.current.flipVertical,
+        }
 
         // Determine priority based on user interaction
         const priority = isDragActive
@@ -923,8 +956,12 @@ export function ImageEditorCanvas({
         ? throttledToolsValues
         : debouncedToolsValues
 
-      // Use smooth values for rendering
-      const renderingToolsValues = smoothToolsValues
+      // Use smooth values for numbers, but keep flips from latest selected filters (booleans can toggle instantly)
+      const renderingToolsValues = {
+        ...smoothToolsValuesRef.current,
+        flipHorizontal: selectedFiltersRef.current.flipHorizontal,
+        flipVertical: selectedFiltersRef.current.flipVertical,
+      }
 
       // Create a map of layer textures
       const layerTextures = new Map<string, WebGLTexture>()

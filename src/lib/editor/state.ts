@@ -481,6 +481,7 @@ export function updateLayer(
   update: Partial<Omit<EditorLayer, "id">>
 ): CanonicalEditorState {
   const current = state.layers.byId[layerId]
+
   if (!current) return state
   const nextLayer: EditorLayer = { ...current, ...update, id: current.id }
   const next: CanonicalEditorState = {

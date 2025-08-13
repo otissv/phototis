@@ -18,11 +18,11 @@ function InvertButton({
   return (
     <ImageEditorButton
       variant='ghost'
-      onClick={() => onSelectedToolChange("sharpen")}
-      isActive={selectedTool === "sharpen"}
+      onClick={() => onSelectedToolChange("invert")}
+      isActive={selectedTool === "invert"}
       disabled={progress}
     >
-      Sharpen
+      Invert
     </ImageEditorButton>
   )
 }

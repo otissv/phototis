@@ -76,8 +76,8 @@ export class VertexShaderPlugin extends BaseShaderPlugin {
   uniforms = {
     u_rotate: 0,
     u_scale: 1,
-    u_flipHorizontal: false,
-    u_flipVertical: false,
+    u_flipHorizontal: 0,
+    u_flipVertical: 0,
     u_layerSize: [0, 0] as [number, number],
     u_canvasSize: [0, 0] as [number, number],
     u_layerPosition: [0, 0] as [number, number],

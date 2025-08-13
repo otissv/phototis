@@ -237,6 +237,15 @@ export class UpdateLayerCommand implements Command {
     }
     this.previous = prevSubset
     const updated: EditorLayer = { ...current, ...this.patch, id: current.id }
+
+    console.log({
+      ...state,
+      layers: {
+        ...state.layers,
+        byId: { ...state.layers.byId, [this.layerId]: updated },
+      },
+    })
+
     return {
       ...state,
       layers: {
@@ -381,7 +390,6 @@ export function deserializeCommand(json: SerializedCommand): Command {
     case "setActiveTool":
       return new SetActiveToolCommand(json.active, json.meta)
     default:
-      // @ts-expect-error exhaustive
       throw new Error(`Unknown command type ${(json as any).type}`)
   }
 }

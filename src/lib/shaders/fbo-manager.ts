@@ -45,8 +45,8 @@ export class FBOManager {
     layerY: number,
     scale = 1.0,
     rotation = 0.0,
-    flipHorizontal = false,
-    flipVertical = false
+    flipHorizontal = 0,
+    flipVertical = 0
   ): LayerBounds {
     // Apply scale
     const scaledWidth = layerWidth * scale
@@ -93,8 +93,8 @@ export class FBOManager {
     rotation = 0.0,
     translationX = 0.0,
     translationY = 0.0,
-    flipHorizontal = false,
-    flipVertical = false
+    flipHorizontal = 0,
+    flipVertical = 0
   ): Float32Array {
     const matrix = new Float32Array(16)
 

@@ -1,7 +1,7 @@
 "use client"
 
 import React from "react"
-import { PlusIcon, MinusIcon, Layers, History, Menu } from "lucide-react"
+import { PlusIcon, MinusIcon, Menu } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -15,13 +15,8 @@ import {
   type ImageEditorToolsActions,
 } from "@/components/image-editor/state.image-editor"
 
-import { LayerSystem } from "./layer-system"
-import type { BlendMode } from "@/lib/shaders/blend-modes"
 import { EditorProvider, useEditorContext } from "@/lib/editor/context"
-import type { EditorLayer } from "@/lib/editor/state"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs"
-import { HistoryControls } from "./history-controls.image-editor"
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "../ui/sheet"
+
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover"
 import { ImageEditorPanels } from "./panels"
 
@@ -40,7 +35,7 @@ function ImageEditorInner({
   ...props
 }: ImageEditorProps) {
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null)
-  const drawFnRef = React.useRef<() => void>(() => { })
+  const drawFnRef = React.useRef<() => void>(() => {})
 
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(false)
   const [isPanelsOpen, setIsPanelsOpen] = React.useState(false)
@@ -78,8 +73,17 @@ function ImageEditorInner({
     (action: ImageEditorToolsActions) => {
       const current = selectedLayer
       const selectedId = getSelectedLayerId()
+
       if (!current || !selectedId) return
-      const newFilters = imageEditorToolsReducer(current.filters, action)
+
+      console.log("action", action)
+
+      const newFilters = Array.isArray(action)
+        ? action.reduce((acc, curr) => {
+            return imageEditorToolsReducer(acc, curr)
+          }, current.filters)
+        : imageEditorToolsReducer(current.filters, action)
+
       updateLayer(selectedId, { filters: newFilters })
     },
     [selectedLayer, getSelectedLayerId, updateLayer]
@@ -212,9 +216,9 @@ function ImageEditorInner({
         return null
       }
     }
-      ; (history as any)?.setThumbnailProvider?.(makeThumb)
+    ;(history as any)?.setThumbnailProvider?.(makeThumb)
     return () => {
-      ; (history as any)?.setThumbnailProvider?.(null)
+      ;(history as any)?.setThumbnailProvider?.(null)
     }
   }, [history])
 
@@ -264,7 +268,7 @@ function ImageEditorInner({
       // Create checkpoint: Ctrl/Cmd+K
       if (meta && key.toLowerCase() === "k") {
         e.preventDefault()
-          ; (history as any)?.addCheckpoint?.("Checkpoint")
+        ;(history as any)?.addCheckpoint?.("Checkpoint")
         return
       }
 
@@ -272,7 +276,7 @@ function ImageEditorInner({
       if (meta && key === "Backspace") {
         if (confirm("Clear history and redo?")) {
           e.preventDefault()
-            ; (history as any)?.clearHistory?.()
+          ;(history as any)?.clearHistory?.()
         }
         return
       }
@@ -328,13 +332,21 @@ function ImageEditorInner({
         <div className='lg:hidden'>
           <Popover open={isSidebarOpen} onOpenChange={setIsSidebarOpen}>
             <PopoverTrigger asChild>
-              <Button variant='ghost' size='icon' className='w-8 h-8 rounded-sm'
+              <Button
+                variant='ghost'
+                size='icon'
+                className='w-8 h-8 rounded-sm'
                 onClick={() => setIsSidebarOpen(!isSidebarOpen)}
               >
                 <Menu className='w-4 h-4' />
               </Button>
             </PopoverTrigger>
-            <PopoverContent className='w-fit p-2 rounded-sm lg:hidden'>
+            <PopoverContent
+              className={cn(
+                "w-fit p-2 rounded-sm lg:hidden",
+                "bg-black/50 box-shadow-sm backdrop-blur-sm"
+              )}
+            >
               <ImageEditorSidebar
                 selected={selectedSidebar}
                 onSelectedToolChange={handleSelectedToolChange}
@@ -359,14 +371,25 @@ function ImageEditorInner({
         <div className=' lg:hidden ml-auto'>
           <Popover open={isPanelsOpen} onOpenChange={setIsPanelsOpen}>
             <PopoverTrigger asChild>
-              <Button variant='ghost' size='icon' className='w-8 h-8 rounded-sm'
+              <Button
+                variant='ghost'
+                size='icon'
+                className='w-8 h-8 rounded-sm'
                 onClick={() => setIsPanelsOpen(!isPanelsOpen)}
               >
                 <Menu className='w-4 h-4' />
               </Button>
             </PopoverTrigger>
-            <PopoverContent className='w-[320px] p-2 rounded-sm lg:hidden'>
-              <ImageEditorPanels className='lg:row-span-3 w-full' defaultValue='layers'/>
+            <PopoverContent
+              className={cn(
+                "w-[320px] p-2 rounded-sm lg:hidden",
+                "bg-black/50 box-shadow-sm backdrop-blur-sm"
+              )}
+            >
+              <ImageEditorPanels
+                className='lg:row-span-3 w-full'
+                defaultValue='layers'
+              />
             </PopoverContent>
           </Popover>
         </div>
@@ -418,9 +441,12 @@ function ImageEditorInner({
       />
 
       <div className='hidden lg:block lg:col-start-3'>
-        <ImageEditorPanels className='lg:row-span-3 w-full' defaultValue='layers' notify={notify} />
+        <ImageEditorPanels
+          className='lg:row-span-3 w-full'
+          defaultValue='layers'
+          notify={notify}
+        />
       </div>
-
     </div>
   )
 }

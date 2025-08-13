@@ -144,15 +144,6 @@ export function imageEditorToolsReducer(
     }
   }
 
-  if (action.type === "updateHistory") {
-  }
-
-  if (action.type === "undo") {
-  }
-
-  if (action.type === "redo") {
-  }
-
   return {
     ...state,
     [action.type]: (action as ImageEditorToolsAction).payload,

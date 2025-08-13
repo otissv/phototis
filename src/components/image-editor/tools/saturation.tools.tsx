@@ -42,13 +42,7 @@ const SaturationControls = (props: any) => {
     <ImageEditorFooterSlider
       {...props}
       onDragStart={() => history.begin("Saturation Drag")}
-      onChange={(v: number) => {
-        const { getSelectedLayerId, pushLayerUpdate } =
-          require("@/lib/editor/context").useEditorContext()
-        const id = getSelectedLayerId()
-        if (!id) return
-        pushLayerUpdate(id, { filters: { saturation: v } as any })
-      }}
+      onChange={(v: number) => props.onChange?.(v)}
       onDragEnd={() => {
         history.end(true)
         clear()

@@ -134,8 +134,7 @@ export function AdjustFooter({
   drawFnRef,
   ...props
 }: ImageEditorFooterProps) {
-  const { history, getSelectedLayerId, updateLayer, pushLayerUpdate } =
-    useEditorContext()
+  const { history } = useEditorContext()
   const overlayCanvas = React.useRef<HTMLCanvasElement | null>(null)
   React.useEffect(() => {
     overlayCanvas.current = document.getElementById(
@@ -167,66 +166,10 @@ export function AdjustFooter({
   }, [])
   const handleOnChange = React.useCallback(
     (value: number) => {
-      const layerId = getSelectedLayerId()
-      if (!layerId) return
-      // map selectedTool→layer filters key
-      if ((toolsValues as any)?.[selectedTool] !== undefined) {
-        // Streaming updates coalesced within one transaction boundary should be handled
-        // by calling begin() at drag start and push() on change. Footer slider emits drag events.
-        drawOverlayPreview(value)
-        pushLayerUpdate(layerId, { [selectedTool]: value } as any)
-        return
-      }
-      switch (selectedTool) {
-        case "brightness":
-          drawOverlayPreview(value)
-          pushLayerUpdate(layerId, { brightness: value } as any)
-          return
-        case "contrast":
-          drawOverlayPreview(value)
-          pushLayerUpdate(layerId, { contrast: value } as any)
-          return
-        case "exposure":
-          drawOverlayPreview(value)
-          pushLayerUpdate(layerId, { exposure: value } as any)
-          return
-        case "gamma":
-          drawOverlayPreview(value)
-          pushLayerUpdate(layerId, { gamma: value } as any)
-          return
-        case "hue":
-          drawOverlayPreview(value)
-          pushLayerUpdate(layerId, { hue: value } as any)
-          return
-        case "saturation":
-          drawOverlayPreview(value)
-          pushLayerUpdate(layerId, { saturation: value } as any)
-          return
-        case "temperature":
-        case "tint": {
-          drawOverlayPreview(value)
-          pushLayerUpdate(layerId, { [selectedTool]: value } as any)
-          return
-        }
-        case "vibrance":
-          drawOverlayPreview(value)
-          pushLayerUpdate(layerId, { vibrance: value } as any)
-          return
-        case "vintage":
-          drawOverlayPreview(value)
-          pushLayerUpdate(layerId, { vintage: value } as any)
-          return
-        default:
-          return () => {}
-      }
+      drawOverlayPreview(value)
+      dispatch({ type: selectedTool, payload: value })
     },
-    [
-      pushLayerUpdate,
-      selectedTool,
-      getSelectedLayerId,
-      toolsValues,
-      drawOverlayPreview,
-    ]
+    [dispatch, selectedTool, drawOverlayPreview]
   )
 
   const Control = React.useMemo(() => {
@@ -367,67 +310,65 @@ export function EffectsFooter({
   drawFnRef,
   ...props
 }: ImageEditorFooterProps) {
-  const { history, getSelectedLayerId, updateLayer } = useEditorContext()
+  const { history } = useEditorContext()
   const handleOnChange = React.useCallback(
     (value: number) => {
-      const layerId = getSelectedLayerId()
-      if (!layerId) return
       switch (selectedTool) {
         case "sharpen":
           history.begin("Sharpen")
-          updateLayer(layerId, { sharpen: value } as any)
+          dispatch({ type: "sharpen", payload: value })
           history.end(true)
           return
         case "blur":
           history.begin("Blur")
-          updateLayer(layerId, { blur: value } as any)
+          dispatch({ type: "blur", payload: value })
           history.end(true)
           return
         case "blurType":
           history.begin("Blur Type")
-          updateLayer(layerId, { blurType: value } as any)
+          dispatch({ type: "blurType", payload: value })
           history.end(true)
           return
         case "blurDirection":
           history.begin("Blur Direction")
-          updateLayer(layerId, { blurDirection: value } as any)
+          dispatch({ type: "blurDirection", payload: value })
           history.end(true)
           return
         case "blurCenter":
           history.begin("Blur Center")
-          updateLayer(layerId, { blurCenter: value } as any)
+          dispatch({ type: "blurCenter", payload: value })
           history.end(true)
           return
         case "noise":
           history.begin("Noise")
-          updateLayer(layerId, { noise: value } as any)
+          dispatch({ type: "noise", payload: value })
           history.end(true)
           return
         case "grain":
           history.begin("Grain")
-          updateLayer(layerId, { grain: value } as any)
+          dispatch({ type: "grain", payload: value })
           history.end(true)
           return
         case "invert":
           history.begin("Invert")
-          updateLayer(layerId, { invert: value } as any)
+          dispatch({ type: "invert", payload: value })
           history.end(true)
           return
         case "sepia":
           history.begin("Sepia")
-          updateLayer(layerId, { sepia: value } as any)
+          dispatch({ type: "sepia", payload: value })
           history.end(true)
           return
         case "grayscale":
           history.begin("Grayscale")
-          updateLayer(layerId, { grayscale: value } as any)
+          dispatch({ type: "grayscale", payload: value })
           history.end(true)
           return
         default:
           return () => {}
       }
     },
-    [history, updateLayer, selectedTool, getSelectedLayerId]
+    [history, selectedTool, dispatch]
   )
 
   const Control = React.useMemo(() => {
@@ -608,22 +549,17 @@ export function RotateFooter({
   }
 
   const handleFlipHorizontal = () => {
-    const isCurrentlyFlipped = safeFlipH
     const currentRotation = safeRotate
 
     // When flipping horizontally, we need to invert the rotation
     const newRotation = (360 - currentRotation) % 360
 
-    dispatch({
-      type: "flipHorizontal",
-      payload: isCurrentlyFlipped ? 0 : 1,
-    })
-
-    // Update rotation to match the flipped state
-    dispatch({
-      type: "rotate",
-      payload: newRotation,
-    })
+    dispatch([
+      {
+        type: "flipHorizontal",
+        payload: safeFlipH ? 0 : 1,
+      },
+    ])
   }
 
   const handleFlipVertical = () => {

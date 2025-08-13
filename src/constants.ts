@@ -202,10 +202,10 @@ export const TOOL_VALUES: Record<ToolValueKeys, ToolValueTypes> = {
     defaultValue: 1,
   },
   flipVertical: {
-    defaultValue: false,
+    defaultValue: 0,
   },
   flipHorizontal: {
-    defaultValue: false,
+    defaultValue: 0,
   },
   zoom: {
     defaultValue: 50,

@@ -34,13 +34,7 @@ const HueControls = (props: any) => {
     <ImageEditorFooterSlider
       {...props}
       onDragStart={() => history.begin("Hue Drag")}
-      onChange={(v: number) => {
-        const { getSelectedLayerId, pushLayerUpdate } =
-          require("@/lib/editor/context").useEditorContext()
-        const id = getSelectedLayerId()
-        if (!id) return
-        pushLayerUpdate(id, { filters: { hue: v } as any })
-      }}
+      onChange={(v: number) => props.onChange?.(v)}
       onDragEnd={() => history.end(true)}
     />
   )

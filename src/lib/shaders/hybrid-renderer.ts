@@ -11,7 +11,7 @@ import {
   LAYER_RENDER_FRAGMENT_SHADER,
 } from "./compositing-shader"
 import type { ImageEditorToolsState } from "@/components/image-editor/state.image-editor"
-import type { Layer } from "@/components/image-editor/layer-system"
+import type { EditorLayer as Layer } from "@/lib/editor/state"
 
 export interface HybridRendererOptions {
   width: number
@@ -240,109 +240,47 @@ export class HybridRenderer {
     const layerX = layerDim?.x || 0
     const layerY = layerDim?.y || 0
 
-    // Create a vertex shader that handles layer positioning and sizing
-    const vertexShader = this.gl.createShader(this.gl.VERTEX_SHADER)
-    if (!vertexShader) return null
-    this.gl.shaderSource(
-      vertexShader,
-      `
-      attribute vec2 a_position;
-      attribute vec2 a_texCoord;
-      uniform vec2 u_canvasSize;
-      uniform vec2 u_position;
-      uniform vec2 u_size;
-      varying vec2 v_texCoord;
-      
-      void main() {
-        // Convert from [-1,1] quad to pixel space
-        vec2 pixelPos = u_position + (a_position + 1.0) * 0.5 * u_size;
-        
-        // Convert pixel position to clip space (no extra Y flip here)
-        vec2 clipPos = (pixelPos / u_canvasSize) * 2.0 - 1.0;
-        gl_Position = vec4(clipPos, 0.0, 1.0);
-        
-        // Pass through texture coordinates
-        v_texCoord = a_texCoord;
-      }
-    `
+    // Use the compiled layer program which applies transforms and filters
+    if (!this.layerProgram) return null
+    this.gl.useProgram(this.layerProgram)
+
+    // Set up attributes from shared buffers
+    const positionLocation = this.gl.getAttribLocation(
+      this.layerProgram,
+      "a_position"
     )
-    this.gl.compileShader(vertexShader)
-
-    const fragmentShader = this.gl.createShader(this.gl.FRAGMENT_SHADER)
-    if (!fragmentShader) return null
-    this.gl.shaderSource(
-      fragmentShader,
-      `
-      precision highp float;
-      uniform sampler2D u_image;
-      uniform float u_opacity;
-      varying vec2 v_texCoord;
-      
-      void main() {
-        vec4 color = texture2D(u_image, v_texCoord);
-        color.a *= u_opacity / 100.0;
-        if (color.a < 0.01) {
-          discard;
-        }
-        gl_FragColor = color;
-      }
-    `
-    )
-    this.gl.compileShader(fragmentShader)
-
-    const program = this.gl.createProgram()
-    if (!program) return null
-    this.gl.attachShader(program, vertexShader)
-    this.gl.attachShader(program, fragmentShader)
-    this.gl.linkProgram(program)
-
-    // Use program
-    this.gl.useProgram(program)
-
-    // Set up attributes
-    const positionLocation = this.gl.getAttribLocation(program, "a_position")
     this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.positionBuffer)
     this.gl.enableVertexAttribArray(positionLocation)
     this.gl.vertexAttribPointer(positionLocation, 2, this.gl.FLOAT, false, 0, 0)
 
-    const texCoordLocation = this.gl.getAttribLocation(program, "a_texCoord")
+    const texCoordLocation = this.gl.getAttribLocation(
+      this.layerProgram,
+      "a_texCoord"
+    )
     this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.texCoordBuffer)
     this.gl.enableVertexAttribArray(texCoordLocation)
     this.gl.vertexAttribPointer(texCoordLocation, 2, this.gl.FLOAT, false, 0, 0)
 
-    // Set uniforms for layer positioning and sizing
-    const canvasSizeLocation = this.gl.getUniformLocation(
-      program,
-      "u_canvasSize"
-    )
-    if (canvasSizeLocation) {
-      this.gl.uniform2f(canvasSizeLocation, canvasWidth, canvasHeight)
-    }
-
-    const layerPositionLocation = this.gl.getUniformLocation(
-      program,
-      "u_position"
-    )
-    if (layerPositionLocation) {
-      this.gl.uniform2f(layerPositionLocation, layerX, layerY)
-    }
-
-    const layerSizeLocation = this.gl.getUniformLocation(program, "u_size")
-    if (layerSizeLocation) {
-      this.gl.uniform2f(layerSizeLocation, layerWidth, layerHeight)
-    }
-
-    // Set opacity uniform
-    const opacityLocation = this.gl.getUniformLocation(program, "u_opacity")
-    if (opacityLocation) {
-      this.gl.uniform1f(opacityLocation, layer.opacity)
-    }
-
     // Bind layer texture
     this.gl.activeTexture(this.gl.TEXTURE0)
     this.gl.bindTexture(this.gl.TEXTURE_2D, layerTexture)
-    const samplerLocation = this.gl.getUniformLocation(program, "u_image")
+    const samplerLocation = this.gl.getUniformLocation(
+      this.layerProgram,
+      "u_image"
+    )
     if (samplerLocation) this.gl.uniform1i(samplerLocation, 0)
+
+    // Set all layer-related uniforms (rect, transforms, filters, resolution, opacity)
+    this.setLayerUniforms(
+      toolsValues,
+      layer.opacity,
+      canvasWidth,
+      canvasHeight,
+      layerWidth,
+      layerHeight,
+      layerX,
+      layerY
+    )
 
     // Draw
     this.gl.drawArrays(this.gl.TRIANGLE_STRIP, 0, 4)
@@ -729,17 +667,31 @@ export class HybridRenderer {
       { name: "u_layerY", value: layerY || 0 },
     ]
 
+    // Some uniforms are declared as bools in GLSL. Ensure we pass them correctly
+    const boolUniforms = new Set(["u_flipHorizontal", "u_flipVertical"])
+
     uniforms.forEach(({ name, value }) => {
       if (!this.gl || !this.layerProgram) return
       const location = this.gl.getUniformLocation(this.layerProgram, name)
-      if (location !== null) {
-        if (typeof value === "number") {
-          this.gl.uniform1f(location, value)
-        } else if (typeof value === "boolean") {
-          this.gl.uniform1i(location, value ? 1 : 0)
-        } else if (Array.isArray(value) && value.length === 2) {
-          this.gl.uniform2f(location, value[0], value[1])
-        }
+      if (location === null) return
+
+      if (boolUniforms.has(name)) {
+        // Accept booleans or 0/1 numbers from state
+        const asBool =
+          typeof value === "boolean"
+            ? value
+            : Boolean(Math.round(Number(value)))
+        this.gl.uniform1i(location, asBool ? 1 : 0)
+        return
+      }
+
+      if (typeof value === "number") {
+        this.gl.uniform1f(location, value)
+        return
+      }
+
+      if (Array.isArray(value) && value.length === 2) {
+        this.gl.uniform2f(location, value[0], value[1])
       }
     })
   }
