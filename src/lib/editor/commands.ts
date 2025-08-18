@@ -229,7 +229,9 @@ export class UpdateLayerCommand implements Command {
 
   apply(state: CanonicalEditorState): CanonicalEditorState {
     const current = state.layers.byId[this.layerId]
+
     if (!current) return state
+
     const prevSubset: Partial<Omit<EditorLayer, "id">> = {}
     for (const key of Object.keys(this.patch) as (keyof typeof this.patch)[]) {
       // @ts-expect-error index ok
@@ -237,14 +239,6 @@ export class UpdateLayerCommand implements Command {
     }
     this.previous = prevSubset
     const updated: EditorLayer = { ...current, ...this.patch, id: current.id }
-
-    console.log({
-      ...state,
-      layers: {
-        ...state.layers,
-        byId: { ...state.layers.byId, [this.layerId]: updated },
-      },
-    })
 
     return {
       ...state,

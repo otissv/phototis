@@ -260,7 +260,7 @@ export default function SlidingTrack({
                     return (
                       <div
                         key={`dot-${key}`}
-                        className='text-gray-400 select-none'
+                        className='text-gray-400 select-none -translate-x-[-452px]'
                       >
                         <Dot
                           className={cn("w-2 h-2 ", {

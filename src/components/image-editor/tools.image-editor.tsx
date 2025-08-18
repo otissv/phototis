@@ -23,7 +23,7 @@ import type {
   ImageEditorHeaderProps,
   ImageEditorFooterProps,
 } from "./tools/utils.tools"
-import { RotationButton, RotationControls } from "./tools/rotation.tools"
+import { RotationControls } from "./tools/rotation.tools"
 import { ScaleButton, ScaleControls } from "./tools/scale.tools"
 import { ResizeButton, ResizeControls } from "./tools/resize.tools"
 import { UpscaleButton } from "./tools/upscale.tools"
@@ -164,12 +164,12 @@ export function AdjustFooter({
       overlayCanvas.current.height
     )
   }, [])
+
   const handleOnChange = React.useCallback(
     (value: number) => {
-      drawOverlayPreview(value)
       dispatch({ type: selectedTool, payload: value })
     },
-    [dispatch, selectedTool, drawOverlayPreview]
+    [dispatch, selectedTool]
   )
 
   const Control = React.useMemo(() => {
@@ -550,9 +550,6 @@ export function RotateFooter({
 
   const handleFlipHorizontal = () => {
     const currentRotation = safeRotate
-
-    // When flipping horizontally, we need to invert the rotation
-    const newRotation = (360 - currentRotation) % 360
 
     dispatch([
       {

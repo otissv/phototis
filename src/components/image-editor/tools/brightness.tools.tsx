@@ -3,6 +3,7 @@
 import type { TOOL_VALUES } from "@/constants"
 import { ImageEditorButton } from "../button.image-editor"
 import { ImageEditorFooterSlider } from "../footer-slider.image-editor"
+import { UpdateLayerCommand } from "@/lib/editor/commands"
 
 export interface BrightnessButtonProps {
   onSelectedToolChange: (tool: keyof typeof TOOL_VALUES) => void
@@ -29,7 +30,8 @@ function BrightnessButton({
 BrightnessButton.displayName = "BrightnessButton"
 
 const BrightnessControls = (props: any) => {
-  const { history } = require("@/lib/editor/context").useEditorContext()
+  const { history, getSelectedLayer } =
+    require("@/lib/editor/context").useEditorContext()
   const overlay = () =>
     document.getElementById("image-editor-overlay") as HTMLCanvasElement | null
   const clear = () => {
@@ -38,11 +40,23 @@ const BrightnessControls = (props: any) => {
     if (!c || !ctx) return
     ctx.clearRect(0, 0, c.width, c.height)
   }
+
   return (
     <ImageEditorFooterSlider
       {...props}
       onDragStart={() => history.begin("Brightness Drag")}
-      onChange={(v: number) => props.onChange?.(v)}
+      onChange={(v: number) => {
+        const layer = getSelectedLayer()
+        if (!layer) return
+        history.push(
+          new UpdateLayerCommand(
+            layer.id,
+            { filters: { ...layer.filters, brightness: v } },
+            { coalescable: true, mergeKey: `filter:brightness:${layer.id}` }
+          )
+        )
+        props.onChange?.(v)
+      }}
       onDragEnd={() => {
         history.end(true)
         clear()

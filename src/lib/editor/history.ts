@@ -335,13 +335,17 @@ export class HistoryManager {
   /** End the current transaction. If commit=false, discard. */
   endTransaction(commit = true): void {
     if (this.transactions.length === 0) return
+
     const popped = this.transactions.pop()
     if (!popped) return
+
     const frame = popped
     if (!commit || frame.commands.length === 0) {
       return
     }
     const composite = new CompositeCommand(frame.commands, frame.name)
+
+    console.log("transactions.length: ", this.transactions.length)
 
     if (this.transactions.length > 0) {
       // Nest into parent frame

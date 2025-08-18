@@ -41,9 +41,9 @@ function ImageEditorInner({
   const [isPanelsOpen, setIsPanelsOpen] = React.useState(false)
 
   const [selectedSidebar, setSelectedSidebar] =
-    React.useState<keyof typeof SIDEBAR_TOOLS>("rotate")
+    React.useState<keyof typeof SIDEBAR_TOOLS>("adjust")
   const [selectedTool, setSelectedTool] =
-    React.useState<keyof typeof TOOL_VALUES>("rotate")
+    React.useState<keyof typeof TOOL_VALUES>("brightness")
   const [progress, setProgress] = React.useState(0)
 
   const {
@@ -51,6 +51,7 @@ function ImageEditorInner({
     getSelectedLayer,
     getSelectedLayerId,
     updateLayer,
+    selectLayer,
     setBlendMode,
     setZoomPercent,
     state,
@@ -75,8 +76,6 @@ function ImageEditorInner({
       const selectedId = getSelectedLayerId()
 
       if (!current || !selectedId) return
-
-      console.log("action", action)
 
       const newFilters = Array.isArray(action)
         ? action.reduce((acc, curr) => {
@@ -195,6 +194,13 @@ function ImageEditorInner({
     },
     [onImageDrop]
   )
+
+  React.useEffect(() => {
+    if (!getSelectedLayerId()) {
+      const first = getOrderedLayers()[0]
+      if (first) selectLayer(first.id)
+    }
+  }, [getOrderedLayers, getSelectedLayerId, selectLayer])
 
   // Keep drag state observable to parent if requested
   React.useEffect(() => {
