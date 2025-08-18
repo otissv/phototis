@@ -1,17 +1,27 @@
 import type {
   CanonicalEditorState,
   EditorLayer,
+  ImageLayer,
+  AdjustmentLayer,
   LayerId,
   ViewportModel,
   ActiveToolModel,
 } from "@/lib/editor/state"
 import type { Command, CommandMeta } from "@/lib/editor/history"
+import { capitalize } from "../capitalize"
 
 export type SerializedCommand =
   | {
       type: "addLayer"
       meta: CommandMeta
       layer: EditorLayer
+      position: "top" | "bottom" | number
+    }
+  | {
+      type: "addAdjustmentLayer"
+      meta: CommandMeta
+      adjustmentType: string
+      parameters: Record<string, number>
       position: "top" | "bottom" | number
     }
   | { type: "removeLayer"; meta: CommandMeta; layerId: LayerId }
@@ -26,6 +36,12 @@ export type SerializedCommand =
       meta: CommandMeta
       layerId: LayerId
       patch: Partial<Omit<EditorLayer, "id">>
+    }
+  | {
+      type: "updateAdjustmentParameters"
+      meta: CommandMeta
+      layerId: LayerId
+      parameters: Record<string, number>
     }
   | { type: "setSelection"; meta: CommandMeta; selected: LayerId[] }
   | { type: "setViewport"; meta: CommandMeta; patch: Partial<ViewportModel> }
@@ -232,13 +248,22 @@ export class UpdateLayerCommand implements Command {
 
     if (!current) return state
 
+    // Store previous values for undo
     const prevSubset: Partial<Omit<EditorLayer, "id">> = {}
     for (const key of Object.keys(this.patch) as (keyof typeof this.patch)[]) {
-      // @ts-expect-error index ok
-      prevSubset[key] = current[key]
+      if (key in current) {
+        // @ts-expect-error index ok
+        prevSubset[key] = current[key]
+      }
     }
     this.previous = prevSubset
-    const updated: EditorLayer = { ...current, ...this.patch, id: current.id }
+
+    // Type-safe update - only apply patches that are valid for the current layer type
+    const updated: EditorLayer = {
+      ...current,
+      ...this.patch,
+      id: current.id,
+    } as EditorLayer
 
     return {
       ...state,
@@ -367,16 +392,172 @@ export class SetActiveToolCommand implements Command {
   }
 }
 
+export class AddAdjustmentLayerCommand implements Command {
+  meta: CommandMeta
+  private readonly adjustmentType: string
+  private readonly parameters: Record<string, number>
+  private readonly position: "top" | "bottom" | number
+  private createdLayerId?: string
+
+  constructor(
+    adjustmentType: string,
+    parameters: Record<string, number>,
+    position: "top" | "bottom" | number = "top",
+    meta?: Partial<CommandMeta>
+  ) {
+    this.adjustmentType = adjustmentType
+    this.parameters = parameters
+    this.position = position
+    this.meta = {
+      label: `Add ${adjustmentType} Adjustment`,
+      scope: "layers",
+      timestamp: Date.now(),
+      coalescable: false,
+      ...meta,
+    }
+  }
+
+  apply(state: CanonicalEditorState): CanonicalEditorState {
+    const newLayer: AdjustmentLayer = {
+      id: `adjustment-${Date.now()}`,
+      name: capitalize(`${this.adjustmentType}`),
+      visible: true,
+      locked: false,
+      opacity: 100,
+      blendMode: "normal",
+      type: "adjustment",
+      adjustmentType: this.adjustmentType as any,
+      parameters: this.parameters,
+    }
+
+    // Store the created layer ID for undo
+    this.createdLayerId = newLayer.id
+
+    // Add to layers collection
+    const order = [...state.layers.order]
+    if (typeof this.position === "number") {
+      const idx = Math.max(0, Math.min(order.length, this.position))
+      order.splice(idx, 0, newLayer.id)
+    } else if (this.position === "top") {
+      order.unshift(newLayer.id)
+    } else {
+      order.push(newLayer.id)
+    }
+
+    const byId = { ...state.layers.byId, [newLayer.id]: newLayer }
+    return { ...state, layers: { order, byId } }
+  }
+
+  invert(): Command {
+    if (!this.createdLayerId) {
+      throw new Error(
+        "Cannot invert AddAdjustmentLayerCommand without created layer ID"
+      )
+    }
+    return new RemoveLayerCommand(this.createdLayerId)
+  }
+
+  estimateSize(): number {
+    return 128 + deepSize(this.parameters)
+  }
+
+  serialize(): SerializedCommand {
+    return {
+      type: "addAdjustmentLayer",
+      meta: this.meta,
+      adjustmentType: this.adjustmentType,
+      parameters: this.parameters,
+      position: this.position,
+    }
+  }
+}
+
+export class UpdateAdjustmentParametersCommand implements Command {
+  meta: CommandMeta
+  private readonly layerId: LayerId
+  private readonly parameters: Record<string, number>
+  private previous?: Record<string, number>
+
+  constructor(
+    layerId: LayerId,
+    parameters: Record<string, number>,
+    meta?: Partial<CommandMeta>
+  ) {
+    this.layerId = layerId
+    this.parameters = parameters
+    this.meta = {
+      label: `Update Adjustment Parameters`,
+      scope: "layers",
+      timestamp: Date.now(),
+      coalescable: true,
+      mergeKey: `adjustment:${layerId}`,
+      ...meta,
+    }
+  }
+
+  apply(state: CanonicalEditorState): CanonicalEditorState {
+    const layer = state.layers.byId[this.layerId]
+    if (!layer || layer.type !== "adjustment") return state
+
+    // Store previous values for undo
+    this.previous = { ...layer.parameters }
+
+    const updatedLayer: AdjustmentLayer = {
+      ...layer,
+      parameters: { ...layer.parameters, ...this.parameters },
+    }
+
+    return {
+      ...state,
+      layers: {
+        ...state.layers,
+        byId: { ...state.layers.byId, [this.layerId]: updatedLayer },
+      },
+    }
+  }
+
+  invert(): Command {
+    if (!this.previous) throw new Error("Cannot invert without previous state")
+    return new UpdateAdjustmentParametersCommand(this.layerId, this.previous)
+  }
+
+  estimateSize(): number {
+    return 64 + deepSize(this.parameters)
+  }
+
+  serialize(): SerializedCommand {
+    return {
+      type: "updateAdjustmentParameters",
+      meta: this.meta,
+      layerId: this.layerId,
+      parameters: this.parameters,
+    }
+  }
+}
+
 export function deserializeCommand(json: SerializedCommand): Command {
   switch (json.type) {
     case "addLayer":
       return new AddLayerCommand(json.layer, json.position, json.meta)
+    case "addAdjustmentLayer":
+      return new AddAdjustmentLayerCommand(
+        json.adjustmentType,
+        json.parameters,
+        json.position,
+        json.meta
+      )
     case "removeLayer":
       return new RemoveLayerCommand(json.layerId, json.meta)
     case "reorderLayers":
       return new ReorderLayersCommand(json.fromIndex, json.toIndex, json.meta)
     case "updateLayer":
       return new UpdateLayerCommand(json.layerId, json.patch, json.meta)
+    case "updateAdjustmentParameters":
+      return new UpdateAdjustmentParametersCommand(
+        json.layerId,
+        json.parameters,
+        json.meta
+      )
     case "setSelection":
       return new SetSelectionCommand(json.selected, json.meta)
     case "setViewport":

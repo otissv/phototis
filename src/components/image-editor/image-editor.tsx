@@ -5,7 +5,10 @@ import { PlusIcon, MinusIcon, Menu } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import type { SIDEBAR_TOOLS, TOOL_VALUES } from "@/constants"
+import type {
+  SIDEBAR_TOOLS,
+  TOOL_VALUES,
+} from "@/components/image-editor/state.image-editor"
 import { ImageEditorCanvas } from "@/components/image-editor/canvas.image-editor"
 import { ImageEditorSidebar } from "@/components/image-editor/sidebar.image-editor"
 import { getEditorTools } from "@/components/image-editor/tools.image-editor"

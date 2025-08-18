@@ -10,8 +10,11 @@
  */
 
 import type { BlendMode } from "@/lib/shaders/blend-modes"
-import type { ImageEditorToolsState } from "@/components/image-editor/state.image-editor"
-import type { SIDEBAR_TOOLS, TOOL_VALUES } from "@/constants"
+import type {
+  ImageEditorToolsState,
+  SIDEBAR_TOOLS,
+  TOOL_VALUES,
+} from "@/components/image-editor/state.image-editor"
 
 /**
  * Canonical types
@@ -19,23 +22,82 @@ import type { SIDEBAR_TOOLS, TOOL_VALUES } from "@/constants"
 
 export type LayerId = string
 
-export interface EditorLayer {
+// New layer type system
+export type LayerType = "image" | "adjustment" | "group" | "solid"
+
+// Base layer properties shared by all layer types
+export interface BaseLayer {
   id: LayerId
   name: string
   visible: boolean
   locked: boolean
-  /**
-   * Per-layer filter/transform parameters. These correspond to the existing
-   * tools state and are applied by the renderer deterministically.
-   */
-  filters: ImageEditorToolsState
-  /** Opacity in [0, 100] */
   opacity: number
-  /** If true, the layer contains no image content. */
-  isEmpty: boolean
-  /** Optional image file payload for the layer. */
+  blendMode: BlendMode
+  type: LayerType
+}
+
+// Image layer with embedded filters (current system)
+export interface ImageLayer extends BaseLayer {
+  type: "image"
   image?: File | null
-  /** Blend mode used when compositing this layer. */
+  isEmpty: boolean
+  filters: ImageEditorToolsState
+}
+
+// Adjustment layer
+export interface AdjustmentLayer extends BaseLayer {
+  type: "adjustment"
+  adjustmentType:
+    | "brightness"
+    | "contrast"
+    | "exposure"
+    | "gamma"
+    | "hue"
+    | "saturation"
+    | "temperature"
+    | "tint"
+    | "vibrance"
+    | "vintage"
+    | "grayscale"
+    | "invert"
+    | "sepia"
+  parameters: Record<string, number>
+  mask?: MaskData
+}
+
+// Group layer for organizing layers
+export interface GroupLayer extends BaseLayer {
+  type: "group"
+  children: LayerId[]
+  collapsed: boolean
+}
+
+// Solid color layer
+export interface SolidLayer extends BaseLayer {
+  type: "solid"
+  color: [number, number, number, number] // RGBA
+}
+
+// Mask data for adjustment layers
+export interface MaskData {
+  enabled: boolean
+  inverted: boolean
+  // TODO: Add actual mask texture/path data
+}
+
+// Union type for all layer types
+export type EditorLayer = ImageLayer | AdjustmentLayer | GroupLayer | SolidLayer
+
+// Legacy support - keep the old interface for backward compatibility
+export interface LegacyEditorLayer {
+  id: LayerId
+  name: string
+  visible: boolean
+  locked: boolean
+  filters: ImageEditorToolsState
+  opacity: number
+  isEmpty: boolean
+  image?: File | null
   blendMode: BlendMode
 }
 
@@ -339,11 +401,39 @@ export function validateEditorState(
         message: "Opacity must be in [0,100]",
       })
     }
-    if (layer.isEmpty && layer.image) {
-      errors.push({
-        path: `layers.byId.${id}.isEmpty`,
-        message: "Empty layer must not have an image",
-      })
+
+    // Type-specific validation
+    if (layer.type === "image") {
+      if (layer.isEmpty && layer.image) {
+        errors.push({
+          path: `layers.byId.${id}.isEmpty`,
+          message: "Empty image layer must not have an image",
+        })
+      }
+    } else if (layer.type === "adjustment") {
+      // Validate adjustment layer parameters
+      if (!layer.parameters || Object.keys(layer.parameters).length === 0) {
+        errors.push({
+          path: `layers.byId.${id}.parameters`,
+          message: "Adjustment layer must have parameters",
+        })
+      }
+    } else if (layer.type === "group") {
+      // Validate group layer children
+      if (!Array.isArray(layer.children)) {
+        errors.push({
+          path: `layers.byId.${id}.children`,
+          message: "Group layer must have children array",
+        })
+      }
+    } else if (layer.type === "solid") {
+      // Validate solid color layer
+      if (!Array.isArray(layer.color) || layer.color.length !== 4) {
+        errors.push({
+          path: `layers.byId.${id}.color`,
+          message: "Solid layer must have RGBA color array",
+        })
+      }
     }
   }
 
@@ -483,7 +573,14 @@ export function updateLayer(
   const current = state.layers.byId[layerId]
 
   if (!current) return state
-  const nextLayer: EditorLayer = { ...current, ...update, id: current.id }
+
+  // Type-safe update - only allow updates that match the current layer type
+  const nextLayer: EditorLayer = {
+    ...current,
+    ...update,
+    id: current.id,
+  } as EditorLayer
+
   const next: CanonicalEditorState = {
     ...state,
     layers: {

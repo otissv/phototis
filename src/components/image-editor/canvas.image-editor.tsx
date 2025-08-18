@@ -199,32 +199,106 @@ export function ImageEditorCanvas({
     scale: 1,
   })
 
-  // Derive selected layer filters from EditorState
-  const selectedFilters = React.useMemo(() => {
-    const layer = state.canonical.layers.byId[selectedLayerId]
-    return (
-      (layer?.filters as ImageEditorToolsState) ||
-      (initialState as ImageEditorToolsState)
-    )
-  }, [state.canonical.layers.byId, selectedLayerId])
+  // Build cumulative effect stack from adjustment layers
+  const buildEffectStack = React.useCallback(() => {
+    const layers = state.canonical.layers.order
+    const byId = state.canonical.layers.byId
+    let cumulativeEffects: ImageEditorToolsState = { ...initialState }
 
-  const [debouncedToolsValues] = useDebounce(selectedFilters, 100)
-  const [throttledToolsValues] = useDebounce(selectedFilters, 16)
+    // Process layers from bottom to top to build cumulative effects
+    for (const layerId of layers) {
+      const layer = byId[layerId]
+      if (!layer || !layer.visible) continue
+
+      if (layer.type === "image") {
+        // Image layers contribute their own filters
+        const imageLayer = layer as any
+        if (imageLayer.filters) {
+          cumulativeEffects = { ...cumulativeEffects, ...imageLayer.filters }
+        }
+      } else if (layer.type === "adjustment") {
+        // Adjustment layers modify the cumulative effects
+        const adjustment = layer as any
+        if (adjustment.parameters) {
+          // Map adjustment parameters to the tools state format
+          Object.entries(adjustment.parameters).forEach(([key, value]) => {
+            if (key in cumulativeEffects) {
+              ;(cumulativeEffects as any)[key] = value
+            }
+          })
+        }
+      }
+    }
+
+    return cumulativeEffects
+  }, [state.canonical.layers.order, state.canonical.layers.byId])
+
+  // Get the effective filters for the selected layer (including adjustment layers above it)
+  const effectiveFilters = React.useMemo(() => {
+    if (!selectedLayerId) return initialState
+
+    const selectedLayer = state.canonical.layers.byId[selectedLayerId]
+    if (!selectedLayer) return initialState
+
+    // Start with the selected layer's own filters
+    let effects: ImageEditorToolsState = { ...initialState }
+
+    if (selectedLayer.type === "image") {
+      const imageLayer = selectedLayer as any
+      if (imageLayer.filters) {
+        effects = { ...effects, ...imageLayer.filters }
+      }
+    }
+
+    // Apply adjustment layers that are above the selected layer
+    const selectedIndex = state.canonical.layers.order.indexOf(selectedLayerId)
+    if (selectedIndex >= 0) {
+      for (
+        let i = selectedIndex + 1;
+        i < state.canonical.layers.order.length;
+        i++
+      ) {
+        const layerId = state.canonical.layers.order[i]
+        const layer = state.canonical.layers.byId[layerId]
+
+        if (layer?.type === "adjustment" && layer.visible) {
+          const adjustment = layer as any
+          if (adjustment.parameters) {
+            Object.entries(adjustment.parameters).forEach(([key, value]) => {
+              if (key in effects) {
+                ;(effects as any)[key] = value
+              }
+            })
+          }
+        }
+      }
+    }
+
+    return effects
+  }, [
+    selectedLayerId,
+    state.canonical.layers.order,
+    state.canonical.layers.byId,
+  ])
+
+  // Use effective filters instead of just selected layer filters
+  const [debouncedToolsValues] = useDebounce(effectiveFilters, 100)
+  const [throttledToolsValues] = useDebounce(effectiveFilters, 16)
 
   // Track if we're currently drawing to prevent overlapping draws
   const isDrawingRef = React.useRef(false)
 
   // Smooth transition state for tool values
   const [smoothToolsValues, setSmoothToolsValues] =
-    React.useState<ImageEditorToolsState>(selectedFilters)
+    React.useState<ImageEditorToolsState>(effectiveFilters)
   const animationRef = React.useRef<Map<string, number>>(new Map())
 
   // Keep latest filters in refs so draw() sees current values without needing to rebind
   const selectedFiltersRef =
-    React.useRef<ImageEditorToolsState>(selectedFilters)
+    React.useRef<ImageEditorToolsState>(effectiveFilters)
   React.useEffect(() => {
-    selectedFiltersRef.current = selectedFilters
-  }, [selectedFilters])
+    selectedFiltersRef.current = effectiveFilters
+  }, [effectiveFilters])
 
   const smoothToolsValuesRef =
     React.useRef<ImageEditorToolsState>(smoothToolsValues)
@@ -236,13 +310,13 @@ export function ImageEditorCanvas({
   // biome-ignore lint/correctness/useExhaustiveDependencies: smoothToolsValues cause infinite loop
   React.useEffect(() => {
     const toolKeys = Object.keys(
-      selectedFilters
-    ) as (keyof typeof selectedFilters)[]
+      effectiveFilters
+    ) as (keyof typeof effectiveFilters)[]
 
     for (const key of toolKeys) {
-      if (typeof selectedFilters[key] === "number") {
+      if (typeof effectiveFilters[key] === "number") {
         const currentValue = smoothToolsValues[key] as number
-        const targetValue = selectedFilters[key] as number
+        const targetValue = effectiveFilters[key] as number
 
         if (currentValue !== targetValue) {
           // Cancel any existing animation for this tool
@@ -283,7 +357,7 @@ export function ImageEditorCanvas({
         }
       }
     }
-  }, [selectedFilters])
+  }, [effectiveFilters])
 
   // Force redraw on flip/rotate changes (these are instant toggles and should reflect immediately)
   // biome-ignore lint/correctness/useExhaustiveDependencies: we only want to react to orientation tools here
@@ -295,9 +369,9 @@ export function ImageEditorCanvas({
     }, 0)
     return () => clearTimeout(timer)
   }, [
-    selectedFilters.flipHorizontal,
-    selectedFilters.flipVertical,
-    selectedFilters.rotate,
+    effectiveFilters.flipHorizontal,
+    effectiveFilters.flipVertical,
+    effectiveFilters.rotate,
     isDragActive,
   ])
 
@@ -334,11 +408,15 @@ export function ImageEditorCanvas({
   const layersSignature = React.useMemo(() => {
     return canonicalLayers
       .map((l) => {
-        const imageSig = l.image
-          ? `img:${(l.image as File).name}:${(l.image as File).size}:$${
-              (l.image as File).type
+        let imageSig = "img:0"
+        if (l.type === "image") {
+          const imageLayer = l as any
+          if (imageLayer.image) {
+            imageSig = `img:${(imageLayer.image as File).name}:${(imageLayer.image as File).size}:$${
+              (imageLayer.image as File).type
             }`
-          : "img:0"
+          }
+        }
         return [
           l.id,
           l.visible ? 1 : 0,
@@ -502,8 +580,12 @@ export function ImageEditorCanvas({
 
       // Load new layer images (including background layer-1)
       for (const layer of canonicalLayers) {
-        if (layer.image && !imageDataCacheRef.current.has(layer.id)) {
-          const imageData = await loadImageDataFromFile(layer.image)
+        if (
+          layer.type === "image" &&
+          (layer as any).image &&
+          !imageDataCacheRef.current.has(layer.id)
+        ) {
+          const imageData = await loadImageDataFromFile((layer as any).image)
           if (imageData) {
             imageDataCacheRef.current.set(layer.id, imageData)
 
@@ -573,10 +655,10 @@ export function ImageEditorCanvas({
 
   // Handle viewport updates based on zoom
   React.useEffect(() => {
-    const zoom = selectedFilters.zoom / 100
+    const zoom = effectiveFilters.zoom / 100
     viewportScale.set(zoom)
     setViewport((prev) => ({ ...prev, scale: zoom }))
-  }, [selectedFilters.zoom, viewportScale])
+  }, [effectiveFilters.zoom, viewportScale])
 
   // Center viewport when canvas dimensions change
   React.useEffect(() => {
@@ -792,34 +874,55 @@ export function ImageEditorCanvas({
         return textureCacheRef.current.get(layer.id) || null
       }
 
-      // Get image data for this layer
-      let imageData = imageDataCacheRef.current.get(layer.id)
-
-      // For the background layer (layer-1), use the main image data if available
-      if (!imageData && layer.id === "layer-1") {
-        imageData = imageDataCacheRef.current.get("main")
-      }
-
-      if (imageData) {
-        const texture = createTextureFromImageData(imageData)
-        if (texture) {
-          // Dispose previous texture if any to avoid leaks
-          const gl = glRef.current
-          const prev = textureCacheRef.current.get(layer.id)
-          if (gl && prev && prev !== texture) {
-            gl.deleteTexture(prev)
-          }
-          textureCacheRef.current.set(layer.id, texture)
-          return texture
-        }
-      }
-
-      // For empty layers without image content, return null
-      if (layer.isEmpty && !layer.image) {
+      // Adjustment layers don't have textures - they modify other layers
+      if (layer.type === "adjustment") {
         return null
       }
 
-      // Fallback to main texture for layers that should have content
+      // Group layers don't have textures
+      if (layer.type === "group") {
+        return null
+      }
+
+      // Solid layers don't have textures (they're rendered differently)
+      if (layer.type === "solid") {
+        return null
+      }
+
+      // For image layers, load the actual image texture
+      if (layer.type === "image") {
+        // Get image data for this layer
+        let imageData = imageDataCacheRef.current.get(layer.id)
+
+        // For the background layer (layer-1), use the main image data if available
+        if (!imageData && layer.id === "layer-1") {
+          imageData = imageDataCacheRef.current.get("main")
+        }
+
+        if (imageData) {
+          const texture = createTextureFromImageData(imageData)
+          if (texture) {
+            // Dispose previous texture if any to avoid leaks
+            const gl = glRef.current
+            const prev = textureCacheRef.current.get(layer.id)
+            if (gl && prev && prev !== texture) {
+              gl.deleteTexture(prev)
+            }
+            textureCacheRef.current.set(layer.id, texture)
+            return texture
+          }
+        }
+
+        // For empty layers without image content, return null
+        if ((layer as any).isEmpty && !(layer as any).image) {
+          return null
+        }
+
+        // Fallback to main texture for layers that should have content
+        return textureRef.current
+      }
+
+      // Fallback to main texture for unknown layer types
       return textureRef.current
     },
     [createTextureFromImageData]
@@ -968,7 +1071,11 @@ export function ImageEditorCanvas({
 
       // Load textures for layers that have content (the hybrid renderer will filter visible ones)
       for (const layer of allLayersToRender) {
-        if (layer.isEmpty && !layer.image) {
+        if (
+          layer.type === "image" &&
+          (layer as any).isEmpty &&
+          !(layer as any).image
+        ) {
           continue
         }
 
@@ -1004,20 +1111,76 @@ export function ImageEditorCanvas({
           hybridRendererRef.current.renderToCanvas(canvas)
         } catch (error) {
           console.error("Error in hybrid renderer:", error)
-          // Fallback: Clear canvas if hybrid renderer fails
-          gl.clearColor(0, 0, 0, 0)
-          gl.clear(gl.COLOR_BUFFER_BIT)
+          // Fallback: Use simple WebGL rendering for the new layer system
+          await renderLayersFallback(
+            allLayersToRender,
+            layerTextures,
+            renderingToolsValues,
+            canvas
+          )
         }
       } else {
-        // Fallback: Clear canvas if no layers or renderer
-        gl.clearColor(0, 0, 0, 0)
-        gl.clear(gl.COLOR_BUFFER_BIT)
+        // Fallback: Use simple WebGL rendering for the new layer system
+        await renderLayersFallback(
+          allLayersToRender,
+          layerTextures,
+          renderingToolsValues,
+          canvas
+        )
       }
     } finally {
       // Always reset the drawing flag
       isDrawingRef.current = false
     }
   }
+
+  // Fallback rendering function for the new layer type system
+  const renderLayersFallback = React.useCallback(
+    async (
+      layers: EditorLayer[],
+      layerTextures: Map<string, WebGLTexture>,
+      toolsValues: ImageEditorToolsState,
+      canvas: HTMLCanvasElement
+    ) => {
+      const gl = glRef.current
+      if (!gl) return
+
+      // Clear the canvas
+      gl.clearColor(0, 0, 0, 0)
+      gl.clear(gl.COLOR_BUFFER_BIT)
+
+      // Simple layer rendering: just render image layers in order
+      // TODO: Implement proper adjustment layer effects
+      for (const layer of layers) {
+        if (layer.type === "image" && layer.visible) {
+          const texture = layerTextures.get(layer.id)
+          if (texture) {
+            // Bind the texture
+            gl.bindTexture(gl.TEXTURE_2D, texture)
+
+            // Set up the shader program
+            const program = programRef.current
+            if (program) {
+              gl.useProgram(program)
+
+              // Set uniforms for basic rendering
+              const opacityLocation = gl.getUniformLocation(
+                program,
+                "u_opacity"
+              )
+              if (opacityLocation) {
+                gl.uniform1f(opacityLocation, layer.opacity / 100)
+              }
+
+              // Draw the layer
+              gl.drawArrays(gl.TRIANGLES, 0, 6)
+            }
+          }
+        }
+      }
+    },
+    []
+  )
 
   // Keep a stable reference to the latest draw function (no state update -> no render loop)
   const drawRef = React.useRef<() => void>(() => {})

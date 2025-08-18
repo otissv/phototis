@@ -11,7 +11,10 @@ import {
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { SIDEBAR_TOOLS, type TOOL_VALUES } from "@/constants"
+import {
+  SIDEBAR_TOOLS,
+  type TOOL_VALUES,
+} from "@/components/image-editor/state.image-editor"
 import type { ImageEditorToolsActions } from "@/components/image-editor/state.image-editor"
 
 export interface ImageEditorSidebarProps
@@ -33,26 +36,6 @@ export function ImageEditorSidebar({
 }: ImageEditorSidebarProps) {
   return (
     <ul className={cn("flex flex-col gap-2", className)} {...props}>
-      <li>
-        <Button
-          title='Adjust'
-          variant='ghost'
-          className={cn("flex flex-col rounded-md text-xs size-18", {
-            "bg-accent text-accent-foreground": selected === "adjust",
-          })}
-          onClick={() => {
-            onChange("adjust")
-
-            if (!SIDEBAR_TOOLS.adjust.includes(selected)) {
-              onSelectedToolChange("brightness")
-            }
-          }}
-          disabled={progress}
-        >
-          <SlidersHorizontal />
-          Adjust
-        </Button>
-      </li>
       <li>
         <Button
           title='Rotate'
@@ -111,7 +94,7 @@ export function ImageEditorSidebar({
           }}
           disabled={progress}
         >
-          <Funnel />
+          <SlidersHorizontal />
           Filters
         </Button>
       </li>

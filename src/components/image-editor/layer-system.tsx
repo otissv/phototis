@@ -11,6 +11,11 @@ import {
   Lock,
   ChevronDown,
   Camera,
+  Eclipse,
+  Palette,
+  Sun,
+  Droplets,
+  Sparkles,
 } from "lucide-react"
 import { useDrag, useDrop } from "react-dnd"
 import { Button } from "@/components/ui/button"
@@ -24,7 +29,8 @@ import {
 } from "../ui/dropdown-menu"
 import { BLEND_MODE_NAMES, type BlendMode } from "@/lib/shaders/blend-modes"
 import { useEditorContext } from "@/lib/editor/context"
-import type { EditorLayer } from "@/lib/editor/state"
+import type { EditorLayer, AdjustmentLayer } from "@/lib/editor/state"
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover"
 
 export interface LayerSystemProps extends React.ComponentProps<"div"> {}
 
@@ -42,7 +48,7 @@ interface DragItem {
 // Global drag state to prevent updates during drag
 let isGlobalDragActive = false
 
-export function LayerSystem({ className, ...rest }: LayerSystemProps) {
+export function LayerSystem({ className, ...props }: LayerSystemProps) {
   const {
     getOrderedLayers,
     getSelectedLayerId,
@@ -57,6 +63,7 @@ export function LayerSystem({ className, ...rest }: LayerSystemProps) {
     toggleLock,
     setLayerName,
     setOpacity,
+    addAdjustmentLayer,
     state,
     setEphemeral,
   } = useEditorContext()
@@ -147,12 +154,39 @@ export function LayerSystem({ className, ...rest }: LayerSystemProps) {
     [reorderLayers]
   )
 
+  const handleAddAdjustmentLayer = React.useCallback(
+    (adjustmentType: string) => {
+      // Default parameters for each adjustment type
+      const defaultParams: Record<string, Record<string, number>> = {
+        brightness: { brightness: 100 },
+        contrast: { contrast: 100 },
+        exposure: { exposure: 0 },
+        gamma: { gamma: 1 },
+        hue: { hue: 0 },
+        saturation: { saturation: 100 },
+        temperature: { temperature: 0 },
+        tint: { tint: 0 },
+        vibrance: { vibrance: 0 },
+        vintage: { vintage: 0 },
+        grayscale: { grayscale: 0 },
+        invert: { invert: 0 },
+        sepia: { sepia: 0 },
+      }
+
+      const parameters = defaultParams[adjustmentType] || {
+        [adjustmentType]: 0,
+      }
+      addAdjustmentLayer(adjustmentType, parameters, "top")
+    },
+    [addAdjustmentLayer]
+  )
+
   const currentLayer = React.useMemo(() => {
     return layers.find((layer) => layer.id === selectedLayerId)
   }, [layers, selectedLayerId])
 
   return (
-    <div className={cn("w-full space-y-2", className)}>
+    <div className={cn("w-full space-y-2", className)} {...props}>
       <div className='flex items-center  h-12 p-2 text-xs justify-between border-b gap-2'>
         <div className='flex items-center gap-1'>
           <div className='text-xs'>Blend:</div>
@@ -191,7 +225,6 @@ export function LayerSystem({ className, ...rest }: LayerSystemProps) {
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-
         {/* Opacity Control */}
         <div className='flex items-center gap-2'>
           <span className='text-xs'>Opacity:</span>
@@ -251,24 +284,26 @@ export function LayerSystem({ className, ...rest }: LayerSystemProps) {
       </div>
 
       <div className='space-y-2 px-2 transition-all'>
-        {layers.map((layer, index) => (
-          <DraggableLayerItem
-            key={layer.id}
-            layer={layer}
-            index={index}
-            isSelected={selectedLayerId === layer.id}
-            onSelect={() => selectLayer(layer.id)}
-            onDelete={() => handleDeleteLayer(layer.id)}
-            onDuplicate={() => handleDuplicateLayer(layer.id)}
-            onToggleVisibility={() => handleToggleVisibility(layer.id)}
-            onToggleLock={() => handleToggleLock(layer.id)}
-            onNameChange={(name) => handleLayerNameChange(layer.id, name)}
-            onOpacityChange={(opacity) =>
-              handleOpacityChange(layer.id, opacity)
-            }
-            onMoveLayer={handleMoveLayer}
-          />
-        ))}
+        {layers.map((layer, index) => {
+          return (
+            <DraggableLayerItem
+              key={layer.id}
+              layer={layer}
+              index={index}
+              isSelected={selectedLayerId === layer.id}
+              onSelect={() => selectLayer(layer.id)}
+              onDelete={() => handleDeleteLayer(layer.id)}
+              onDuplicate={() => handleDuplicateLayer(layer.id)}
+              onToggleVisibility={() => handleToggleVisibility(layer.id)}
+              onToggleLock={() => handleToggleLock(layer.id)}
+              onNameChange={(name) => handleLayerNameChange(layer.id, name)}
+              onOpacityChange={(opacity) =>
+                handleOpacityChange(layer.id, opacity)
+              }
+              onMoveLayer={handleMoveLayer}
+            />
+          )
+        })}
       </div>
 
       <div className='flex items-center gap-1 border-t border-border p-2'>
@@ -285,7 +320,118 @@ export function LayerSystem({ className, ...rest }: LayerSystemProps) {
           />
         </div>
 
-        <div className='text-xs ml-auto text-muted-foreground'>{layers.length === 1 ? "1 layer" : `${layers.length} layers`}</div>
+        <div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                title='Add adjustment layer'
+                variant='ghost'
+                size='sm'
+                className='h-8 w-8 p-0'
+              >
+                <Eclipse className='w-4 h-4' />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className='bg-background p-2 border rounded-sm'>
+              <div className='grid grid-cols-2 gap-1'>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='text-xs h-8 justify-start'
+                  onClick={() => handleAddAdjustmentLayer("brightness")}
+                >
+                  <Sun className='w-3 h-3 mr-1' />
+                  Brightness
+                </Button>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='text-xs h-8 justify-start'
+                  onClick={() => handleAddAdjustmentLayer("contrast")}
+                >
+                  <Palette className='w-3 h-3 mr-1' />
+                  Contrast
+                </Button>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='text-xs h-8 justify-start'
+                  onClick={() => handleAddAdjustmentLayer("exposure")}
+                >
+                  <Sun className='w-3 h-3 mr-1' />
+                  Exposure
+                </Button>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='text-xs h-8 justify-start'
+                  onClick={() => handleAddAdjustmentLayer("gamma")}
+                >
+                  <Palette className='w-3 h-3 mr-1' />
+                  Gamma
+                </Button>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='text-xs h-8 justify-start'
+                  onClick={() => handleAddAdjustmentLayer("hue")}
+                >
+                  <Droplets className='w-3 h-3 mr-1' />
+                  Hue
+                </Button>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='text-xs h-8 justify-start'
+                  onClick={() => handleAddAdjustmentLayer("saturation")}
+                >
+                  <Droplets className='w-3 h-3 mr-1' />
+                  Saturation
+                </Button>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='text-xs h-8 justify-start'
+                  onClick={() => handleAddAdjustmentLayer("temperature")}
+                >
+                  <Droplets className='w-3 h-3 mr-1' />
+                  Temperature
+                </Button>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='text-xs h-8 justify-start'
+                  onClick={() => handleAddAdjustmentLayer("vibrance")}
+                >
+                  <Sparkles className='w-3 h-3 mr-1' />
+                  Vibrance
+                </Button>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='text-xs h-8 justify-start'
+                  onClick={() => handleAddAdjustmentLayer("grayscale")}
+                >
+                  <Eclipse className='w-3 h-3 mr-1' />
+                  Grayscale
+                </Button>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='text-xs h-8 justify-start'
+                  onClick={() => handleAddAdjustmentLayer("sepia")}
+                >
+                  <Eclipse className='w-3 h-3 mr-1' />
+                  Sepia
+                </Button>
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
+        <div className='text-xs ml-auto text-muted-foreground'>
+          {layers.length === 1 ? "1 layer" : `${layers.length} layers`}
+        </div>
 
         {/* Empty layer button */}
         {/* <Button
@@ -330,7 +476,7 @@ function DraggableLayerItem({
   onOpacityChange,
   onMoveLayer,
 }: DraggableLayerItemProps) {
-  const { setEphemeral } = useEditorContext()
+  const { setEphemeral, updateAdjustmentParameters } = useEditorContext()
   const [{ isDragging }, drag] = useDrag<
     DragItem,
     void,
@@ -468,36 +614,49 @@ function DraggableLayerItem({
   }, [isDragging, history])
 
   return (
-    <div
-      ref={ref}
-      className={cn(
-        "cursor-pointer transition-colors w-full text-left rounded-sm space-y-1",
-        isSelected
-          ? "border-primary bg-primary/10"
-          : "border-border hover:border-primary/50",
-        isDragging && "opacity-50",
-        isOver && "border-primary/30"
+    <div>
+      <div
+        ref={ref}
+        className={cn(
+          "cursor-pointer transition-colors w-full text-left rounded-sm space-y-1",
+          isSelected
+            ? "border-primary bg-primary/10"
+            : "border-border hover:border-primary/50",
+          isSelected && layer.type === "adjustment" && "rounded-b-none",
+          isDragging && "opacity-50",
+          isOver && "border-primary/30"
+        )}
+        onClick={onSelect}
+        aria-label={`Select layer ${layer.name}`}
+        onKeyDown={(e: React.KeyboardEvent) => {
+          if (e.key === "Enter") {
+            onSelect()
+          }
+        }}
+      >
+        <LayerItemContent
+          layer={layer}
+          isSelected={isSelected}
+          onSelect={onSelect}
+          onDelete={onDelete}
+          onDuplicate={onDuplicate}
+          onToggleVisibility={onToggleVisibility}
+          onToggleLock={onToggleLock}
+          onNameChange={onNameChange}
+          onOpacityChange={onOpacityChange}
+          isDragActive={isDragging || isGlobalDragActive}
+        />
+      </div>
+      {layer.type === "adjustment" && isSelected && (
+        <div>
+          <AdjustmentLayerEditor
+            layer={layer as AdjustmentLayer}
+            onUpdate={(parameters) => {
+              updateAdjustmentParameters(layer.id, parameters)
+            }}
+          />
+        </div>
       )}
-      onClick={onSelect}
-      aria-label={`Select layer ${layer.name}`}
-      onKeyDown={(e: React.KeyboardEvent) => {
-        if (e.key === "Enter") {
-          onSelect()
-        }
-      }}
-    >
-      <LayerItemContent
-        layer={layer}
-        isSelected={isSelected}
-        onSelect={onSelect}
-        onDelete={onDelete}
-        onDuplicate={onDuplicate}
-        onToggleVisibility={onToggleVisibility}
-        onToggleLock={onToggleLock}
-        onNameChange={onNameChange}
-        onOpacityChange={onOpacityChange}
-        isDragActive={isDragging || isGlobalDragActive}
-      />
     </div>
   )
 }
@@ -672,22 +831,55 @@ function LayerThumbnail({ layer }: { layer: EditorLayer }) {
   const [thumbnailUrl, setThumbnailUrl] = React.useState<string | null>(null)
 
   React.useEffect(() => {
-    const file = layer.image
-    // Only accept Blob/File instances
-    if (file && typeof window !== "undefined" && file instanceof Blob) {
-      const url = URL.createObjectURL(file)
-      setThumbnailUrl(url)
+    if (layer.type === "image") {
+      const file = (layer as any).image
+      // Only accept Blob/File instances
+      if (file && typeof window !== "undefined" && file instanceof Blob) {
+        const url = URL.createObjectURL(file)
+        setThumbnailUrl(url)
 
-      return () => {
-        try {
-          URL.revokeObjectURL(url)
-        } catch {}
-        setThumbnailUrl(null)
+        return () => {
+          try {
+            URL.revokeObjectURL(url)
+          } catch {}
+          setThumbnailUrl(null)
+        }
       }
     }
-    // Clean up if no image
+    // Clean up if no image or not an image layer
     setThumbnailUrl(null)
-  }, [layer.image])
+  }, [layer])
+
+  if (layer.type === "adjustment") {
+    // Show adjustment layer icon
+    const adjustment = layer as AdjustmentLayer
+    const icon = getAdjustmentIcon(adjustment.adjustmentType)
+    return (
+      <div className='w-6 h-6 rounded-xs overflow-hidden border border-border flex items-center justify-center'>
+        {icon}
+      </div>
+    )
+  }
+
+  if (layer.type === "group") {
+    // Show group layer icon
+    return (
+      <div className='w-6 h-6 rounded-xs overflow-hidden border border-border flex items-center justify-center'>
+        <Layers className='w-3 h-3' />
+      </div>
+    )
+  }
+
+  if (layer.type === "solid") {
+    // Show solid color layer
+    const solid = layer as any
+    return (
+      <div
+        className='w-6 h-6 rounded-xs overflow-hidden border border-border'
+        style={{ backgroundColor: `rgba(${solid.color.join(",")})` }}
+      />
+    )
+  }
 
   if (!thumbnailUrl) {
     return <div className='size-6' />
@@ -700,6 +892,78 @@ function LayerThumbnail({ layer }: { layer: EditorLayer }) {
         alt={layer.name}
         className='w-full h-full object-cover'
       />
+    </div>
+  )
+}
+
+// Helper function to get appropriate icon for adjustment types
+function getAdjustmentIcon(adjustmentType: string) {
+  switch (adjustmentType) {
+    case "brightness":
+    case "exposure":
+      return <Sun className='w-3 h-3' />
+    case "contrast":
+    case "gamma":
+      return <Palette className='w-3 h-3' />
+    case "hue":
+    case "saturation":
+    case "temperature":
+    case "tint":
+      return <Droplets className='w-3 h-3' />
+    case "vibrance":
+    case "vintage":
+      return <Sparkles className='w-3 h-3' />
+    case "grayscale":
+    case "invert":
+    case "sepia":
+      return <Eclipse className='w-3 h-3' />
+    default:
+      return <Palette className='w-3 h-3' />
+  }
+}
+
+// Adjustment Layer Editor Component
+interface AdjustmentLayerEditorProps {
+  layer: AdjustmentLayer
+  onUpdate: (parameters: Record<string, number>) => void
+}
+
+function AdjustmentLayerEditor({
+  layer,
+  onUpdate,
+}: AdjustmentLayerEditorProps) {
+  const handleParameterChange = (key: string, value: number) => {
+    onUpdate({ [key]: value })
+  }
+
+  const renderParameterControl = (key: string, value: number) => {
+    const min = key === "gamma" ? 0.1 : key === "hue" ? -180 : 0
+    const max = key === "gamma" ? 3.0 : key === "hue" ? 180 : 200
+    const step = key === "gamma" ? 0.1 : 1
+
+    return (
+      <div key={key} className='flex items-center gap-2'>
+        <input
+          type='range'
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          onChange={(e) => handleParameterChange(key, Number(e.target.value))}
+          className='h-1 bg-accent rounded-full appearance-none cursor-pointer flex-1'
+        />
+        <span className='text-xs w-8'>{value}%</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className='flex items-center pl-2 mb-4 rounded-b-sm h-10 border'>
+      <div className='flex flex-col  w-full'>
+        {Object.entries(layer.parameters).map(([key, value]) =>
+          renderParameterControl(key, value)
+        )}
+      </div>
     </div>
   )
 }

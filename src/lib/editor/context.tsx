@@ -1,13 +1,17 @@
 "use client"
 
 import React from "react"
+import type {
+  EditorRuntimeState,
+  CanonicalEditorState,
+  EditorLayer,
+  ImageLayer,
+  LayerId,
+  ViewportModel,
+  ActiveToolModel,
+  EphemeralEditorState,
+} from "@/lib/editor/state"
 import {
-  type ActiveToolModel,
-  type CanonicalEditorState,
-  type EditorRuntimeState,
-  type EditorLayer,
-  type EphemeralEditorState,
-  type LayerId,
   normalizeLayers,
   createEditorRuntimeState,
   addLayer as addLayerCanonical,
@@ -28,6 +32,8 @@ import {
   SetSelectionCommand,
   SetViewportCommand,
   SetActiveToolCommand,
+  AddAdjustmentLayerCommand,
+  UpdateAdjustmentParametersCommand,
 } from "@/lib/editor/commands"
 import { loadDocument } from "@/lib/editor/persistence"
 
@@ -55,6 +61,15 @@ type EditorContextValue = {
   pushLayerUpdate: (
     layerId: LayerId,
     update: Partial<Omit<EditorLayer, "id">>
+  ) => void
+  addAdjustmentLayer: (
+    adjustmentType: string,
+    parameters: Record<string, number>,
+    position: "top" | "bottom" | number
+  ) => void
+  updateAdjustmentParameters: (
+    layerId: LayerId,
+    parameters: Record<string, number>
   ) => void
   setBlendMode: (layerId: LayerId, blendMode: EditorLayer["blendMode"]) => void
   setOpacity: (layerId: LayerId, opacity: number) => void
@@ -123,11 +138,12 @@ export function EditorProvider({
       activeTool: { sidebar: "rotate", tool: "rotate" } as ActiveToolModel,
     })
 
-    const baseLayer: EditorLayer = {
+    const baseLayer: ImageLayer = {
       id: "layer-1",
       name: "Layer 1",
       visible: true,
       locked: false,
+      type: "image",
       filters: { ...defaultFilters },
       opacity: 100,
       isEmpty: !initialImage,
@@ -245,11 +261,12 @@ export function EditorProvider({
   }, [])
 
   const addEmptyLayer = React.useCallback(() => {
-    const newLayer: EditorLayer = {
+    const newLayer: ImageLayer = {
       id: `layer-${Date.now()}`,
       name: `Layer ${runtime.canonical.layers.order.length + 1}`,
       visible: true,
       locked: false,
+      type: "image",
       filters: { ...defaultFilters },
       opacity: 100,
       isEmpty: true,
@@ -263,11 +280,12 @@ export function EditorProvider({
 
   const addImageLayer = React.useCallback(
     (file: File) => {
-      const newLayer: EditorLayer = {
+      const newLayer: ImageLayer = {
         id: `layer-${Date.now()}`,
         name: file.name || `Layer ${runtime.canonical.layers.order.length + 1}`,
         visible: true,
         locked: false,
+        type: "image",
         filters: { ...defaultFilters },
         opacity: 100,
         isEmpty: false,
@@ -321,6 +339,30 @@ export function EditorProvider({
   const pushLayerUpdate = React.useCallback(
     (layerId: LayerId, update: Partial<Omit<EditorLayer, "id">>) => {
       historyRef.current?.push(new UpdateLayerCommand(layerId, update))
+    },
+    []
+  )
+
+  const addAdjustmentLayer = React.useCallback(
+    (
+      adjustmentType: string,
+      parameters: Record<string, number>,
+      position: "top" | "bottom" | number = "top"
+    ) => {
+      historyRef.current?.beginTransaction("Add Adjustment Layer")
+      historyRef.current?.push(
+        new AddAdjustmentLayerCommand(adjustmentType, parameters, position)
+      )
+      historyRef.current?.endTransaction(true)
+    },
+    []
+  )
+
+  const updateAdjustmentParameters = React.useCallback(
+    (layerId: LayerId, parameters: Record<string, number>) => {
+      historyRef.current?.execute(
+        new UpdateAdjustmentParametersCommand(layerId, parameters)
+      )
     },
     []
   )
@@ -383,6 +425,8 @@ export function EditorProvider({
       reorderLayers,
       updateLayer,
       pushLayerUpdate,
+      addAdjustmentLayer,
+      updateAdjustmentParameters,
       setBlendMode,
       setOpacity,
       setLayerName,
@@ -443,6 +487,8 @@ export function EditorProvider({
       reorderLayers,
       updateLayer,
       pushLayerUpdate,
+      addAdjustmentLayer,
+      updateAdjustmentParameters,
       setBlendMode,
       setOpacity,
       setLayerName,

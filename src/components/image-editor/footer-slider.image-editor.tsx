@@ -1,4 +1,4 @@
-import { TOOL_VALUES } from "@/constants"
+import { TOOL_VALUES } from "@/components/image-editor/state.image-editor"
 import { onToolControlValueChange } from "@/lib/utils"
 import SlidingTrack from "../sliding-track"
 

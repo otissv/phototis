@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import type { SIDEBAR_TOOLS } from "@/constants"
+import type { SIDEBAR_TOOLS } from "@/components/image-editor/state.image-editor"
 
 import { ImageEditorButton } from "./button.image-editor"
 import {
@@ -27,17 +27,6 @@ import { RotationControls } from "./tools/rotation.tools"
 import { ScaleButton, ScaleControls } from "./tools/scale.tools"
 import { ResizeButton, ResizeControls } from "./tools/resize.tools"
 import { UpscaleButton } from "./tools/upscale.tools"
-import { BrightnessButton, BrightnessControls } from "./tools/brightness.tools"
-import { ContrastButton, ContrastControls } from "./tools/contrast.tools"
-import { SaturationButton, SaturationControls } from "./tools/saturation.tools"
-import { HueButton, HueControls } from "./tools/hue.tools"
-import { ExposureButton, ExposureControls } from "./tools/exposure.tools"
-import {
-  TemperatureButton,
-  TemperatureControls,
-} from "./tools/temperature.tools"
-import { GammaButton, GammaControls } from "./tools/gamma.tools"
-import { VintageButton, VintageControls } from "./tools/vintage.tools"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -49,12 +38,8 @@ import { useEditorContext } from "@/lib/editor/context"
 import { Button } from "../ui/button"
 import { QualityOptions } from "./quaity-options.image-editor"
 import { SharpenButton, SharpenControls } from "./tools/sharpen.tools"
-import { TintButton, TintControls } from "./tools/tint.tools"
-import { VibranceButton, VibranceControls } from "./tools/vibrance.tools"
-import { GrainButton, GrainControls } from "./tools/grain.tools"
-import { InvertButton, InvertControls } from "./tools/invert.tools"
+
 import { SepiaButton, SepiaControls } from "./tools/sepia.tools"
-import { GrayscaleButton, GrayscaleControls } from "./tools/grayscale.tools"
 import { NoiseButton, NoiseControls } from "./tools/noise.tools"
 import { CropButton, CropControls } from "./tools/crop.tools"
 
@@ -68,17 +53,6 @@ export function getEditorTools({
   drawFnRef: React.RefObject<() => void>
 }) {
   switch (selectedSidebar) {
-    case "adjust":
-      return {
-        header: (_props: ImageEditorHeaderProps) => <></>,
-        footer: (props: ImageEditorFooterProps) => (
-          <AdjustFooter
-            {...props}
-            canvasRef={canvasRef}
-            drawFnRef={drawFnRef}
-          />
-        ),
-      }
     case "effects":
       return {
         header: (_props: ImageEditorHeaderProps) => <></>,
@@ -115,182 +89,6 @@ export function getEditorTools({
         footer: (_props: ImageEditorFooterProps) => <></>,
       }
   }
-}
-
-/**
- * Adjust
- */
-export function AdjustFooter({
-  selectedTool,
-  value,
-  onSelectedToolChange,
-  dispatch,
-  toolsValues,
-  progress,
-  image,
-  onChange: _onChange,
-  onProgress: _onProgress,
-  canvasRef,
-  drawFnRef,
-  ...props
-}: ImageEditorFooterProps) {
-  const { history } = useEditorContext()
-  const overlayCanvas = React.useRef<HTMLCanvasElement | null>(null)
-  React.useEffect(() => {
-    overlayCanvas.current = document.getElementById(
-      "image-editor-overlay"
-    ) as HTMLCanvasElement | null
-  }, [])
-
-  const drawOverlayPreview = React.useCallback((value: number) => {
-    const c = overlayCanvas.current
-    const ctx = c?.getContext("2d")
-    if (!ctx || !c) return
-    ctx.clearRect(0, 0, c.width, c.height)
-    // Simple preview marker: draw a small bar showing value change. Replace with shader-based preview as needed.
-    ctx.fillStyle = "rgba(59,130,246,0.25)"
-    const w = c.width
-    const h = c.height
-    ctx.fillRect(0, h - 6, Math.max(0, Math.min(w, (w * value) / 100)), 6)
-  }, [])
-
-  const clearOverlay = React.useCallback(() => {
-    const ctx = overlayCanvas.current?.getContext("2d")
-    if (!ctx || !overlayCanvas.current) return
-    ctx.clearRect(
-      0,
-      0,
-      overlayCanvas.current.width,
-      overlayCanvas.current.height
-    )
-  }, [])
-
-  const handleOnChange = React.useCallback(
-    (value: number) => {
-      dispatch({ type: selectedTool, payload: value })
-    },
-    [dispatch, selectedTool]
-  )
-
-  const Control = React.useMemo(() => {
-    const controlProps = {
-      image,
-      value,
-      progress,
-      selectedTool,
-      label: (value: number, operator: string) => {
-        if (selectedTool === "rotate") {
-          return `${Math.round(value)} ${operator}`
-        }
-        return `${Math.round(value)} ${operator}`
-      },
-      onChange: handleOnChange,
-    }
-    switch (selectedTool) {
-      case "brightness":
-        return <BrightnessControls {...controlProps} />
-      case "contrast":
-        return <ContrastControls {...controlProps} />
-      case "exposure":
-        return <ExposureControls {...controlProps} />
-      case "gamma":
-        return <GammaControls {...controlProps} />
-      case "hue":
-        return <HueControls {...controlProps} />
-      case "saturation":
-        return <SaturationControls {...controlProps} />
-      case "temperature":
-        return <TemperatureControls {...controlProps} />
-      case "vintage":
-        return <VintageControls {...controlProps} />
-
-      case "tint":
-        return <TintControls {...controlProps} />
-      case "vibrance":
-        return <VibranceControls {...controlProps} />
-    }
-  }, [selectedTool, value, progress, handleOnChange, image])
-
-  return (
-    <div {...props}>
-      <div className='flex justify-center overflow-x-auto '>
-        <div className='max-w-lg'>{Control}</div>
-      </div>
-      <ul className='flex gap-6 w-full max-w-lg overflow-x-auto py-2'>
-        <li>
-          <BrightnessButton
-            onSelectedToolChange={onSelectedToolChange}
-            selectedTool={selectedTool}
-            progress={progress}
-          />
-        </li>
-        <li>
-          <ContrastButton
-            onSelectedToolChange={onSelectedToolChange}
-            selectedTool={selectedTool}
-            progress={progress}
-          />
-        </li>
-        <li>
-          <HueButton
-            onSelectedToolChange={onSelectedToolChange}
-            selectedTool={selectedTool}
-            progress={progress}
-          />
-        </li>
-        <li>
-          <SaturationButton
-            onSelectedToolChange={onSelectedToolChange}
-            selectedTool={selectedTool}
-            progress={progress}
-          />
-        </li>
-        <li>
-          <ExposureButton
-            onSelectedToolChange={onSelectedToolChange}
-            selectedTool={selectedTool}
-            progress={progress}
-          />
-        </li>
-        <li>
-          <TemperatureButton
-            onSelectedToolChange={onSelectedToolChange}
-            selectedTool={selectedTool}
-            progress={progress}
-          />
-        </li>
-        <li>
-          <GammaButton
-            onSelectedToolChange={onSelectedToolChange}
-            selectedTool={selectedTool}
-            progress={progress}
-          />
-        </li>
-        <li>
-          <VintageButton
-            onSelectedToolChange={onSelectedToolChange}
-            selectedTool={selectedTool}
-            progress={progress}
-          />
-        </li>
-
-        <li>
-          <TintButton
-            onSelectedToolChange={onSelectedToolChange}
-            selectedTool={selectedTool}
-            progress={progress}
-          />
-        </li>
-        <li>
-          <VibranceButton
-            onSelectedToolChange={onSelectedToolChange}
-            selectedTool={selectedTool}
-            progress={progress}
-          />
-        </li>
-      </ul>
-    </div>
-  )
 }
 
 /**
@@ -349,19 +147,9 @@ export function EffectsFooter({
           dispatch({ type: "grain", payload: value })
           history.end(true)
           return
-        case "invert":
-          history.begin("Invert")
-          dispatch({ type: "invert", payload: value })
-          history.end(true)
-          return
         case "sepia":
           history.begin("Sepia")
           dispatch({ type: "sepia", payload: value })
-          history.end(true)
-          return
-        case "grayscale":
-          history.begin("Grayscale")
-          dispatch({ type: "grayscale", payload: value })
           history.end(true)
           return
         default:
@@ -386,12 +174,6 @@ export function EffectsFooter({
       onChange: handleOnChange,
     }
     switch (selectedTool) {
-      case "grain":
-        return <GrainControls {...controlProps} />
-      case "grayscale":
-        return <GrayscaleControls {...controlProps} />
-      case "invert":
-        return <InvertControls {...controlProps} />
       case "noise":
         return <NoiseControls {...controlProps} />
       case "sepia":
@@ -484,20 +266,7 @@ export function EffectsFooter({
             progress={progress}
           />
         </li>
-        <li>
-          <GrayscaleButton
-            onSelectedToolChange={onSelectedToolChange}
-            selectedTool={selectedTool}
-            progress={progress}
-          />
-        </li>
-        <li>
-          <InvertButton
-            onSelectedToolChange={onSelectedToolChange}
-            selectedTool={selectedTool}
-            progress={progress}
-          />
-        </li>
+
         <li>
           <NoiseButton
             onSelectedToolChange={onSelectedToolChange}

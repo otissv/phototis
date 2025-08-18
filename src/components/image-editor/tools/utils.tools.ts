@@ -1,6 +1,6 @@
 import type { ImageEditorToolsState } from "../state.image-editor"
 
-import type { TOOL_VALUES } from "@/constants"
+import type { TOOL_VALUES } from "@/components/image-editor/state.image-editor"
 import type { ImageEditorToolsActions } from "../state.image-editor"
 
 export interface ImageEditorHeaderProps

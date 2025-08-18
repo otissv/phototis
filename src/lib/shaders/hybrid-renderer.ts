@@ -822,6 +822,48 @@ export class HybridRenderer {
       return
     }
 
+    // Provide safe defaults for tool values to avoid undefined access
+    const DEFAULT_TOOLS: Partial<ImageEditorToolsState> = {
+      // adjustments
+      // Numbers chosen to represent neutral/no-op values
+      brightness: 100,
+      contrast: 100,
+      saturation: 100,
+      exposure: 0,
+      gamma: 1,
+      hue: 0,
+      temperature: 0,
+      vibrance: 0,
+      grayscale: 0,
+      invert: 0,
+      sepia: 0,
+      // effects
+      blur: 0,
+      blurType: 0,
+      blurDirection: 0,
+      blurCenter: 0.5,
+      sharpen: 0,
+      noise: 0,
+      grain: 0,
+      // orientation and zoom
+      rotate: 0,
+      scale: 100,
+      flipHorizontal: false,
+      flipVertical: false,
+      zoom: 100,
+      // placeholders for required fields in state type (will be ignored here)
+      history: [],
+      historyPosition: 0,
+      upscale: 0,
+      resize: { width: 0, height: 0 },
+      crop: { x: 0, y: 0, width: 0, height: 0 },
+    } as Partial<ImageEditorToolsState>
+
+    const withDefaults = (
+      tv: ImageEditorToolsState | undefined
+    ): ImageEditorToolsState =>
+      ({ ...(DEFAULT_TOOLS as any), ...(tv || {}) }) as ImageEditorToolsState
+
     // Get layers in proper rendering order (bottom to top)
     const visibleLayers = this.getRenderingOrder(layers)
 
@@ -846,9 +888,11 @@ export class HybridRenderer {
         continue
       }
 
-      // Get the tools values for this layer
+      // Get the tools values for this layer with safe defaults
       const layerToolsValues =
-        layer.id === selectedLayerId ? toolsValues : layer.filters
+        layer.id === selectedLayerId
+          ? withDefaults(toolsValues)
+          : withDefaults((layer as any).filters)
 
       // Render this layer with its filters using layer-specific FBO
       const renderedLayerTexture = this.renderLayer(
