@@ -29,7 +29,12 @@ import {
 import { BLEND_MODE_NAMES, type BlendMode } from "@/lib/shaders/blend-modes"
 import { useEditorContext } from "@/lib/editor/context"
 import type { EditorLayer, AdjustmentLayer } from "@/lib/editor/state"
-import { TOOL_VALUES } from "@/components/image-editor/state.image-editor"
+import {
+  TOOL_VALUES,
+  ToolValueColorType,
+} from "@/components/image-editor/state.image-editor"
+import { Color } from "@/components/color"
+import { colorPalette } from "../color-palette"
 
 export interface LayerSystemProps extends React.ComponentProps<"div"> {}
 
@@ -157,25 +162,28 @@ export function LayerSystem({ className, ...props }: LayerSystemProps) {
     (adjustmentType: string) => {
       // Default parameters for each adjustment type
       const defaultParams: Record<string, Record<string, number>> = {
-        brightness: { brightness: 100 },
-        contrast: { contrast: 100 },
-        exposure: { exposure: 0 },
-        gamma: { gamma: 1 },
-        hue: { hue: 0 },
-        saturation: { saturation: 100 },
-        temperature: { temperature: 0 },
-        tint: { tint: 0 },
-        vibrance: { vibrance: 0 },
-        vintage: { vintage: 0 },
-        grayscale: { grayscale: 0 },
-        invert: { invert: 0 },
-        sepia: { sepia: 0 },
+        brightness: {
+          brightness: TOOL_VALUES.brightness.defaultValue as number,
+        },
+        contrast: { contrast: TOOL_VALUES.contrast.defaultValue as number },
+        exposure: { exposure: TOOL_VALUES.exposure.defaultValue as number },
+        gamma: { gamma: TOOL_VALUES.gamma.defaultValue as number },
+        hue: { hue: TOOL_VALUES.hue.defaultValue as number },
+        saturation: {
+          saturation: TOOL_VALUES.saturation.defaultValue as number,
+        },
+        temperature: {
+          temperature: TOOL_VALUES.temperature.defaultValue as number,
+        },
+        tint: { tint: TOOL_VALUES.tint.defaultValue as number },
+        vibrance: { vibrance: TOOL_VALUES.vibrance.defaultValue as number },
+        vintage: { vintage: TOOL_VALUES.vintage.defaultValue as number },
+        grayscale: { grayscale: TOOL_VALUES.grayscale.defaultValue as number },
+        invert: { invert: TOOL_VALUES.invert.defaultValue as number },
+        sepia: { sepia: TOOL_VALUES.sepia.defaultValue as number },
       }
 
-      const parameters = defaultParams[adjustmentType] || {
-        [adjustmentType]: 0,
-      }
-      addAdjustmentLayer(adjustmentType, parameters, "top")
+      addAdjustmentLayer(adjustmentType, defaultParams[adjustmentType], "top")
     },
     [addAdjustmentLayer]
   )
@@ -924,35 +932,59 @@ function getAdjustmentIcon(adjustmentType: string) {
 // Adjustment Layer Editor Component
 interface AdjustmentLayerEditorProps {
   layer: AdjustmentLayer
-  onUpdate: (parameters: Record<string, number>) => void
+  onUpdate: (
+    parameters: Record<string, number | { value: number; color: string }>
+  ) => void
 }
 
 function AdjustmentLayerEditor({
   layer,
   onUpdate,
 }: AdjustmentLayerEditorProps) {
-  const handleParameterChange = (key: string, value: number) => {
+  const handleParameterChange = (
+    key: string,
+    value: number | { value: number; color: string }
+  ) => {
     onUpdate({ [key]: value })
   }
 
-  const renderParameterControl = (key: string, value: number) => {
-    return (
-      <div key={key} className='flex items-center gap-2'>
-        <input
-          type='range'
-          min={(TOOL_VALUES[key as keyof typeof TOOL_VALUES] as any).min}
-          max={(TOOL_VALUES[key as keyof typeof TOOL_VALUES] as any).max}
-          step={(TOOL_VALUES[key as keyof typeof TOOL_VALUES] as any).step}
-          value={
-            value ||
-            (TOOL_VALUES[key as keyof typeof TOOL_VALUES] as any).defaultValue
-          }
-          onChange={(e) => handleParameterChange(key, Number(e.target.value))}
-          className='h-1 bg-accent rounded-full appearance-none cursor-pointer flex-1'
-        />
-        <span className='text-xs w-8'>{value}%</span>
-      </div>
-    )
+  const renderParameterControl = (
+    key: string,
+    value: number | ToolValueColorType["defaultValue"]
+  ) => {
+    let inputValue: unknown
+
+    if (typeof value === "number") {
+      inputValue =
+        value ??
+        (TOOL_VALUES[key as keyof typeof TOOL_VALUES] as any).defaultValue
+    } else {
+      inputValue =
+        value.value ??
+        (TOOL_VALUES[key as keyof typeof TOOL_VALUES] as any).defaultValue.value
+    }
+
+    switch (key) {
+      case "solid":
+      case "tint":
+        return (
+          <AdjustmentLayerColor
+            key={key}
+            id={key}
+            value={inputValue as ToolValueColorType["defaultValue"]}
+            onChange={(value) => handleParameterChange(key, value)}
+          />
+        )
+      default:
+        return (
+          <AdjustmentLayerSlider
+            key={key}
+            id={key}
+            value={inputValue as number}
+            onChange={(value) => handleParameterChange(key, value)}
+          />
+        )
+    }
   }
 
   return (
@@ -962,6 +994,73 @@ function AdjustmentLayerEditor({
           renderParameterControl(key, value)
         )}
       </div>
+    </div>
+  )
+}
+
+export interface AdjustmentLayerSliderProps {
+  id: string
+  value: number
+  onChange: (value: number) => void
+}
+
+export function AdjustmentLayerSlider({
+  id,
+  value,
+  onChange,
+}: AdjustmentLayerSliderProps) {
+  return (
+    <div className='flex items-center gap-2 px-2'>
+      <input
+        id={id}
+        type='range'
+        min={(TOOL_VALUES[id as keyof typeof TOOL_VALUES] as any).min}
+        max={(TOOL_VALUES[id as keyof typeof TOOL_VALUES] as any).max}
+        step={(TOOL_VALUES[id as keyof typeof TOOL_VALUES] as any).step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className='h-1 bg-accent rounded-full appearance-none cursor-pointer flex-1'
+      />
+      <span className='text-xs'>{value as number}</span>
+    </div>
+  )
+}
+
+export interface AdjustmentLayerColorProps {
+  id: string
+  value: ToolValueColorType["defaultValue"]
+  onChange: (value: ToolValueColorType["defaultValue"]) => void
+}
+
+export function AdjustmentLayerColor({
+  id,
+  value: { value, color },
+  onChange,
+}: AdjustmentLayerColorProps) {
+  const handleOnChange =
+    (key: "value" | "color") => (input: number | string) => {
+      onChange({
+        value,
+        color,
+        [key]: input,
+      })
+    }
+  return (
+    <div className='flex items-center gap-2 px-2'>
+      <AdjustmentLayerSlider
+        id={id}
+        value={value}
+        onChange={handleOnChange("value")}
+      />
+      <Color
+        color={color}
+        colors={colorPalette}
+        disabled={false}
+        onSelect={handleOnChange("color")}
+        onCustomColorChange={([id, value]) =>
+          handleOnChange(id as "value" | "color")(value)
+        }
+      />
     </div>
   )
 }
