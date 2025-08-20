@@ -203,7 +203,7 @@ export const TOOL_VALUES: Record<ToolValueKeys, ToolValueTypes> = {
     min: 0,
     max: 100,
     step: 1,
-    defaultValue: 0,
+    defaultValue: 100,
   },
   tint: {
     min: -100,

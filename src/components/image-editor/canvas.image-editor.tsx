@@ -199,40 +199,6 @@ export function ImageEditorCanvas({
     scale: 1,
   })
 
-  // Build cumulative effect stack from adjustment layers
-  const buildEffectStack = React.useCallback(() => {
-    const layers = state.canonical.layers.order
-    const byId = state.canonical.layers.byId
-    let cumulativeEffects: ImageEditorToolsState = { ...initialState }
-
-    // Process layers from bottom to top to build cumulative effects
-    for (const layerId of layers) {
-      const layer = byId[layerId]
-      if (!layer || !layer.visible) continue
-
-      if (layer.type === "image") {
-        // Image layers contribute their own filters
-        const imageLayer = layer as any
-        if (imageLayer.filters) {
-          cumulativeEffects = { ...cumulativeEffects, ...imageLayer.filters }
-        }
-      } else if (layer.type === "adjustment") {
-        // Adjustment layers modify the cumulative effects
-        const adjustment = layer as any
-        if (adjustment.parameters) {
-          // Map adjustment parameters to the tools state format
-          Object.entries(adjustment.parameters).forEach(([key, value]) => {
-            if (key in cumulativeEffects) {
-              ;(cumulativeEffects as any)[key] = value
-            }
-          })
-        }
-      }
-    }
-
-    return cumulativeEffects
-  }, [state.canonical.layers.order, state.canonical.layers.byId])
-
   // Get the effective filters for the selected layer (including adjustment layers above it)
   const effectiveFilters = React.useMemo(() => {
     if (!selectedLayerId) return initialState

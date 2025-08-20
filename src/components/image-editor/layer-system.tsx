@@ -2,7 +2,6 @@
 
 import React from "react"
 import {
-  Plus,
   Trash2,
   Eye,
   EyeOff,
@@ -30,7 +29,7 @@ import {
 import { BLEND_MODE_NAMES, type BlendMode } from "@/lib/shaders/blend-modes"
 import { useEditorContext } from "@/lib/editor/context"
 import type { EditorLayer, AdjustmentLayer } from "@/lib/editor/state"
-import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover"
+import { TOOL_VALUES } from "@/components/image-editor/state.image-editor"
 
 export interface LayerSystemProps extends React.ComponentProps<"div"> {}
 
@@ -937,18 +936,17 @@ function AdjustmentLayerEditor({
   }
 
   const renderParameterControl = (key: string, value: number) => {
-    const min = key === "gamma" ? 0.1 : key === "hue" ? -180 : 0
-    const max = key === "gamma" ? 3.0 : key === "hue" ? 180 : 200
-    const step = key === "gamma" ? 0.1 : 1
-
     return (
       <div key={key} className='flex items-center gap-2'>
         <input
           type='range'
-          min={min}
-          max={max}
-          step={step}
-          value={value}
+          min={(TOOL_VALUES[key as keyof typeof TOOL_VALUES] as any).min}
+          max={(TOOL_VALUES[key as keyof typeof TOOL_VALUES] as any).max}
+          step={(TOOL_VALUES[key as keyof typeof TOOL_VALUES] as any).step}
+          value={
+            value ||
+            (TOOL_VALUES[key as keyof typeof TOOL_VALUES] as any).defaultValue
+          }
           onChange={(e) => handleParameterChange(key, Number(e.target.value))}
           className='h-1 bg-accent rounded-full appearance-none cursor-pointer flex-1'
         />
