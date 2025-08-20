@@ -847,7 +847,7 @@ export class HybridRenderer {
       grain: 0,
       // orientation and zoom
       rotate: 0,
-      scale: 100,
+      scale: 1,
       flipHorizontal: false,
       flipVertical: false,
       zoom: 100,
@@ -888,13 +888,63 @@ export class HybridRenderer {
         continue
       }
 
-      // Get the tools values for this layer with safe defaults
-      const layerToolsValues =
-        layer.id === selectedLayerId
-          ? withDefaults(toolsValues)
-          : withDefaults((layer as any).filters)
+      // Only render image layers; adjustment layers are handled by merging parameters
+      if ((layer as any).type !== "image") {
+        continue
+      }
 
-      // Render this layer with its filters using layer-specific FBO
+      // Base tools for this image layer: start with safe defaults and merge ONLY effect-type keys from image filters
+      const EFFECT_KEYS: Array<keyof Partial<ImageEditorToolsState>> = [
+        "blur",
+        "blurType",
+        "blurDirection",
+        "blurCenter",
+        "sharpen",
+        "noise",
+        "grain",
+      ]
+      let layerToolsValues = withDefaults(undefined)
+      const imgFilters =
+        ((layer as any).filters as Partial<ImageEditorToolsState>) || {}
+      for (const k of EFFECT_KEYS) {
+        if (Object.prototype.hasOwnProperty.call(imgFilters, k)) {
+          ;(layerToolsValues as any)[k] = (imgFilters as any)[k]
+        }
+      }
+
+      // Apply all adjustment layers that are above this layer in the stack
+      for (let j = i + 1; j < visibleLayers.length; j++) {
+        const above = visibleLayers[j] as any
+        if (
+          above &&
+          above.type === "adjustment" &&
+          above.visible &&
+          above.parameters
+        ) {
+          for (const [k, v] of Object.entries(
+            above.parameters as Record<string, number>
+          )) {
+            ;(layerToolsValues as any)[k] = v as number
+          }
+        }
+      }
+
+      // If this is the selected layer, merge in interactive toolsValues (e.g., flips/rotate/zoom)
+      if (layer.id === selectedLayerId) {
+        const selectedDefaults = withDefaults(toolsValues)
+        const INTERACTIVE_KEYS: Array<keyof Partial<ImageEditorToolsState>> = [
+          "flipHorizontal",
+          "flipVertical",
+          "rotate",
+          "scale",
+          "zoom",
+        ]
+        for (const k of INTERACTIVE_KEYS) {
+          ;(layerToolsValues as any)[k] = (selectedDefaults as any)[k]
+        }
+      }
+
+      // Render this layer with its effective filters using layer-specific FBO
       const renderedLayerTexture = this.renderLayer(
         layer,
         layerTexture,

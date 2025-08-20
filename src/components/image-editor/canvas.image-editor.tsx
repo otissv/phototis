@@ -375,6 +375,15 @@ export function ImageEditorCanvas({
     isDragActive,
   ])
 
+  // Redraw when debounced tool values change (includes adjustment parameters)
+  React.useEffect(() => {
+    if (isDragActive) return
+    const timer = setTimeout(() => {
+      drawRef.current?.()
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [debouncedToolsValues, isDragActive])
+
   // Cleanup animations on unmount
   React.useEffect(() => {
     return () => {
@@ -409,6 +418,7 @@ export function ImageEditorCanvas({
     return canonicalLayers
       .map((l) => {
         let imageSig = "img:0"
+        let adjSig = ""
         if (l.type === "image") {
           const imageLayer = l as any
           if (imageLayer.image) {
@@ -416,6 +426,10 @@ export function ImageEditorCanvas({
               (imageLayer.image as File).type
             }`
           }
+        } else if ((l as any).type === "adjustment") {
+          const params = ((l as any).parameters || {}) as Record<string, number>
+          const keys = Object.keys(params).sort()
+          adjSig = `adj:${keys.map((k) => `${k}:${params[k]}`).join("|")}`
         }
         return [
           l.id,
@@ -424,6 +438,7 @@ export function ImageEditorCanvas({
           l.opacity,
           l.blendMode,
           imageSig,
+          adjSig,
         ].join(":")
       })
       .join("|")
@@ -1173,7 +1188,7 @@ export function ImageEditorCanvas({
               }
 
               // Draw the layer
-              gl.drawArrays(gl.TRIANGLES, 0, 6)
+              gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
             }
           }
         }
