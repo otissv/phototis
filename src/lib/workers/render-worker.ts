@@ -833,12 +833,17 @@ async function renderLayers(
         const orderedLayers = layers.slice().reverse()
         for (const layer of orderedLayers) {
           const tex = renderedLayers.get(layer.id)
-          if (!tex || layer.visible === false || layer.opacity <= 0) continue
+          if (layer.visible === false || layer.opacity <= 0) continue
           // Mark as used this frame
           lastUsedFrame.set(layer.id, frameCounterRef.value)
 
           if (!readTexture) {
-            // First visible layer: blit to writeTarget
+            // First visible layer must be an image layer to establish a base
+            if (!tex) {
+              // Skip non-image (e.g., adjustment) layers until we have a base
+              continue
+            }
+            // First visible image layer: blit to writeTarget
             if (!blitProgram || !blitVAO || !blitUTexLocation) {
               throw new Error("Blit resources not initialized")
             }
@@ -863,6 +868,22 @@ async function renderLayers(
             continue
           }
 
+          // We have an accumulated base in readTexture
+          // If current layer is an adjustment layer (no tex), render adjusted top from base
+          let topTexture: WebGLTexture | null = tex || null
+          if (!topTexture && (layer as any).type === "adjustment") {
+            topTexture = await renderAdjustmentFromBase(
+              readTexture,
+              (layer as any).parameters || {},
+              canvasWidth,
+              canvasHeight
+            )
+          }
+          if (!topTexture) {
+            // Nothing to composite for this layer
+            continue
+          }
+
           // Composite current layer over accumulated result into the opposite target
           const output: CompTarget = writeTarget === ping ? pong : ping
           {
@@ -880,7 +901,7 @@ async function renderLayers(
             glCtx.uniform1i(compUBaseLocation as WebGLUniformLocation, 0)
 
             glCtx.activeTexture(glCtx.TEXTURE1)
-            glCtx.bindTexture(glCtx.TEXTURE_2D, tex)
+            glCtx.bindTexture(glCtx.TEXTURE_2D, topTexture)
             glCtx.uniform1i(compUTopLocation as WebGLUniformLocation, 1)
 
             if (compUOpacityLocation)
@@ -1199,6 +1220,70 @@ async function renderLayerWithFilters(
     return ping.tex
   } catch (error) {
     console.error("Failed to render layer with filters:", error)
+    return null
+  }
+}
+
+// Render an adjustment pass by applying given parameters to the base texture
+async function renderAdjustmentFromBase(
+  baseTexture: WebGLTexture,
+  parameters: Record<string, number>,
+  canvasWidth: number,
+  canvasHeight: number
+): Promise<WebGLTexture | null> {
+  if (!gl || !shaderManager) return null
+
+  try {
+    const glCtx = gl as WebGL2RenderingContext
+    const program = shaderManager.getProgram()
+    if (!program) return null
+
+    // Validate parameters
+    const { validatedParameters } = validateFilterParameters(parameters as any)
+
+    glCtx.useProgram(program)
+    if (!layerVAO || !layerPositionBuffer || !layerTexCoordBuffer) return null
+    glCtx.bindVertexArray(layerVAO)
+
+    const aPosLoc = glCtx.getAttribLocation(program, "a_position")
+    glCtx.bindBuffer(glCtx.ARRAY_BUFFER, layerPositionBuffer)
+    glCtx.enableVertexAttribArray(aPosLoc)
+    glCtx.vertexAttribPointer(aPosLoc, 2, glCtx.FLOAT, false, 0, 0)
+
+    const aTexLoc = glCtx.getAttribLocation(program, "a_texCoord")
+    glCtx.bindBuffer(glCtx.ARRAY_BUFFER, layerTexCoordBuffer)
+    glCtx.enableVertexAttribArray(aTexLoc)
+    glCtx.vertexAttribPointer(aTexLoc, 2, glCtx.FLOAT, false, 0, 0)
+
+    glCtx.activeTexture(glCtx.TEXTURE0)
+    glCtx.bindTexture(glCtx.TEXTURE_2D, baseTexture)
+    const uSampler = glCtx.getUniformLocation(program, "u_image")
+    if (uSampler) glCtx.uniform1i(uSampler, 0)
+
+    // Update shader uniforms; enforce full opacity in this pass
+    shaderManager.updateUniforms({
+      ...(validatedParameters as any),
+      u_opacity: 100,
+    })
+    shaderManager.setUniforms(glCtx, program)
+
+    // Draw into a pooled comp target
+    const target = checkoutCompTarget(canvasWidth, canvasHeight)
+    glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, target.fb)
+    glCtx.viewport(0, 0, canvasWidth, canvasHeight)
+    glCtx.clearColor(0, 0, 0, 0)
+    glCtx.clear(glCtx.COLOR_BUFFER_BIT)
+    glCtx.drawArrays(glCtx.TRIANGLE_STRIP, 0, 4)
+
+    glCtx.bindVertexArray(null)
+    glCtx.useProgram(null)
+    glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, null)
+
+    // Return texture and put FBO back to pool (keep texture with it)
+    // We cannot detach texture from framebuffer; keep both until next pool use
+    return target.tex
+  } catch (error) {
+    console.error("Failed to render adjustment from base:", error)
     return null
   }
 }

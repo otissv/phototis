@@ -271,9 +271,11 @@ export class HybridRenderer {
     if (samplerLocation) this.gl.uniform1i(samplerLocation, 0)
 
     // Set all layer-related uniforms (rect, transforms, filters, resolution, opacity)
+    // Apply per-layer opacity only during compositing to avoid double application.
+    // Here we render the layer content at full opacity.
     this.setLayerUniforms(
       toolsValues,
-      layer.opacity,
+      100,
       canvasWidth,
       canvasHeight,
       layerWidth,
@@ -286,6 +288,71 @@ export class HybridRenderer {
     this.gl.drawArrays(this.gl.TRIANGLE_STRIP, 0, 4)
 
     // Return the rendered texture from the temp FBO
+    return tempFBO.texture
+  }
+
+  // Render an adjustment layer by applying its parameters to the current accumulated texture
+  // This produces a full-canvas texture that represents the adjusted result of the base
+  private renderAdjustmentToTexture(
+    baseTexture: WebGLTexture,
+    adjustmentTools: ImageEditorToolsState,
+    canvasWidth: number,
+    canvasHeight: number
+  ): WebGLTexture | null {
+    if (!this.gl || !this.layerProgram) return null
+
+    // Use temp FBO as output target
+    const tempFBO = this.fboManager.getFBO("temp")
+    if (!tempFBO) return null
+
+    // Bind temp FBO and clear
+    this.fboManager.bindFBO("temp")
+    this.fboManager.clearFBO("temp", 0, 0, 0, 0)
+
+    // Use the same layer program, but sample from the base texture and use full-canvas dims
+    this.gl.useProgram(this.layerProgram)
+
+    const positionLocation = this.gl.getAttribLocation(
+      this.layerProgram,
+      "a_position"
+    )
+    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.positionBuffer)
+    this.gl.enableVertexAttribArray(positionLocation)
+    this.gl.vertexAttribPointer(positionLocation, 2, this.gl.FLOAT, false, 0, 0)
+
+    const texCoordLocation = this.gl.getAttribLocation(
+      this.layerProgram,
+      "a_texCoord"
+    )
+    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.texCoordBuffer)
+    this.gl.enableVertexAttribArray(texCoordLocation)
+    this.gl.vertexAttribPointer(texCoordLocation, 2, this.gl.FLOAT, false, 0, 0)
+
+    // Bind the accumulated base texture as the image source
+    this.gl.activeTexture(this.gl.TEXTURE0)
+    this.gl.bindTexture(this.gl.TEXTURE_2D, baseTexture)
+    const samplerLocation = this.gl.getUniformLocation(
+      this.layerProgram,
+      "u_image"
+    )
+    if (samplerLocation) this.gl.uniform1i(samplerLocation, 0)
+
+    // For adjustment rendering, we use full opacity here and composite opacity later
+    // Use full-canvas dimensions and no offsets
+    this.setLayerUniforms(
+      adjustmentTools,
+      100,
+      canvasWidth,
+      canvasHeight,
+      canvasWidth,
+      canvasHeight,
+      0,
+      0
+    )
+
+    // Draw fullscreen quad
+    this.gl.drawArrays(this.gl.TRIANGLE_STRIP, 0, 4)
+
     return tempFBO.texture
   }
 
@@ -799,7 +866,11 @@ export class HybridRenderer {
         if (!layer.visible) return false
         if (layer.opacity <= 0) return false
         if (layer.id === "layer-1") return true
-        return !!layer.image || !layer.isEmpty
+        if (layer.type === "image") {
+          return !!(layer as any).image || !(layer as any).isEmpty
+        }
+        // Non-image layers are allowed (e.g., adjustment)
+        return true
       })
       .slice()
       .reverse()
@@ -881,132 +952,147 @@ export class HybridRenderer {
     let usePing = true // Track which FBO to use for output
 
     for (let i = 0; i < visibleLayers.length; i++) {
-      const layer = visibleLayers[i]
-      const layerTexture = layerTextures.get(layer.id)
+      const layer = visibleLayers[i] as any
+      const type = layer?.type
 
-      if (!layerTexture) {
-        continue
-      }
-
-      // Only render image layers; adjustment layers are handled by merging parameters
-      if ((layer as any).type !== "image") {
-        continue
-      }
-
-      // Base tools for this image layer: start with safe defaults and merge ONLY effect-type keys from image filters
-      const EFFECT_KEYS: Array<keyof Partial<ImageEditorToolsState>> = [
-        "blur",
-        "blurType",
-        "blurDirection",
-        "blurCenter",
-        "sharpen",
-        "noise",
-        "grain",
-      ]
-      let layerToolsValues = withDefaults(undefined)
-      const imgFilters =
-        ((layer as any).filters as Partial<ImageEditorToolsState>) || {}
-      for (const k of EFFECT_KEYS) {
-        if (Object.prototype.hasOwnProperty.call(imgFilters, k)) {
-          ;(layerToolsValues as any)[k] = (imgFilters as any)[k]
-        }
-      }
-
-      // Apply all adjustment layers that are above this layer in the stack
-      for (let j = i + 1; j < visibleLayers.length; j++) {
-        const above = visibleLayers[j] as any
-        if (
-          above &&
-          above.type === "adjustment" &&
-          above.visible &&
-          above.parameters
-        ) {
-          for (const [k, v] of Object.entries(
-            above.parameters as Record<string, number>
-          )) {
-            ;(layerToolsValues as any)[k] = v as number
-          }
-        }
-      }
-
-      // If this is the selected layer, merge in interactive toolsValues (e.g., flips/rotate/zoom)
-      if (layer.id === selectedLayerId) {
-        const selectedDefaults = withDefaults(toolsValues)
-        const INTERACTIVE_KEYS: Array<keyof Partial<ImageEditorToolsState>> = [
-          "flipHorizontal",
-          "flipVertical",
-          "rotate",
-          "scale",
-          "zoom",
-        ]
-        for (const k of INTERACTIVE_KEYS) {
-          ;(layerToolsValues as any)[k] = (selectedDefaults as any)[k]
-        }
-      }
-
-      // Render this layer with its effective filters using layer-specific FBO
-      const renderedLayerTexture = this.renderLayer(
-        layer,
-        layerTexture,
-        layerToolsValues,
-        canvasWidth,
-        canvasHeight,
-        layerDimensions
-      )
-
-      if (!renderedLayerTexture) {
-        continue
-      }
-
-      // If this is the first layer (bottom layer), store it in an FBO as the base
-      if (accumulatedTexture === null) {
-        // Store the first layer in the ping FBO as the base
-        this.copyTextureToFBO(renderedLayerTexture, "ping")
-        accumulatedTexture =
-          this.fboManager.getFBO("ping")?.texture || renderedLayerTexture
-        usePing = true
-      } else {
-        // Composite this layer with the accumulated result using the layer's blend mode
-        // The accumulated result contains all visible layers below this one
-
-        // Determine which FBO to use for output
-        const outputFBO = usePing ? "ping" : "pong"
-        const inputFBO = usePing ? "pong" : "ping"
-
-        // Handle the accumulated texture - avoid copying FBO textures
-        const inputFBOObj = this.fboManager.getFBO(inputFBO)
-        const outputFBOObj = this.fboManager.getFBO(outputFBO)
-
-        if (this.fboManager.isTextureBoundToFBO(accumulatedTexture)) {
-          // The accumulated texture is an FBO texture, but not in the input FBO
-          // We need to copy it, but be careful about feedback loops
-          const sourceFBO = this.fboManager.getFBOByTexture(accumulatedTexture)
-          if (sourceFBO && sourceFBO !== inputFBO) {
-            this.copyTextureToFBO(accumulatedTexture, inputFBO)
-          }
-        } else {
-          // It's a regular texture, safe to copy
-          this.copyTextureToFBO(accumulatedTexture, inputFBO)
-        }
-
-        // Additional feedback loop check - ensure we're not trying to composite with the same texture
-        if (
-          inputFBOObj &&
-          outputFBOObj &&
-          (renderedLayerTexture === inputFBOObj.texture ||
-            renderedLayerTexture === outputFBOObj.texture)
-        ) {
-          console.warn(
-            "Feedback loop detected in layer compositing, skipping layer"
-          )
+      if (type === "image") {
+        const layerTexture = layerTextures.get(layer.id)
+        if (!layerTexture) {
           continue
         }
 
-        // Composite the current layer with the accumulated result
-        // This applies the current layer's blend mode to all visible layers below it
+        // Base tools for this image layer: start with safe defaults and merge ONLY effect-type keys from image filters
+        const EFFECT_KEYS: Array<keyof Partial<ImageEditorToolsState>> = [
+          "blur",
+          "blurType",
+          "blurDirection",
+          "blurCenter",
+          "sharpen",
+          "noise",
+          "grain",
+        ]
+        const layerToolsValues = withDefaults(undefined)
+        const imgFilters =
+          (layer.filters as Partial<ImageEditorToolsState>) || {}
+        for (const k of EFFECT_KEYS) {
+          if (Object.prototype.hasOwnProperty.call(imgFilters, k)) {
+            ;(layerToolsValues as any)[k] = (imgFilters as any)[k]
+          }
+        }
+
+        // If this is the selected layer, merge in interactive toolsValues (e.g., flips/rotate/zoom)
+        if (layer.id === selectedLayerId) {
+          const selectedDefaults = withDefaults(toolsValues)
+          const INTERACTIVE_KEYS: Array<keyof Partial<ImageEditorToolsState>> =
+            ["flipHorizontal", "flipVertical", "rotate", "scale", "zoom"]
+          for (const k of INTERACTIVE_KEYS) {
+            ;(layerToolsValues as any)[k] = (selectedDefaults as any)[k]
+          }
+        }
+
+        // Render this image layer content at full opacity
+        const renderedLayerTexture = this.renderLayer(
+          layer,
+          layerTexture,
+          layerToolsValues,
+          canvasWidth,
+          canvasHeight,
+          layerDimensions
+        )
+
+        if (!renderedLayerTexture) {
+          continue
+        }
+
+        // If this is the first layer (bottom layer), store it in an FBO as the base
+        if (accumulatedTexture === null) {
+          this.copyTextureToFBO(renderedLayerTexture, "ping")
+          accumulatedTexture =
+            this.fboManager.getFBO("ping")?.texture || renderedLayerTexture
+          usePing = true
+        } else {
+          // Composite this layer over the accumulated result using its blend mode and opacity
+          const outputFBO = usePing ? "ping" : "pong"
+          const inputFBO = usePing ? "pong" : "ping"
+
+          const inputFBOObj = this.fboManager.getFBO(inputFBO)
+          const outputFBOObj = this.fboManager.getFBO(outputFBO)
+
+          if (this.fboManager.isTextureBoundToFBO(accumulatedTexture)) {
+            const sourceFBO =
+              this.fboManager.getFBOByTexture(accumulatedTexture)
+            if (sourceFBO && sourceFBO !== inputFBO) {
+              this.copyTextureToFBO(accumulatedTexture, inputFBO)
+            }
+          } else {
+            this.copyTextureToFBO(accumulatedTexture, inputFBO)
+          }
+
+          if (
+            inputFBOObj &&
+            outputFBOObj &&
+            (renderedLayerTexture === inputFBOObj.texture ||
+              renderedLayerTexture === outputFBOObj.texture)
+          ) {
+            console.warn(
+              "Feedback loop detected in layer compositing, skipping layer"
+            )
+            continue
+          }
+
+          const compositedTexture = this.compositeLayersWithPingPong(
+            inputFBO,
+            renderedLayerTexture,
+            outputFBO,
+            layer.blendMode,
+            layer.opacity,
+            canvasWidth,
+            canvasHeight
+          )
+
+          if (compositedTexture) {
+            accumulatedTexture = compositedTexture
+            usePing = !usePing
+          }
+        }
+      } else if (type === "adjustment") {
+        // Adjustment layers operate on the accumulated result below them
+        if (accumulatedTexture === null) {
+          continue
+        }
+
+        // Build tool values from adjustment parameters
+        const adjustmentParams = (layer.parameters || {}) as Record<
+          string,
+          number
+        >
+        const adjustmentTools = withDefaults(undefined)
+        for (const [k, v] of Object.entries(adjustmentParams)) {
+          ;(adjustmentTools as any)[k] = v
+        }
+
+        // Render adjusted version of the base at full opacity
+        const adjustedTexture = this.renderAdjustmentToTexture(
+          accumulatedTexture,
+          adjustmentTools,
+          canvasWidth,
+          canvasHeight
+        )
+
+        if (!adjustedTexture) {
+          continue
+        }
+
+        // Composite adjusted result over the base using the adjustment layer's blend + opacity
+        const outputFBO = usePing ? "ping" : "pong"
+        const inputFBO = usePing ? "pong" : "ping"
+
+        // Copy accumulated base into input FBO
+        this.copyTextureToFBO(accumulatedTexture, inputFBO)
+
         const compositedTexture = this.compositeLayersWithPingPong(
           inputFBO,
-          renderedLayerTexture,
+          adjustedTexture,
           outputFBO,
           layer.blendMode,
           layer.opacity,
@@ -1016,7 +1102,7 @@ export class HybridRenderer {
 
         if (compositedTexture) {
           accumulatedTexture = compositedTexture
-          usePing = !usePing // Switch ping-pong for next iteration
+          usePing = !usePing
         }
       }
     }

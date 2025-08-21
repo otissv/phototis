@@ -31,7 +31,7 @@ import { useEditorContext } from "@/lib/editor/context"
 import type { EditorLayer, AdjustmentLayer } from "@/lib/editor/state"
 import {
   TOOL_VALUES,
-  ToolValueColorType,
+  type ToolValueColorType,
 } from "@/components/image-editor/state.image-editor"
 import { Color } from "@/components/color"
 import { colorPalette } from "../color-palette"
