@@ -125,3 +125,36 @@ html,
 body {
   height: 100%;
 }
+
+/* Slider thumb styling */
+.range-thumb::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  background: var(--thumb-color, hsl(var(--thumb-hue, 0) 100% 50%));
+  border: 1px solid oklch(1 0 0);
+  box-shadow: 0 0 0 1px oklch(0.922 0 0);
+  cursor: pointer;
+}
+
+.range-thumb::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  background: var(--thumb-color, hsl(var(--thumb-hue, 0) 100% 50%));
+  border: 1px solid oklch(1 0 0);
+  box-shadow: 0 0 0 1px oklch(0.922 0 0);
+  cursor: pointer;
+}
+
+.range-thumb:focus-visible::-webkit-slider-thumb {
+  outline: 1px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.range-thumb:focus-visible::-moz-range-thumb {
+  outline: 1px solid var(--ring);
+  outline-offset: 21x;
+}

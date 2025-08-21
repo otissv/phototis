@@ -86,10 +86,10 @@ export const TOOL_VALUES: Record<ToolValueKeys, ToolValueTypes> = {
     defaultValue: 0,
   },
   hue: {
-    min: -180,
-    max: 180,
+    min: 0,
+    max: 360,
     step: 1,
-    defaultValue: 0,
+    defaultValue: 180,
   },
   temperature: {
     min: -100,
@@ -133,10 +133,10 @@ export const TOOL_VALUES: Record<ToolValueKeys, ToolValueTypes> = {
     },
   },
   recolorHue: {
-    min: -180,
-    max: 180,
+    min: 0,
+    max: 360,
     step: 1,
-    defaultValue: 0,
+    defaultValue: 180,
   },
   recolorSaturation: {
     min: 0,
@@ -145,8 +145,8 @@ export const TOOL_VALUES: Record<ToolValueKeys, ToolValueTypes> = {
     defaultValue: 50,
   },
   recolorLightness: {
-    min: 0,
-    max: 100,
+    min: -100,
+    max: 200,
     step: 1,
     defaultValue: 50,
   },
@@ -157,7 +157,7 @@ export const TOOL_VALUES: Record<ToolValueKeys, ToolValueTypes> = {
     defaultValue: 50,
   },
   recolorPreserveLum: {
-    defaultValue: true,
+    defaultValue: false,
   },
   // Filter values
   blur: {

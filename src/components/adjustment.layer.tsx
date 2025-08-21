@@ -56,6 +56,8 @@ export function AdjustmentLayerEditor({
     onUpdate({ [key]: value })
   }
 
+  console.log(layer.parameters)
+
   const renderParameterControl = (
     key: string,
     value: number | ToolValueColorType["defaultValue"]
@@ -108,9 +110,7 @@ export function AdjustmentLayerEditor({
             onChange={(value) => handleParameterChange(key, value as any)}
           />
         )
-      case "recolorHue":
-      case "recolorSaturation":
-      case "recolorLightness":
+
       case "recolorAmount": {
         const def = (TOOL_VALUES as Record<string, any>)[key]?.defaultValue ?? 0
         const num = typeof value === "number" ? value : Number(value) || def
@@ -122,6 +122,44 @@ export function AdjustmentLayerEditor({
               id={key}
               value={num}
               onChange={(v) => handleParameterChange(key, v)}
+            />
+          </div>
+        )
+      }
+      case "recolorHue": {
+        const def = (TOOL_VALUES as Record<string, any>)[key]?.defaultValue ?? 0
+        const num = typeof value === "number" ? value : Number(value) || def
+
+        return (
+          <div className='grid grid-cols-[56px_1fr] items-center gap-2 px-2 h-10'>
+            <span className='text-xs'>{key.replace("recolor", "")}</span>
+            <AdjustmentLayerSlider
+              key={key}
+              id={key}
+              value={num}
+              onChange={(v) => handleParameterChange(key, v)}
+              thumbColor={`hsl(${num}, 100%, 50%)`}
+              style={{
+                background:
+                  "linear-gradient(to right, #ff0000 0%, #ffff00 16.66%, #00ff00 33.33%, #00ffff 50%, #0000ff 66.66%, #ff00ff 83.33%, #ff0000 100%)",
+              }}
+            />
+          </div>
+        )
+      }
+      case "recolorSaturation":
+      case "recolorLightness": {
+        const def = (TOOL_VALUES as Record<string, any>)[key]?.defaultValue ?? 0
+        const num = typeof value === "number" ? value : Number(value) || def
+        return (
+          <div className='grid grid-cols-[56px_1fr] items-center gap-2 px-2 h-10'>
+            <span className='text-xs'>{key.replace("recolor", "")}</span>
+            <AdjustmentLayerSlider
+              key={key}
+              id={key}
+              value={num}
+              onChange={(v) => handleParameterChange(key, v)}
+              grayScale={true}
             />
           </div>
         )
@@ -156,6 +194,15 @@ export function AdjustmentLayerEditor({
             value={inputValue as number}
             onChange={(value) => handleParameterChange(key, value)}
             className='px-2'
+            grayScale={
+              key === "brightness" ||
+              key === "contrast" ||
+              key === "exposure" ||
+              key === "gamma" ||
+              key === "saturation" ||
+              key === "vintage" ||
+              key === "sepia"
+            }
           />
         )
     }
@@ -174,6 +221,7 @@ export function AdjustmentLayerEditor({
 
 export interface AdjustmentLayerColorProps {
   id: string
+  parameters?: AdjustmentLayer["parameters"]
   value: string
   onChange: (value: string) => void
 }
@@ -196,17 +244,24 @@ export function AdjustmentLayerColor({
   )
 }
 
-export interface AdjustmentLayerSliderProps
-  extends React.ComponentProps<"div"> {
+export interface AdjustmentLayerSliderProps {
+  className?: string
+  grayScale?: boolean
   id: string
+  parameters?: AdjustmentLayer["parameters"]
+  style?: React.CSSProperties
   value: number
   onChange: (value: number) => void
+  thumbColor?: string
 }
 
 export function AdjustmentLayerSlider({
   className,
   id,
   value,
+  grayScale = false,
+  style,
+  thumbColor = "#000000",
   onChange,
 }: AdjustmentLayerSliderProps) {
   return (
@@ -219,7 +274,16 @@ export function AdjustmentLayerSlider({
         step={(TOOL_VALUES[id as keyof typeof TOOL_VALUES] as any).step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className='h-1 bg-accent rounded-full appearance-none cursor-pointer flex-1'
+        className='h-2 bg-accent rounded-full appearance-none cursor-pointer flex-1 range-thumb'
+        style={{
+          ["--thumb-color" as any]: thumbColor,
+          ...(grayScale
+            ? {
+                background: "linear-gradient(to right, #000000, #ffffff)",
+              }
+            : undefined),
+          ...style,
+        }}
       />
       <span className='text-xs block text-right'>{value as number}</span>
     </div>
@@ -228,6 +292,7 @@ export function AdjustmentLayerSlider({
 
 export interface AdjustmentLayerColorAndSliderProps {
   id: string
+  parameters?: AdjustmentLayer["parameters"]
   value: ToolValueColorType["defaultValue"]
   onChange: (value: ToolValueColorType["defaultValue"]) => void
 }
@@ -269,7 +334,7 @@ export function AdjustmentLayerColorAndSlider({
 export interface AdjustmentLayerToggleProps {
   className?: string
   id: string
-  toggleClassName?: string
+  parameters?: AdjustmentLayer["parameters"]
   value: number
   onChange: (value: number) => void
 }
@@ -277,7 +342,6 @@ export interface AdjustmentLayerToggleProps {
 export function AdjustmentLayerToggle({
   className,
   id,
-  toggleClassName,
   value,
   onChange,
 }: AdjustmentLayerToggleProps) {

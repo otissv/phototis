@@ -308,7 +308,8 @@ export class ShaderManager {
           float s = clamp(u_recolorSaturation / 100.0, 0.0, 1.0);
           float l = (u_recolorPreserveLum == 1)
             ? hsl.z
-            : clamp(u_recolorLightness / 100.0, 0.0, 1.0);
+            : clamp(u_recolorLightness / 100.0, -1.0, 2.0);
+          // When not preserving luminance, map lightness directly to grayscale (#000000..#ffffff)
           vec3 recolored = hsl2rgb(vec3(h, s, l));
           float amt2 = clamp(u_recolorAmount / 100.0, 0.0, 1.0);
           color.rgb = mix(src, recolored, amt2);
