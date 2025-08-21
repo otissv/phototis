@@ -65,6 +65,22 @@ export function AdjustmentLayerEditor({
     let inputValue: unknown
 
     switch (key) {
+      case "hue": {
+        const def = (TOOL_VALUES as Record<string, any>)[key]?.defaultValue ?? 0
+        const num = typeof value === "number" ? value : Number(value) || def
+
+        return (
+          <AdjustmentLayerSlider
+            key={key}
+            id={key}
+            value={num}
+            onChange={(v) => handleParameterChange(key, v)}
+            thumbColor={`hsl(${num}, 100%, 50%)`}
+            type='hue'
+            className='px-2'
+          />
+        )
+      }
       case "invert":
         return (
           <AdjustmentLayerToggle
@@ -74,7 +90,27 @@ export function AdjustmentLayerEditor({
             onChange={(value) => handleParameterChange(key, value as any)}
           />
         )
-
+      case "brightness":
+      case "contrast":
+      case "exposure":
+      case "gamma":
+      case "vintage":
+      case "sepia":
+      case "saturation": {
+        const def = (TOOL_VALUES as Record<string, any>)[key]?.defaultValue ?? 0
+        const num = typeof value === "number" ? value : Number(value) || def
+        return (
+          <div className='gap-2 px-2'>
+            <AdjustmentLayerSlider
+              key={key}
+              id={key}
+              value={num}
+              onChange={(v) => handleParameterChange(key, v)}
+              type='grayscale'
+            />
+          </div>
+        )
+      }
       case "solid":
         // For solid, the parameter can be a string (hex) or an object; show color only
         if (typeof value === "string") {
@@ -139,10 +175,7 @@ export function AdjustmentLayerEditor({
               value={num}
               onChange={(v) => handleParameterChange(key, v)}
               thumbColor={`hsl(${num}, 100%, 50%)`}
-              style={{
-                background:
-                  "linear-gradient(to right, #ff0000 0%, #ffff00 16.66%, #00ff00 33.33%, #00ffff 50%, #0000ff 66.66%, #ff00ff 83.33%, #ff0000 100%)",
-              }}
+              type='hue'
             />
           </div>
         )
@@ -159,7 +192,7 @@ export function AdjustmentLayerEditor({
               id={key}
               value={num}
               onChange={(v) => handleParameterChange(key, v)}
-              grayScale={true}
+              type='grayscale'
             />
           </div>
         )
@@ -253,15 +286,16 @@ export interface AdjustmentLayerSliderProps {
   value: number
   onChange: (value: number) => void
   thumbColor?: string
+  type?: "hue" | "grayscale" | "default"
 }
 
 export function AdjustmentLayerSlider({
   className,
   id,
   value,
-  grayScale = false,
   style,
   thumbColor = "#000000",
+  type = "default",
   onChange,
 }: AdjustmentLayerSliderProps) {
   return (
@@ -277,9 +311,15 @@ export function AdjustmentLayerSlider({
         className='h-2 bg-accent rounded-full appearance-none cursor-pointer flex-1 range-thumb'
         style={{
           ["--thumb-color" as any]: thumbColor,
-          ...(grayScale
+          ...(type === "grayscale"
             ? {
                 background: "linear-gradient(to right, #000000, #ffffff)",
+              }
+            : undefined),
+          ...(type === "hue"
+            ? {
+                background:
+                  "linear-gradient(to right, #ff0000 0%, #ffff00 16.66%, #00ff00 33.33%, #00ffff 50%, #0000ff 66.66%, #ff00ff 83.33%, #ff0000 100%)",
               }
             : undefined),
           ...style,
