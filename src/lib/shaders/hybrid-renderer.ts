@@ -10,7 +10,7 @@ import {
   COMPOSITING_FRAGMENT_SHADER,
   LAYER_RENDER_FRAGMENT_SHADER,
 } from "./compositing-shader"
-import type { ImageEditorToolsState } from "@/components/image-editor/state.image-editor"
+import type { ImageEditorToolsState } from "@/lib/state.image-editor"
 import type { EditorLayer as Layer } from "@/lib/editor/state"
 
 export interface HybridRendererOptions {

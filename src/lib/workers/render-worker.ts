@@ -1,8 +1,8 @@
 // Render Worker for WebGL operations using OffscreenCanvas
 // This worker handles all GPU-intensive operations to prevent main thread blocking
 
-import type { Layer } from "@/components/image-editor/layer-system"
-import type { ImageEditorToolsState } from "@/components/image-editor/state.image-editor"
+import type { Layer } from "@/layer-system/layer-system"
+import type { ImageEditorToolsState } from "@/lib/state.image-editor"
 import type { PipelineStage } from "@/lib/shaders/asynchronous-pipeline"
 import { AsynchronousPipeline } from "@/lib/shaders/asynchronous-pipeline"
 import { HybridRenderer } from "@/lib/shaders/hybrid-renderer"

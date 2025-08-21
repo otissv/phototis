@@ -5,9 +5,8 @@ import { DndProvider } from "react-dnd"
 import { HTML5Backend } from "react-dnd-html5-backend"
 import { Dropzone } from "@/components/Dropzone"
 import { ImageCard } from "@/components/ImageCard"
-import { Button } from "@/components/ui/button"
-import { ImageEditor } from "@/components/image-editor/image-editor"
-import { toast } from "@/components/ui/sonner"
+import { ImageEditor } from "@/image-editor/image-editor"
+import { toast } from "@/ui/sonner"
 
 // Global drag state to prevent conflicts
 let globalDragActive = false

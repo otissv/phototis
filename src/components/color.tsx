@@ -3,15 +3,11 @@
 import React from "react"
 import { Palette } from "lucide-react"
 
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
-import { Button } from "@/components/ui/button"
+import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover"
+import { Button } from "@/ui/button"
 import { cn } from "@/lib/utils"
-import { toTitle } from "@/lib/toTitle"
-import { Input } from "@/components/ui/input"
+import { toTitle } from "@/lib/utils/toTitle"
+import { Input } from "@/ui/input"
 
 type Color = {
   color: string

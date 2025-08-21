@@ -1,12 +1,12 @@
 "use client"
 
-import { Button } from "@/components/ui/button"
+import { Button } from "@/ui/button"
 import { cn } from "@/lib/utils"
 import { ArrowDownToLine, ChevronLeft, ChevronRight, Dot } from "lucide-react"
 import { motion, useMotionValue } from "motion/react"
 import type React from "react"
 import { useEffect, useId, useRef, useState, useCallback, useMemo } from "react"
-import { Input } from "./ui/input"
+import { Input } from "@/ui/input"
 
 export interface SlidingTrackProps
   extends Omit<React.ComponentProps<"div">, "onDragEnd" | "onDragStart"> {

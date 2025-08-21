@@ -1,8 +1,8 @@
 // Asynchronous Rendering Pipeline for non-blocking GPU operations
 // Integrates with existing HybridRenderer to provide multi-stage processing
 
-import type { Layer } from "@/components/image-editor/layer-system"
-import type { ImageEditorToolsState } from "@/components/image-editor/state.image-editor"
+import type { Layer } from "@/layer-system/layer-system"
+import type { ImageEditorToolsState } from "@/lib/state.image-editor"
 import { HybridRenderer, type HybridRendererOptions } from "./hybrid-renderer"
 import {
   validateImageDimensions,

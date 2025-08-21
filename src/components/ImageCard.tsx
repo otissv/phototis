@@ -1,15 +1,15 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Card, CardContent, CardFooter } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardFooter } from "@/ui/card"
+import { Button } from "@/ui/button"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+} from "@/ui/dropdown-menu"
 import { ChevronDown } from "lucide-react"
 
 interface ImageOptions {

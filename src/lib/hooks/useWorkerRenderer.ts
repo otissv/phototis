@@ -3,8 +3,8 @@
 
 import React from "react"
 import { WorkerManager, TaskPriority } from "@/lib/workers/worker-manager"
-import type { Layer } from "@/components/image-editor/layer-system"
-import type { ImageEditorToolsState } from "@/components/image-editor/state.image-editor"
+import type { Layer } from "@/layer-system/layer-system"
+import type { ImageEditorToolsState } from "@/lib/state.image-editor"
 
 // Worker renderer state
 interface WorkerRendererState {

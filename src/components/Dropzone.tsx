@@ -3,7 +3,7 @@
 import { useCallback, useState, useEffect } from "react"
 import { useDropzone } from "react-dropzone"
 import { cn } from "@/lib/utils"
-import { Card } from "@/components/ui/card"
+import { Card } from "@/ui/card"
 import { ImageIcon, Upload } from "lucide-react"
 
 interface DropzoneProps {

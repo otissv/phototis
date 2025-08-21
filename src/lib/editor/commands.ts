@@ -8,7 +8,7 @@ import type {
   ActiveToolModel,
 } from "@/lib/editor/state"
 import type { Command, CommandMeta } from "@/lib/editor/history"
-import { capitalize } from "../capitalize"
+import { capitalize } from "../utils/capitalize"
 
 export type SerializedCommand =
   | {

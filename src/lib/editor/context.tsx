@@ -1,6 +1,7 @@
 "use client"
 
 import React from "react"
+
 import type {
   EditorRuntimeState,
   CanonicalEditorState,
@@ -22,7 +23,7 @@ import {
   setViewport as setViewportCanonical,
   assertInvariants,
 } from "@/lib/editor/state"
-import { initialState as defaultFilters } from "@/components/image-editor/state.image-editor"
+import { initialState as defaultFilters } from "@/lib/state.image-editor"
 import { HistoryManager, type Command } from "@/lib/editor/history"
 import {
   AddLayerCommand,

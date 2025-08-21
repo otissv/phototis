@@ -1,4 +1,4 @@
-import { TOOL_VALUES } from "@/components/image-editor/state.image-editor"
+import { TOOL_VALUES } from "@/lib/state.image-editor"
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 

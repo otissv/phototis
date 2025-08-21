@@ -1,8 +1,8 @@
 // Worker Manager for coordinating Web Workers with OffscreenCanvas
 // Manages communication between main thread and render workers
 
-import type { Layer } from "@/components/image-editor/layer-system"
-import type { ImageEditorToolsState } from "@/components/image-editor/state.image-editor"
+import type { Layer } from "@/layer-system/layer-system"
+import type { ImageEditorToolsState } from "@/lib/state.image-editor"
 import { CanvasStateManager } from "@/lib/canvas-state-manager"
 
 // Worker message types

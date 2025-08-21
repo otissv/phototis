@@ -14,7 +14,7 @@ import type {
   ImageEditorToolsState,
   SIDEBAR_TOOLS,
   TOOL_VALUES,
-} from "@/components/image-editor/state.image-editor"
+} from "@/lib/state.image-editor"
 
 /**
  * Canonical types
@@ -183,11 +183,7 @@ export interface EphemeralEditorState {
   preview?: {
     active: boolean
     layerId?: LayerId
-    filters?: Partial<
-      import(
-        "@/components/image-editor/state.image-editor"
-      ).ImageEditorToolsState
-    >
+    filters?: Partial<import("@/lib/state.image-editor").ImageEditorToolsState>
   }
 }
 
