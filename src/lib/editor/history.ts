@@ -345,8 +345,6 @@ export class HistoryManager {
     }
     const composite = new CompositeCommand(frame.commands, frame.name)
 
-    console.log("transactions.length: ", this.transactions.length)
-
     if (this.transactions.length > 0) {
       // Nest into parent frame
       this.push(composite)

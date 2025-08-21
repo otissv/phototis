@@ -21,7 +21,7 @@ export type SerializedCommand =
       type: "addAdjustmentLayer"
       meta: CommandMeta
       adjustmentType: string
-      parameters: Record<string, number>
+      parameters: Record<string, number | { value: number; color: string }>
       position: "top" | "bottom" | number
     }
   | { type: "removeLayer"; meta: CommandMeta; layerId: LayerId }
@@ -41,7 +41,7 @@ export type SerializedCommand =
       type: "updateAdjustmentParameters"
       meta: CommandMeta
       layerId: LayerId
-      parameters: Record<string, number>
+      parameters: Record<string, number | { value: number; color: string }>
     }
   | { type: "setSelection"; meta: CommandMeta; selected: LayerId[] }
   | { type: "setViewport"; meta: CommandMeta; patch: Partial<ViewportModel> }
@@ -395,13 +395,16 @@ export class SetActiveToolCommand implements Command {
 export class AddAdjustmentLayerCommand implements Command {
   meta: CommandMeta
   private readonly adjustmentType: string
-  private readonly parameters: Record<string, number>
+  private readonly parameters: Record<
+    string,
+    number | { value: number; color: string }
+  >
   private readonly position: "top" | "bottom" | number
   private createdLayerId?: string
 
   constructor(
     adjustmentType: string,
-    parameters: Record<string, number>,
+    parameters: Record<string, number | { value: number; color: string }>,
     position: "top" | "bottom" | number = "top",
     meta?: Partial<CommandMeta>
   ) {
@@ -475,12 +478,15 @@ export class AddAdjustmentLayerCommand implements Command {
 export class UpdateAdjustmentParametersCommand implements Command {
   meta: CommandMeta
   private readonly layerId: LayerId
-  private readonly parameters: Record<string, number>
+  private readonly parameters: Record<
+    string,
+    number | { value: number; color: string }
+  >
   private previous?: Record<string, number>
 
   constructor(
     layerId: LayerId,
-    parameters: Record<string, number>,
+    parameters: Record<string, number | { value: number; color: string }>,
     meta?: Partial<CommandMeta>
   ) {
     this.layerId = layerId

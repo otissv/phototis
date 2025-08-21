@@ -1227,7 +1227,7 @@ async function renderLayerWithFilters(
 // Render an adjustment pass by applying given parameters to the base texture
 async function renderAdjustmentFromBase(
   baseTexture: WebGLTexture,
-  parameters: Record<string, number>,
+  parameters: Record<string, number | { value: number; color: string }>,
   canvasWidth: number,
   canvasHeight: number
 ): Promise<WebGLTexture | null> {

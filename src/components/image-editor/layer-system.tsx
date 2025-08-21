@@ -23,18 +23,16 @@ import { cn } from "@/lib/utils"
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu"
 import { BLEND_MODE_NAMES, type BlendMode } from "@/lib/shaders/blend-modes"
 import { useEditorContext } from "@/lib/editor/context"
 import type { EditorLayer, AdjustmentLayer } from "@/lib/editor/state"
+import { TOOL_VALUES } from "@/components/image-editor/state.image-editor"
 import {
-  TOOL_VALUES,
-  type ToolValueColorType,
-} from "@/components/image-editor/state.image-editor"
-import { Color } from "@/components/color"
-import { colorPalette } from "../color-palette"
+  AdjustmentLayerEditor,
+  getAdjustmentIcon,
+} from "@/components/layer-system/adjustment.layer"
 
 export interface LayerSystemProps extends React.ComponentProps<"div"> {}
 
@@ -161,7 +159,7 @@ export function LayerSystem({ className, ...props }: LayerSystemProps) {
   const handleAddAdjustmentLayer = React.useCallback(
     (adjustmentType: string) => {
       // Default parameters for each adjustment type
-      const defaultParams: Record<string, Record<string, number>> = {
+      const defaultParams: Record<string, Record<string, any>> = {
         brightness: {
           brightness: TOOL_VALUES.brightness.defaultValue as number,
         },
@@ -181,6 +179,7 @@ export function LayerSystem({ className, ...props }: LayerSystemProps) {
         grayscale: { grayscale: TOOL_VALUES.grayscale.defaultValue as number },
         invert: { invert: TOOL_VALUES.invert.defaultValue as number },
         sepia: { sepia: TOOL_VALUES.sepia.defaultValue as number },
+        solid: { solid: (TOOL_VALUES.solid as any).defaultValue.color },
       }
 
       addAdjustmentLayer(adjustmentType, defaultParams[adjustmentType], "top")
@@ -431,6 +430,15 @@ export function LayerSystem({ className, ...props }: LayerSystemProps) {
                   <Eclipse className='w-3 h-3 mr-1' />
                   Sepia
                 </Button>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='text-xs h-8 justify-start'
+                  onClick={() => handleAddAdjustmentLayer("solid")}
+                >
+                  <Palette className='w-3 h-3 mr-1' />
+                  Solid Color
+                </Button>
               </div>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -659,7 +667,7 @@ function DraggableLayerItem({
           <AdjustmentLayerEditor
             layer={layer as AdjustmentLayer}
             onUpdate={(parameters) => {
-              updateAdjustmentParameters(layer.id, parameters)
+              updateAdjustmentParameters(layer.id, parameters as any)
             }}
           />
         </div>
@@ -898,168 +906,6 @@ function LayerThumbnail({ layer }: { layer: EditorLayer }) {
         src={thumbnailUrl}
         alt={layer.name}
         className='w-full h-full object-cover'
-      />
-    </div>
-  )
-}
-
-// Helper function to get appropriate icon for adjustment types
-function getAdjustmentIcon(adjustmentType: string) {
-  switch (adjustmentType) {
-    case "brightness":
-    case "exposure":
-      return <Sun className='w-3 h-3' />
-    case "contrast":
-    case "gamma":
-      return <Palette className='w-3 h-3' />
-    case "hue":
-    case "saturation":
-    case "temperature":
-    case "tint":
-      return <Droplets className='w-3 h-3' />
-    case "vibrance":
-    case "vintage":
-      return <Sparkles className='w-3 h-3' />
-    case "grayscale":
-    case "invert":
-    case "sepia":
-      return <Eclipse className='w-3 h-3' />
-    default:
-      return <Palette className='w-3 h-3' />
-  }
-}
-
-// Adjustment Layer Editor Component
-interface AdjustmentLayerEditorProps {
-  layer: AdjustmentLayer
-  onUpdate: (
-    parameters: Record<string, number | { value: number; color: string }>
-  ) => void
-}
-
-function AdjustmentLayerEditor({
-  layer,
-  onUpdate,
-}: AdjustmentLayerEditorProps) {
-  const handleParameterChange = (
-    key: string,
-    value: number | { value: number; color: string }
-  ) => {
-    onUpdate({ [key]: value })
-  }
-
-  const renderParameterControl = (
-    key: string,
-    value: number | ToolValueColorType["defaultValue"]
-  ) => {
-    let inputValue: unknown
-
-    if (typeof value === "number") {
-      inputValue =
-        value ??
-        (TOOL_VALUES[key as keyof typeof TOOL_VALUES] as any).defaultValue
-    } else {
-      inputValue =
-        value.value ??
-        (TOOL_VALUES[key as keyof typeof TOOL_VALUES] as any).defaultValue.value
-    }
-
-    switch (key) {
-      case "solid":
-      case "tint":
-        return (
-          <AdjustmentLayerColor
-            key={key}
-            id={key}
-            value={inputValue as ToolValueColorType["defaultValue"]}
-            onChange={(value) => handleParameterChange(key, value)}
-          />
-        )
-      default:
-        return (
-          <AdjustmentLayerSlider
-            key={key}
-            id={key}
-            value={inputValue as number}
-            onChange={(value) => handleParameterChange(key, value)}
-          />
-        )
-    }
-  }
-
-  return (
-    <div className='flex items-center pl-2 mb-4 rounded-b-sm h-10 border'>
-      <div className='flex flex-col  w-full'>
-        {Object.entries(layer.parameters).map(([key, value]) =>
-          renderParameterControl(key, value)
-        )}
-      </div>
-    </div>
-  )
-}
-
-export interface AdjustmentLayerSliderProps {
-  id: string
-  value: number
-  onChange: (value: number) => void
-}
-
-export function AdjustmentLayerSlider({
-  id,
-  value,
-  onChange,
-}: AdjustmentLayerSliderProps) {
-  return (
-    <div className='flex items-center gap-2 px-2'>
-      <input
-        id={id}
-        type='range'
-        min={(TOOL_VALUES[id as keyof typeof TOOL_VALUES] as any).min}
-        max={(TOOL_VALUES[id as keyof typeof TOOL_VALUES] as any).max}
-        step={(TOOL_VALUES[id as keyof typeof TOOL_VALUES] as any).step}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className='h-1 bg-accent rounded-full appearance-none cursor-pointer flex-1'
-      />
-      <span className='text-xs'>{value as number}</span>
-    </div>
-  )
-}
-
-export interface AdjustmentLayerColorProps {
-  id: string
-  value: ToolValueColorType["defaultValue"]
-  onChange: (value: ToolValueColorType["defaultValue"]) => void
-}
-
-export function AdjustmentLayerColor({
-  id,
-  value: { value, color },
-  onChange,
-}: AdjustmentLayerColorProps) {
-  const handleOnChange =
-    (key: "value" | "color") => (input: number | string) => {
-      onChange({
-        value,
-        color,
-        [key]: input,
-      })
-    }
-  return (
-    <div className='flex items-center gap-2 px-2'>
-      <AdjustmentLayerSlider
-        id={id}
-        value={value}
-        onChange={handleOnChange("value")}
-      />
-      <Color
-        color={color}
-        colors={colorPalette}
-        disabled={false}
-        onSelect={handleOnChange("color")}
-        onCustomColorChange={([id, value]) =>
-          handleOnChange(id as "value" | "color")(value)
-        }
       />
     </div>
   )

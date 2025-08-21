@@ -29,12 +29,14 @@ export function Color({
   title = "color",
   onSelect,
   onCustomColorChange,
+  isPopover = true,
 }: {
   color: string
   colors: Color[]
   disabled: boolean
   icon?: React.ReactNode
   isTable?: boolean
+  isPopover?: boolean
   property?: string
   side?: "bottom" | "left" | "right" | "top"
   sideOffset?: number
@@ -47,7 +49,7 @@ export function Color({
 }) {
   const [isOpen, setIsOpen] = React.useState(false)
 
-  return (
+  return isPopover ? (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild disabled={disabled}>
         {!isTable ? (
@@ -89,6 +91,14 @@ export function Color({
         />
       </PopoverContent>
     </Popover>
+  ) : (
+    <ColorContent
+      colors={colors}
+      color={color}
+      className='w-full grid grid-cols-10 grid-rows-8 gap-1.5'
+      onSelect={onSelect}
+      onCustomColorChange={onCustomColorChange}
+    />
   )
 }
 

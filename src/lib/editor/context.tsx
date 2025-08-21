@@ -346,7 +346,7 @@ export function EditorProvider({
   const addAdjustmentLayer = React.useCallback(
     (
       adjustmentType: string,
-      parameters: Record<string, number>,
+      parameters: Record<string, number | { value: number; color: string }>,
       position: "top" | "bottom" | number = "top"
     ) => {
       historyRef.current?.beginTransaction("Add Adjustment Layer")
@@ -359,7 +359,10 @@ export function EditorProvider({
   )
 
   const updateAdjustmentParameters = React.useCallback(
-    (layerId: LayerId, parameters: Record<string, number>) => {
+    (
+      layerId: LayerId,
+      parameters: Record<string, number | { value: number; color: string }>
+    ) => {
       historyRef.current?.execute(
         new UpdateAdjustmentParametersCommand(layerId, parameters)
       )

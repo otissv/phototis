@@ -10,6 +10,9 @@ export type ToolValueBooleanType = {
 export type ToolValueNumberType = {
   defaultValue: number
 }
+export type ToolValueStringType = {
+  defaultValue: string
+}
 export type ToolValueDimensionType = {
   width: number
   height: number
@@ -48,6 +51,7 @@ export type ToolValueTypes =
   | ToolValueDimensionType
   | ToolValueCropType
   | ToolValueColorType
+  | ToolValueStringType
 
 type ToolValueKeys = AdjustmentType | FilterType | RotateType | ResizeType
 
@@ -83,10 +87,7 @@ export type AdjustLayersState = {
   hue: number
   invert: number
   saturation: number
-  solid: {
-    value: number
-    color: string
-  }
+  solid: string
   vintage: number
   temperature: number
   tint: {
@@ -175,13 +176,7 @@ export const TOOL_VALUES: Record<ToolValueKeys, ToolValueTypes> = {
     defaultValue: 0,
   },
   solid: {
-    min: 0,
-    max: 100,
-    step: 1,
-    defaultValue: {
-      value: 0,
-      color: "#000000",
-    },
+    defaultValue: "#000000",
   },
   invert: {
     defaultValue: 0,
@@ -388,7 +383,7 @@ export const initialState: ImageEditorToolsState = {
   saturation: TOOL_VALUES.saturation
     .defaultValue as ToolValueStepType["defaultValue"],
   sepia: TOOL_VALUES.sepia.defaultValue as ToolValueStepType["defaultValue"],
-  solid: TOOL_VALUES.solid.defaultValue as ToolValueColorType["defaultValue"],
+  solid: TOOL_VALUES.solid.defaultValue as ToolValueStringType["defaultValue"],
   temperature: TOOL_VALUES.temperature
     .defaultValue as ToolValueStepType["defaultValue"],
   tint: TOOL_VALUES.tint.defaultValue as ToolValueColorType["defaultValue"],

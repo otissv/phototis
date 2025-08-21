@@ -92,6 +92,10 @@ export class ShaderManager {
       uniform sampler2D u_image;
       uniform vec2 u_resolution;
       uniform float u_opacity;
+      // Solid fill uniforms
+      uniform int u_solidEnabled;
+      uniform vec3 u_solidColor;
+      uniform float u_solidAlpha;
       varying vec2 v_texCoord;
     `
 
@@ -148,6 +152,12 @@ export class ShaderManager {
       void main() {
         vec2 uv = v_texCoord;
         vec4 color = texture2D(u_image, uv);
+        // Optional solid fill adjustment, rendered as top content with opacity
+        if (u_solidEnabled == 1) {
+          // Render solid directly; compositing step applies layer opacity/blend
+          vec4 solidColor = vec4(u_solidColor, u_solidAlpha);
+          color = solidColor;
+        }
         
         // Apply color adjustments
         color.rgb *= (u_brightness / 100.0);
@@ -301,11 +311,20 @@ export class ShaderManager {
 
       if (location !== null) {
         if (typeof value === "number") {
-          gl.uniform1f(location, value)
+          if (name.endsWith("Enabled")) {
+            gl.uniform1i(location, Math.round(value))
+          } else {
+            gl.uniform1f(location, value)
+          }
         } else if (typeof value === "boolean") {
           gl.uniform1i(location, value ? 1 : 0)
-        } else if (Array.isArray(value) && value.length === 2) {
-          gl.uniform2f(location, value[0], value[1])
+        } else if (Array.isArray(value)) {
+          const arr = value as unknown as number[]
+          if (arr.length === 2) {
+            gl.uniform2f(location, arr[0] ?? 0, arr[1] ?? 0)
+          } else if (arr.length === 3) {
+            gl.uniform3f(location, arr[0] ?? 0, arr[1] ?? 0, arr[2] ?? 0)
+          }
         }
 
         // Cache the new value

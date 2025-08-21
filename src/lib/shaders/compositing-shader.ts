@@ -63,6 +63,11 @@ export const LAYER_RENDER_FRAGMENT_SHADER = `
   uniform sampler2D u_image;
   uniform vec2 u_resolution;
   uniform float u_opacity;
+  // Solid fill uniforms (optional)
+  uniform int u_solidEnabled;
+  // No per-effect opacity for solid; global opacity is used via compositing
+  uniform vec3 u_solidColor;
+  uniform float u_solidAlpha;
   
   // Layer positioning and cropping
   uniform float u_layerWidth;
@@ -167,6 +172,12 @@ export const LAYER_RENDER_FRAGMENT_SHADER = `
     uv = clamp(uv, 0.0, 1.0);
     
     vec4 color = texture2D(u_image, uv);
+    // Solid adjustment mixes a solid over current sampled color
+    if (u_solidEnabled == 1) {
+      // Render solid over the current color; per-layer opacity/blend is applied later
+      vec4 solidColor = vec4(u_solidColor, u_solidAlpha);
+      color = solidColor;
+    }
     
     // Apply color adjustments
     color.rgb *= (u_brightness / 100.0);

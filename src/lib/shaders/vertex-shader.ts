@@ -101,6 +101,12 @@ export class VertexShaderPlugin extends BaseShaderPlugin {
     u_vibrance: 0,
     u_noise: 0,
     u_grain: 0,
+    // solid fill uniforms defaults
+    u_solidEnabled: 0,
+    u_solidOpacity: 0,
+    u_solidColor: [0, 0, 0] as [number, number, number],
+    u_solidAlpha: 0,
+    // packed in manager as vec3/float; here keep numbers for setUniforms
   }
 
   updateUniforms(values: any): void {
@@ -146,5 +152,13 @@ export class VertexShaderPlugin extends BaseShaderPlugin {
       this.uniforms.u_vibrance = values.vibrance
     if (values.noise !== undefined) this.uniforms.u_noise = values.noise
     if (values.grain !== undefined) this.uniforms.u_grain = values.grain
+    if (values.u_solidEnabled !== undefined)
+      this.uniforms.u_solidEnabled = values.u_solidEnabled
+    if (values.u_solidOpacity !== undefined)
+      this.uniforms.u_solidOpacity = values.u_solidOpacity
+    if (values.u_solidColor !== undefined)
+      this.uniforms.u_solidColor = values.u_solidColor
+    if (values.u_solidAlpha !== undefined)
+      this.uniforms.u_solidAlpha = values.u_solidAlpha
   }
 }

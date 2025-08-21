@@ -761,6 +761,73 @@ export class HybridRenderer {
         this.gl.uniform2f(location, value[0], value[1])
       }
     })
+
+    // Solid adjustment uniforms (color-only; enable if a color is provided)
+    const solid = (toolsValues as any).solid
+    let solidEnabled = false
+    let solidHex: string | null = null
+    if (typeof solid === "string") {
+      solidHex = solid
+      solidEnabled = true
+    } else if (
+      solid &&
+      typeof solid === "object" &&
+      typeof (solid as any).color === "string"
+    ) {
+      solidHex = (solid as any).color
+      solidEnabled = true
+    }
+    const enabledLoc = this.gl.getUniformLocation(
+      this.layerProgram,
+      "u_solidEnabled"
+    )
+    if (enabledLoc) this.gl.uniform1i(enabledLoc, solidEnabled ? 1 : 0)
+
+    // No per-effect opacity for solid; layer opacity is handled during compositing
+
+    const color = solidHex || "#000000"
+    const rgba = this.hexToRgba01(color) || [0, 0, 0, 1]
+    const colorLoc = this.gl.getUniformLocation(
+      this.layerProgram,
+      "u_solidColor"
+    )
+    if (colorLoc) this.gl.uniform3f(colorLoc, rgba[0], rgba[1], rgba[2])
+    const alphaLoc = this.gl.getUniformLocation(
+      this.layerProgram,
+      "u_solidAlpha"
+    )
+    if (alphaLoc) this.gl.uniform1f(alphaLoc, rgba[3])
+  }
+
+  private hexToRgba01(hex: string): [number, number, number, number] | null {
+    const m = hex.replace(/^#/, "").toLowerCase()
+    if (m.length === 3) {
+      const r = Number.parseInt(m[0] + m[0], 16)
+      const g = Number.parseInt(m[1] + m[1], 16)
+      const b = Number.parseInt(m[2] + m[2], 16)
+      return [r / 255, g / 255, b / 255, 1]
+    }
+    if (m.length === 4) {
+      const r = Number.parseInt(m[0] + m[0], 16)
+      const g = Number.parseInt(m[1] + m[1], 16)
+      const b = Number.parseInt(m[2] + m[2], 16)
+      const a = Number.parseInt(m[3] + m[3], 16)
+      return [r / 255, g / 255, b / 255, a / 255]
+    }
+    if (m.length === 6) {
+      const r = Number.parseInt(m.slice(0, 2), 16)
+      const g = Number.parseInt(m.slice(2, 4), 16)
+      const b = Number.parseInt(m.slice(4, 6), 16)
+      return [r / 255, g / 255, b / 255, 1]
+    }
+    if (m.length === 8) {
+      const r = Number.parseInt(m.slice(0, 2), 16)
+      const g = Number.parseInt(m.slice(2, 4), 16)
+      const b = Number.parseInt(m.slice(4, 6), 16)
+      const a = Number.parseInt(m.slice(6, 8), 16)
+      return [r / 255, g / 255, b / 255, a / 255]
+    }
+    return null
   }
 
   renderToCanvas(canvas: HTMLCanvasElement): void {
@@ -1024,7 +1091,10 @@ export class HybridRenderer {
             if (sourceFBO && sourceFBO !== inputFBO) {
               this.copyTextureToFBO(accumulatedTexture, inputFBO)
             }
-          } else {
+          } else if (
+            !inputFBOObj ||
+            accumulatedTexture !== inputFBOObj.texture
+          ) {
             this.copyTextureToFBO(accumulatedTexture, inputFBO)
           }
 
@@ -1062,10 +1132,7 @@ export class HybridRenderer {
         }
 
         // Build tool values from adjustment parameters
-        const adjustmentParams = (layer.parameters || {}) as Record<
-          string,
-          number
-        >
+        const adjustmentParams = (layer.parameters || {}) as Record<string, any>
         const adjustmentTools = withDefaults(undefined)
         for (const [k, v] of Object.entries(adjustmentParams)) {
           ;(adjustmentTools as any)[k] = v
@@ -1087,8 +1154,11 @@ export class HybridRenderer {
         const outputFBO = usePing ? "ping" : "pong"
         const inputFBO = usePing ? "pong" : "ping"
 
-        // Copy accumulated base into input FBO
-        this.copyTextureToFBO(accumulatedTexture, inputFBO)
+        // Copy accumulated base into input FBO only if different
+        const inputObj = this.fboManager.getFBO(inputFBO)
+        if (!inputObj || inputObj.texture !== accumulatedTexture) {
+          this.copyTextureToFBO(accumulatedTexture, inputFBO)
+        }
 
         const compositedTexture = this.compositeLayersWithPingPong(
           inputFBO,

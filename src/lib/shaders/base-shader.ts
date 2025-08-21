@@ -1,5 +1,10 @@
 export interface ShaderUniforms {
-  [key: string]: number | boolean | [number, number] | null
+  [key: string]:
+    | number
+    | boolean
+    | [number, number]
+    | [number, number, number]
+    | null
 }
 
 export interface ShaderPlugin {
@@ -19,4 +24,4 @@ export abstract class BaseShaderPlugin implements ShaderPlugin {
   updateUniforms?(values: any): void {
     // Default implementation - override in subclasses if needed
   }
-} 
+}

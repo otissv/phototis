@@ -61,7 +61,8 @@ export interface AdjustmentLayer extends BaseLayer {
     | "grayscale"
     | "invert"
     | "sepia"
-  parameters: Record<string, number>
+    | "solid"
+  parameters: Record<string, number | { value: number; color: string }>
   mask?: MaskData
 }
 

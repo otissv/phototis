@@ -171,6 +171,55 @@ export function validateFilterParameters(parameters: any): {
   const validatedParameters = { ...parameters }
   const errors: string[] = []
 
+  // Normalize solid adjustment if present: expects { solid: { value, color } }
+  if (validatedParameters.solid !== undefined) {
+    const solid = validatedParameters.solid
+    if (
+      typeof solid === "object" &&
+      solid !== null &&
+      typeof (solid as any).value === "number" &&
+      typeof (solid as any).color === "string"
+    ) {
+      // Clamp opacity value 0..100
+      const v = Math.max(0, Math.min(100, (solid as any).value))
+      if (v !== (solid as any).value) {
+        errors.push(`Solid.value clamped from ${(solid as any).value} to ${v}`)
+      }
+      // Parse hex color like #rrggbb or #rgb
+      const hex = (solid as any).color.trim()
+      const rgba = hexToRgba01(hex)
+      if (!rgba) {
+        errors.push(
+          `Invalid solid.color '${(solid as any).color}', defaulting to #000000`
+        )
+      }
+      const [r, g, b, a] = rgba || [0, 0, 0, 1]
+      validatedParameters.u_solidEnabled = v > 0 ? 1 : 0
+      validatedParameters.u_solidColor = [r, g, b]
+      validatedParameters.u_solidAlpha = a
+    } else if (typeof solid === "string") {
+      const rgba = hexToRgba01(solid.trim()) || [0, 0, 0, 1]
+      validatedParameters.u_solidEnabled = 1
+      validatedParameters.u_solidColor = [rgba[0], rgba[1], rgba[2]]
+      validatedParameters.u_solidAlpha = rgba[3]
+    } else if (
+      typeof solid === "object" &&
+      solid !== null &&
+      typeof (solid as any).color === "string"
+    ) {
+      const rgba = hexToRgba01((solid as any).color.trim()) || [0, 0, 0, 1]
+      validatedParameters.u_solidEnabled = 1
+      validatedParameters.u_solidColor = [rgba[0], rgba[1], rgba[2]]
+      validatedParameters.u_solidAlpha = rgba[3]
+    } else {
+      // If malformed, disable
+      validatedParameters.u_solidEnabled = 0
+      errors.push("Solid adjustment malformed; disabled")
+    }
+  } else {
+    validatedParameters.u_solidEnabled = 0
+  }
+
   // Validate blur parameters
   if (validatedParameters.blur !== undefined) {
     const clampedBlur = Math.max(0, Math.min(validatedParameters.blur, 100))
@@ -448,6 +497,37 @@ export function validateFilterParameters(parameters: any): {
     validatedParameters,
     errors,
   }
+}
+
+function hexToRgba01(hex: string): [number, number, number, number] | null {
+  const m = hex.replace(/^#/, "").toLowerCase()
+  if (m.length === 3) {
+    const r = Number.parseInt(m[0] + m[0], 16)
+    const g = Number.parseInt(m[1] + m[1], 16)
+    const b = Number.parseInt(m[2] + m[2], 16)
+    return [r / 255, g / 255, b / 255, 1]
+  }
+  if (m.length === 4) {
+    const r = Number.parseInt(m[0] + m[0], 16)
+    const g = Number.parseInt(m[1] + m[1], 16)
+    const b = Number.parseInt(m[2] + m[2], 16)
+    const a = Number.parseInt(m[3] + m[3], 16)
+    return [r / 255, g / 255, b / 255, a / 255]
+  }
+  if (m.length === 6) {
+    const r = Number.parseInt(m.slice(0, 2), 16)
+    const g = Number.parseInt(m.slice(2, 4), 16)
+    const b = Number.parseInt(m.slice(4, 6), 16)
+    return [r / 255, g / 255, b / 255, 1]
+  }
+  if (m.length === 8) {
+    const r = Number.parseInt(m.slice(0, 2), 16)
+    const g = Number.parseInt(m.slice(2, 4), 16)
+    const b = Number.parseInt(m.slice(4, 6), 16)
+    const a = Number.parseInt(m.slice(6, 8), 16)
+    return [r / 255, g / 255, b / 255, a / 255]
+  }
+  return null
 }
 
 // Validate shader source code for security
