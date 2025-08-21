@@ -6,6 +6,8 @@ import { TOOL_VALUES, type ToolValueColorType } from "@/lib/tools"
 import { Color } from "@/components/color"
 import { colorPalette } from "@/components/color-palette"
 import type { AdjustmentLayer } from "@/lib/editor/state"
+import { Toggle } from "@/ui/toggle"
+import { ToggleSwitch } from "./toggle-switch"
 
 // Helper function to get appropriate icon for adjustment types
 export function getAdjustmentIcon(adjustmentType: string) {
@@ -60,6 +62,16 @@ export function AdjustmentLayerEditor({
     let inputValue: unknown
 
     switch (key) {
+      case "invert":
+        return (
+          <AdjustmentLayerToggle
+            key={key}
+            id={key}
+            value={value as number}
+            onChange={(value) => handleParameterChange(key, value as any)}
+          />
+        )
+
       case "solid":
         // For solid, the parameter can be a string (hex) or an object; show color only
         if (typeof value === "string") {
@@ -117,7 +129,7 @@ export function AdjustmentLayerEditor({
   }
 
   return (
-    <div className='flex items-center pl-2 mb-4 rounded-b-sm min-h-10 border'>
+    <div className='flex items-center mb-4 rounded-b-sm min-h-10 border'>
       <div className='flex flex-col  w-full'>
         {Object.entries(layer.parameters).map(([key, value]) =>
           renderParameterControl(key, value)
@@ -206,6 +218,7 @@ export function AdjustmentLayerColorAndSlider({
         onChange={handleOnChange("value")}
       />
       <Color
+        id={id}
         color={color}
         colors={colorPalette}
         disabled={false}
@@ -213,6 +226,30 @@ export function AdjustmentLayerColorAndSlider({
         onCustomColorChange={([id, value]) =>
           handleOnChange(id as "value" | "color")(value)
         }
+      />
+    </div>
+  )
+}
+
+export interface AdjustmentLayerToggleProps {
+  id: string
+  value: number
+  onChange: (value: number) => void
+}
+
+export function AdjustmentLayerToggle({
+  id,
+  value,
+  onChange,
+}: AdjustmentLayerToggleProps) {
+  return (
+    <div className='overflow-hidden'>
+      <ToggleSwitch
+        id={id}
+        title='Toggle invert'
+        checked={Boolean(value)}
+        onCheckedChange={(checked: boolean) => onChange(checked ? 100 : 0)}
+        className='w-full h-10 p-0 rounded-t-none rounded-b-sm'
       />
     </div>
   )

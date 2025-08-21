@@ -119,7 +119,7 @@ export const TOOL_VALUES: Record<ToolValueKeys, ToolValueTypes> = {
     defaultValue: "#000000",
   },
   invert: {
-    defaultValue: 0,
+    defaultValue: 100,
   },
   tint: {
     min: -100,

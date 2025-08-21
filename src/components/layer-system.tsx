@@ -434,6 +434,15 @@ export function LayerSystem({ className, ...props }: LayerSystemProps) {
                   variant='ghost'
                   size='sm'
                   className='text-xs h-8 justify-start'
+                  onClick={() => handleAddAdjustmentLayer("invert")}
+                >
+                  <Eclipse className='w-3 h-3 mr-1' />
+                  Invert
+                </Button>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='text-xs h-8 justify-start'
                   onClick={() => handleAddAdjustmentLayer("solid")}
                 >
                   <Palette className='w-3 h-3 mr-1' />
