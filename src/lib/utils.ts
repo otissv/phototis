@@ -1,6 +1,7 @@
-import { TOOL_VALUES } from "@/lib/state.image-editor"
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
+
+import { TOOL_VALUES, ToolValueTypes } from "@/lib/tools"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -15,8 +16,8 @@ export function onToolControlValueChange({
 }) {
   return (value: number) => {
     const nextValue =
-      value < TOOL_VALUES[selectedTool].min
-        ? TOOL_VALUES[selectedTool].min
+      value < (TOOL_VALUES[selectedTool] as any).min
+        ? (TOOL_VALUES[selectedTool] as any).min
         : value
     onChange(nextValue)
   }

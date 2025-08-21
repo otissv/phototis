@@ -1,7 +1,7 @@
 // Render Worker for WebGL operations using OffscreenCanvas
 // This worker handles all GPU-intensive operations to prevent main thread blocking
 
-import type { Layer } from "@/layer-system/layer-system"
+import type { ImageLayer } from "@/lib/editor/state"
 import type { ImageEditorToolsState } from "@/lib/state.image-editor"
 import type { PipelineStage } from "@/lib/shaders/asynchronous-pipeline"
 import { AsynchronousPipeline } from "@/lib/shaders/asynchronous-pipeline"
@@ -36,7 +36,7 @@ interface InitializeMessage extends WorkerMessage {
 interface RenderMessage extends WorkerMessage {
   type: "render"
   data: {
-    layers: Layer[]
+    layers: ImageLayer[]
     toolsValues: ImageEditorToolsState
     selectedLayerId: string
     canvasWidth: number
@@ -622,7 +622,7 @@ function initializeWebGL(
 
 // Render layers with progressive quality
 async function renderLayers(
-  layers: Layer[],
+  layers: ImageLayer[],
   toolsValues: ImageEditorToolsState,
   selectedLayerId: string,
   canvasWidth: number,
@@ -1060,7 +1060,9 @@ async function renderLayers(
 }
 
 // Load layer texture with validation
-async function loadLayerTexture(layer: Layer): Promise<WebGLTexture | null> {
+async function loadLayerTexture(
+  layer: ImageLayer
+): Promise<WebGLTexture | null> {
   if (!gl) return null
 
   try {
@@ -1162,7 +1164,7 @@ async function loadLayerTexture(layer: Layer): Promise<WebGLTexture | null> {
 
 // Render layer with filters
 async function renderLayerWithFilters(
-  layer: Layer,
+  layer: ImageLayer,
   layerTexture: WebGLTexture,
   toolsValues: ImageEditorToolsState,
   canvasWidth: number,

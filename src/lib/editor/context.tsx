@@ -15,12 +15,6 @@ import type {
 import {
   normalizeLayers,
   createEditorRuntimeState,
-  addLayer as addLayerCanonical,
-  removeLayer as removeLayerCanonical,
-  reorderLayer as reorderLayerCanonical,
-  setSelection as setSelectionCanonical,
-  updateLayer as updateLayerCanonical,
-  setViewport as setViewportCanonical,
   assertInvariants,
 } from "@/lib/editor/state"
 import { initialState as defaultFilters } from "@/lib/state.image-editor"

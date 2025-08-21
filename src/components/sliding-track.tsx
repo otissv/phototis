@@ -1,11 +1,11 @@
 "use client"
 
+import { ChevronLeft, ChevronRight, Dot } from "lucide-react"
+import React from "react"
+import { motion, useMotionValue } from "motion/react"
+
 import { Button } from "@/ui/button"
 import { cn } from "@/lib/utils"
-import { ArrowDownToLine, ChevronLeft, ChevronRight, Dot } from "lucide-react"
-import { motion, useMotionValue } from "motion/react"
-import type React from "react"
-import { useEffect, useId, useRef, useState, useCallback, useMemo } from "react"
 import { Input } from "@/ui/input"
 
 export interface SlidingTrackProps
@@ -40,31 +40,31 @@ export default function SlidingTrack({
   onDragStart,
   ...props
 }: SlidingTrackProps) {
-  const [value, setValue] = useState(hostValue)
-  const [isEditing, setIsEditing] = useState(false)
-  const [sliderWidth, setSliderWidth] = useState(0)
+  const [value, setValue] = React.useState(hostValue)
+  const [isEditing, setIsEditing] = React.useState(false)
+  const [sliderWidth, setSliderWidth] = React.useState(0)
 
   // Memoize display value to prevent unnecessary recalculations
-  const displayValue = useMemo(
+  const displayValue = React.useMemo(
     () =>
       label?.(value, operator) ||
       `${operator ? `${value} ${operator}` : value}`,
     [value, operator, label]
   )
 
-  const inputRef = useRef<HTMLInputElement>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
+  const inputRef = React.useRef<HTMLInputElement>(null)
+  const containerRef = React.useRef<HTMLDivElement>(null)
   const x = useMotionValue(0)
-  const trackWidth = useRef(0)
-  const prevValueRef = useRef(value)
-  const initialDragX = useRef<number | null>(null)
-  const previousX = useRef<number | null>(null)
-  const lastChangeTime = useRef(0)
+  const trackWidth = React.useRef(0)
+  const prevValueRef = React.useRef(value)
+  const initialDragX = React.useRef<number | null>(null)
+  const previousX = React.useRef<number | null>(null)
+  const lastChangeTime = React.useRef(0)
 
-  const containerId = useId()
+  const containerId = React.useId()
 
   // Throttle value changes to prevent excessive updates
-  const throttledOnValueChange = useCallback(
+  const throttledOnValueChange = React.useCallback(
     (newValue: number) => {
       const now = Date.now()
       if (now - lastChangeTime.current > 16) {
@@ -76,7 +76,7 @@ export default function SlidingTrack({
     [onValueChange]
   )
 
-  useEffect(() => {
+  React.useEffect(() => {
     const slider = document.querySelector(
       `[data-id="${containerId}"]`
     ) as HTMLElement
@@ -85,7 +85,7 @@ export default function SlidingTrack({
     }
   }, [containerId])
 
-  useEffect(() => {
+  React.useEffect(() => {
     const slider = document.querySelector(
       `[data-id="${containerId}"]`
     ) as HTMLElement
@@ -100,7 +100,7 @@ export default function SlidingTrack({
     return () => window.removeEventListener("resize", handleResize)
   })
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (defaultValue !== prevValueRef.current) {
       setValue(defaultValue || 0)
       prevValueRef.current = defaultValue || 0
@@ -118,7 +118,7 @@ export default function SlidingTrack({
     }
   }, [defaultValue, value, min, max, x])
 
-  const handleDrag = useCallback(
+  const handleDrag = React.useCallback(
     (_event: any, info: { point: { x: number } }) => {
       if (disabled) return
 
@@ -175,15 +175,15 @@ export default function SlidingTrack({
     ]
   )
 
-  const handleDragEnd = useCallback(() => {
+  const handleDragEnd = React.useCallback(() => {
     initialDragX.current = null
     onDragEnd?.(value)
   }, [value, onDragEnd])
 
   // Memoize dot pattern to prevent recreation on every render
-  const dotPattern = useMemo(() => [...Array(350)].map((_, i) => i), [])
+  const dotPattern = React.useMemo(() => [...Array(350)].map((_, i) => i), [])
 
-  const handleDirectionChange = useCallback(
+  const handleDirectionChange = React.useCallback(
     (direction: "left" | "right") => {
       if (direction === "left") {
         let newValue = value - step
@@ -206,7 +206,7 @@ export default function SlidingTrack({
     [value, step, min, max, throttledOnValueChange]
   )
 
-  const handleOnInputChange = useCallback(
+  const handleOnInputChange = React.useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const newValue =
         e.target.value.trim() === "" ? 0 : Number.parseInt(e.target.value)

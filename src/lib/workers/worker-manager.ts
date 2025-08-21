@@ -1,7 +1,7 @@
 // Worker Manager for coordinating Web Workers with OffscreenCanvas
 // Manages communication between main thread and render workers
 
-import type { Layer } from "@/layer-system/layer-system"
+import type { ImageLayer } from "@/lib/editor/state"
 import type { ImageEditorToolsState } from "@/lib/state.image-editor"
 import { CanvasStateManager } from "@/lib/canvas-state-manager"
 
@@ -302,7 +302,7 @@ export class WorkerManager {
 
   // Queue a render task
   async queueRenderTask(
-    layers: Layer[],
+    layers: ImageLayer[],
     toolsValues: ImageEditorToolsState,
     selectedLayerId: string,
     canvasWidth: number,

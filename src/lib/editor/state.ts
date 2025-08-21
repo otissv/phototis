@@ -13,8 +13,8 @@ import type { BlendMode } from "@/lib/shaders/blend-modes"
 import type {
   ImageEditorToolsState,
   SIDEBAR_TOOLS,
-  TOOL_VALUES,
 } from "@/lib/state.image-editor"
+import type { TOOL_VALUES } from "@/lib/tools"
 
 /**
  * Canonical types
