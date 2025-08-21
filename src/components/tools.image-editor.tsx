@@ -42,7 +42,6 @@ import {
   SharpenControls,
 } from "@/components/tools/sharpen.tools"
 
-import { SepiaButton, SepiaControls } from "@/components/tools/sepia.tools"
 import { NoiseButton, NoiseControls } from "@/components/tools/noise.tools"
 import { CropButton, CropControls } from "@/components/tools/crop.tools"
 
@@ -179,9 +178,6 @@ export function EffectsFooter({
     switch (selectedTool) {
       case "noise":
         return <NoiseControls {...controlProps} />
-      case "sepia":
-        return <SepiaControls {...controlProps} />
-
       case "sharpen":
         return <SharpenControls {...controlProps} />
     }
@@ -272,13 +268,6 @@ export function EffectsFooter({
 
         <li>
           <NoiseButton
-            onSelectedToolChange={onSelectedToolChange}
-            selectedTool={selectedTool}
-            progress={progress}
-          />
-        </li>
-        <li>
-          <SepiaButton
             onSelectedToolChange={onSelectedToolChange}
             selectedTool={selectedTool}
             progress={progress}
