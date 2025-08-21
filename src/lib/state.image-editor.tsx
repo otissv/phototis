@@ -95,7 +95,18 @@ export const initialState: ImageEditorToolsState = {
   solid: TOOL_VALUES.solid.defaultValue as ToolValueStringType["defaultValue"],
   temperature: TOOL_VALUES.temperature
     .defaultValue as ToolValueStepType["defaultValue"],
-  tint: TOOL_VALUES.tint.defaultValue as ToolValueColorType["defaultValue"],
+  recolor: TOOL_VALUES.recolor
+    .defaultValue as ToolValueColorType["defaultValue"],
+  recolorHue: TOOL_VALUES.recolorHue
+    .defaultValue as ToolValueStepType["defaultValue"],
+  recolorSaturation: TOOL_VALUES.recolorSaturation
+    .defaultValue as ToolValueStepType["defaultValue"],
+  recolorLightness: TOOL_VALUES.recolorLightness
+    .defaultValue as ToolValueStepType["defaultValue"],
+  recolorAmount: TOOL_VALUES.recolorAmount
+    .defaultValue as ToolValueStepType["defaultValue"],
+  recolorPreserveLum: TOOL_VALUES.recolorPreserveLum
+    .defaultValue as ToolValueBooleanType["defaultValue"],
   vibrance: TOOL_VALUES.vibrance
     .defaultValue as ToolValueStepType["defaultValue"],
   vintage: TOOL_VALUES.vintage

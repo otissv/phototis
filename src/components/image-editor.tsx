@@ -120,8 +120,8 @@ function ImageEditorInner({
         return toolsValues.grayscale
       case "sharpen":
         return toolsValues.sharpen
-      case "tint":
-        return toolsValues.tint
+      case "recolor":
+        return toolsValues.recolor
       case "vibrance":
         return toolsValues.vibrance
       case "noise":
@@ -148,7 +148,7 @@ function ImageEditorInner({
     toolsValues.sepia,
     toolsValues.grayscale,
     toolsValues.sharpen,
-    toolsValues.tint,
+    toolsValues.recolor,
     toolsValues.vibrance,
     toolsValues.noise,
     toolsValues.grain,

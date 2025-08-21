@@ -410,17 +410,74 @@ export function validateFilterParameters(parameters: any): {
     validatedParameters.grayscale = clampedGrayscale
   }
 
-  if (validatedParameters.tint !== undefined) {
-    const clampedTint = Math.max(
-      -GPU_SECURITY_CONSTANTS.MAX_TINT,
-      Math.min(validatedParameters.tint, GPU_SECURITY_CONSTANTS.MAX_TINT)
-    )
-    if (clampedTint !== validatedParameters.tint) {
-      errors.push(
-        `Tint value clamped from ${validatedParameters.tint} to ${clampedTint}`
+  if (validatedParameters.recolor !== undefined) {
+    const recolor = validatedParameters.recolor
+    if (
+      typeof recolor === "object" &&
+      recolor !== null &&
+      typeof (recolor as any).value === "number" &&
+      typeof (recolor as any).color === "string"
+    ) {
+      const amt = Math.max(
+        -GPU_SECURITY_CONSTANTS.MAX_TINT,
+        Math.min((recolor as any).value, GPU_SECURITY_CONSTANTS.MAX_TINT)
       )
+      if (amt !== (recolor as any).value) {
+        errors.push(
+          `Recolor.value clamped from ${(recolor as any).value} to ${amt}`
+        )
+      }
+      const rgba = hexToRgba01((recolor as any).color.trim()) || [1, 0, 0, 1]
+      validatedParameters.recolor = amt
+      validatedParameters.u_recolorColor = [rgba[0], rgba[1], rgba[2]]
+    } else if (typeof recolor === "number") {
+      const clampedRecolor = Math.max(
+        -GPU_SECURITY_CONSTANTS.MAX_TINT,
+        Math.min(recolor, GPU_SECURITY_CONSTANTS.MAX_TINT)
+      )
+      if (clampedRecolor !== recolor) {
+        errors.push(
+          `Recolor value clamped from ${recolor} to ${clampedRecolor}`
+        )
+      }
+      validatedParameters.recolor = clampedRecolor
+      // Default recolor color to red if not provided
+      validatedParameters.u_recolorColor = [1, 0, 0]
     }
-    validatedParameters.tint = clampedTint
+  }
+
+  // New Affinity-style recolor validation
+  if (validatedParameters.recolorHue !== undefined) {
+    // Allow -180..180 or 0..360; clamp to [-180,180]
+    let h = Number(validatedParameters.recolorHue) || 0
+    if (h > 180) h = ((h + 180) % 360) - 180
+    if (h < -180) h = ((h - 180) % 360) + 180
+    validatedParameters.recolorHue = h
+  }
+  if (validatedParameters.recolorSaturation !== undefined) {
+    const s = Math.max(
+      0,
+      Math.min(100, Number(validatedParameters.recolorSaturation))
+    )
+    validatedParameters.recolorSaturation = s
+  }
+  if (validatedParameters.recolorLightness !== undefined) {
+    const l = Math.max(
+      0,
+      Math.min(100, Number(validatedParameters.recolorLightness))
+    )
+    validatedParameters.recolorLightness = l
+  }
+  if (validatedParameters.recolorAmount !== undefined) {
+    const a = Math.max(
+      0,
+      Math.min(100, Number(validatedParameters.recolorAmount))
+    )
+    validatedParameters.recolorAmount = a
+  }
+  if (validatedParameters.recolorPreserveLum !== undefined) {
+    validatedParameters.recolorPreserveLum =
+      !!validatedParameters.recolorPreserveLum
   }
 
   if (validatedParameters.vibrance !== undefined) {

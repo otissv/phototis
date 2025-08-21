@@ -173,7 +173,15 @@ export function LayerSystem({ className, ...props }: LayerSystemProps) {
         temperature: {
           temperature: TOOL_VALUES.temperature.defaultValue as number,
         },
-        tint: { tint: TOOL_VALUES.tint.defaultValue as number },
+        recolor: {
+          recolorHue: (TOOL_VALUES as any).recolorHue.defaultValue,
+          recolorSaturation: (TOOL_VALUES as any).recolorSaturation
+            .defaultValue,
+          recolorLightness: (TOOL_VALUES as any).recolorLightness.defaultValue,
+          recolorAmount: (TOOL_VALUES as any).recolorAmount.defaultValue,
+          recolorPreserveLum: (TOOL_VALUES as any).recolorPreserveLum
+            .defaultValue,
+        },
         vibrance: { vibrance: TOOL_VALUES.vibrance.defaultValue as number },
         vintage: { vintage: TOOL_VALUES.vintage.defaultValue as number },
         grayscale: { grayscale: TOOL_VALUES.grayscale.defaultValue as number },
@@ -430,15 +438,7 @@ export function LayerSystem({ className, ...props }: LayerSystemProps) {
                   <Eclipse className='w-3 h-3 mr-1' />
                   Sepia
                 </Button>
-                <Button
-                  variant='ghost'
-                  size='sm'
-                  className='text-xs h-8 justify-start'
-                  onClick={() => handleAddAdjustmentLayer("invert")}
-                >
-                  <Eclipse className='w-3 h-3 mr-1' />
-                  Invert
-                </Button>
+
                 <Button
                   variant='ghost'
                   size='sm'
@@ -447,6 +447,24 @@ export function LayerSystem({ className, ...props }: LayerSystemProps) {
                 >
                   <Palette className='w-3 h-3 mr-1' />
                   Solid Color
+                </Button>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='text-xs h-8 justify-start'
+                  onClick={() => handleAddAdjustmentLayer("recolor")}
+                >
+                  <Palette className='w-3 h-3 mr-1' />
+                  Recolor
+                </Button>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='text-xs h-8 justify-start'
+                  onClick={() => handleAddAdjustmentLayer("invert")}
+                >
+                  <Eclipse className='w-3 h-3 mr-1' />
+                  Invert
                 </Button>
               </div>
             </DropdownMenuContent>

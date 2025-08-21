@@ -121,14 +121,43 @@ export const TOOL_VALUES: Record<ToolValueKeys, ToolValueTypes> = {
   invert: {
     defaultValue: 100,
   },
-  tint: {
-    min: -100,
-    max: 100,
+  // Legacy recolor (color+amount) remains defined for backward compatibility,
+  // but new HSL-based recolor uses the keys below.
+  recolor: {
+    min: 0,
+    max: 200,
     step: 1,
     defaultValue: {
-      value: 0,
+      value: 100,
       color: "#000000",
     },
+  },
+  recolorHue: {
+    min: -180,
+    max: 180,
+    step: 1,
+    defaultValue: 0,
+  },
+  recolorSaturation: {
+    min: 0,
+    max: 100,
+    step: 1,
+    defaultValue: 50,
+  },
+  recolorLightness: {
+    min: 0,
+    max: 100,
+    step: 1,
+    defaultValue: 50,
+  },
+  recolorAmount: {
+    min: 0,
+    max: 100,
+    step: 1,
+    defaultValue: 50,
+  },
+  recolorPreserveLum: {
+    defaultValue: true,
   },
   // Filter values
   blur: {
@@ -270,10 +299,17 @@ export type AdjustLayersType = {
   solid: string
   vintage: number
   temperature: number
-  tint: {
+  // Legacy recolor control used in some tool flows
+  recolor: {
     value: number
     color: string
   }
+  // New Affinity-style recolor controls (per-layer adjustment)
+  recolorHue: number
+  recolorSaturation: number
+  recolorLightness: number
+  recolorPreserveLum: boolean
+  recolorAmount: number
   vibrance: number
 }
 

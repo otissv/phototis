@@ -21,7 +21,7 @@ export class VintageEffectsPlugin extends BaseShaderPlugin {
     uniform float u_invert;
     uniform float u_sepia;
     uniform float u_grayscale;
-    uniform float u_tint;
+    uniform float u_recolor;
     uniform float u_vibrance;
     uniform float u_noise;
     uniform float u_grain;
@@ -62,9 +62,9 @@ export class VintageEffectsPlugin extends BaseShaderPlugin {
         color.rgb = mix(color.rgb, vec3(gray), u_grayscale / 100.0);
       }
       
-      // Apply tint (normalized to -1 to 1 range)
-      if (u_tint > 0.0) {
-        color.rgb += vec3(u_tint / 100.0, 0.0, 0.0);
+      // Apply recolor (normalized to -1 to 1 range)
+      if (u_recolor > 0.0) {
+        color.rgb += vec3(u_recolor / 100.0, 0.0, 0.0);
       }
       
       // Apply vibrance (normalized to -1 to 1 range)

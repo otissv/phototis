@@ -96,6 +96,14 @@ export class ShaderManager {
       uniform int u_solidEnabled;
       uniform vec3 u_solidColor;
       uniform float u_solidAlpha;
+      // Recolor color (when recolor provided as color+amount)
+      uniform vec3 u_recolorColor;
+      // Affinity-style recolor uniforms
+      uniform float u_recolorHue;
+      uniform float u_recolorSaturation;
+      uniform float u_recolorLightness;
+      uniform int u_recolorPreserveLum;
+      uniform float u_recolorAmount;
       varying vec2 v_texCoord;
     `
 
@@ -139,6 +147,55 @@ export class ShaderManager {
         vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
         vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
         return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+      }
+
+      // HSL helpers for recolor
+      vec3 rgb2hsl(vec3 c) {
+        float r = c.r, g = c.g, b = c.b;
+        float maxc = max(max(r, g), b);
+        float minc = min(min(r, g), b);
+        float l = (maxc + minc) * 0.5;
+        float h = 0.0;
+        float s = 0.0;
+        if (maxc != minc) {
+          float d = maxc - minc;
+          s = l > 0.5 ? d / (2.0 - maxc - minc) : d / (maxc + minc);
+          if (maxc == r) {
+            h = (g - b) / d + (g < b ? 6.0 : 0.0);
+          } else if (maxc == g) {
+            h = (b - r) / d + 2.0;
+          } else {
+            h = (r - g) / d + 4.0;
+          }
+          h /= 6.0;
+        }
+        return vec3(h, s, l);
+      }
+
+      float hue2rgb(float p, float q, float t) {
+        if (t < 0.0) t += 1.0;
+        if (t > 1.0) t -= 1.0;
+        if (t < 1.0/6.0) return p + (q - p) * 6.0 * t;
+        if (t < 1.0/2.0) return q;
+        if (t < 2.0/3.0) return p + (q - p) * (2.0/3.0 - t) * 6.0;
+        return p;
+      }
+
+      vec3 hsl2rgb(vec3 hsl) {
+        float h = hsl.x;
+        float s = hsl.y;
+        float l = hsl.z;
+        float r, g, b;
+        if (s == 0.0) {
+          r = g = b = l;
+        } else {
+          float q = l < 0.5 ? l * (1.0 + s) : l + s - l * s;
+          float p = 2.0 * l - q;
+          r = hue2rgb(p, q, h + 1.0/3.0);
+          g = hue2rgb(p, q, h);
+          b = hue2rgb(p, q, h - 1.0/3.0);
+        }
+        return vec3(r, g, b);
       }
 
       float random(vec2 st) {
@@ -237,8 +294,24 @@ export class ShaderManager {
           color.rgb = mix(color.rgb, vec3(gray), u_grayscale / 100.0);
         }
         
-        if (u_tint > 0.0) {
-          color.rgb += vec3(u_tint / 100.0, 0.0, 0.0);
+        // Legacy recolor (color + amount)
+        if (u_recolor != 0.0) {
+          float amt = clamp(abs(u_recolor) / 100.0, 0.0, 1.0);
+          color.rgb = mix(color.rgb, u_recolorColor, amt);
+        }
+
+        // Affinity-style Recolor: H/S/(L or preserve) with Amount
+        if (u_recolorAmount > 0.0) {
+          vec3 src = color.rgb;
+          vec3 hsl = rgb2hsl(src);
+          float h = mod((u_recolorHue / 360.0) + 1.0, 1.0);
+          float s = clamp(u_recolorSaturation / 100.0, 0.0, 1.0);
+          float l = (u_recolorPreserveLum == 1)
+            ? hsl.z
+            : clamp(u_recolorLightness / 100.0, 0.0, 1.0);
+          vec3 recolored = hsl2rgb(vec3(h, s, l));
+          float amt2 = clamp(u_recolorAmount / 100.0, 0.0, 1.0);
+          color.rgb = mix(src, recolored, amt2);
         }
         
         if (u_vibrance > 0.0) {
@@ -290,6 +363,37 @@ export class ShaderManager {
         plugin.updateUniforms(values)
       }
     })
+
+    // Capture extra recolor uniforms not owned by plugins
+    const extras = [
+      "u_recolorColor", // vec3 set elsewhere
+      // Affinity-style recolor uniforms
+      "u_recolorHue",
+      "u_recolorSaturation",
+      "u_recolorLightness",
+      "u_recolorAmount",
+      "u_recolorPreserveLum",
+    ] as const
+
+    // Map from tool keys to uniform names
+    const toolToUniform: Record<string, string> = {
+      u_recolorHue: "recolorHue",
+      u_recolorSaturation: "recolorSaturation",
+      u_recolorLightness: "recolorLightness",
+      u_recolorAmount: "recolorAmount",
+      u_recolorPreserveLum: "recolorPreserveLum",
+    }
+
+    for (const name of extras) {
+      if (name === "u_recolorColor" && Array.isArray(values.u_recolorColor)) {
+        this.lastUniformValues.set(name, values.u_recolorColor)
+        continue
+      }
+      const key = toolToUniform[name]
+      if (key && values[key] !== undefined) {
+        this.lastUniformValues.set(name, values[key])
+      }
+    }
   }
 
   setUniforms(gl: WebGL2RenderingContext, program: WebGLProgram): void {
@@ -331,6 +435,71 @@ export class ShaderManager {
         this.lastUniformValues.set(name, value)
       }
     })
+
+    // Handle uniforms that may be computed by validation but not part of plugin uniform maps
+    // Example: recolor color supplied as vec3 via `u_recolorColor`
+    const extraUniforms: Array<[string, any]> = []
+    // If any plugin provided u_recolor but not u_recolorColor location cached yet, still try to set it
+    if ((allUniforms as any).u_recolorColor) {
+      const val = (allUniforms as any).u_recolorColor as number[]
+      if (Array.isArray(val) && val.length === 3) {
+        const loc = gl.getUniformLocation(program, "u_recolorColor")
+        if (loc) {
+          gl.uniform3f(loc, val[0] ?? 0, val[1] ?? 0, val[2] ?? 0)
+          this.lastUniformValues.set("u_recolorColor", val)
+        }
+      }
+    }
+
+    // Also set Affinity-style recolor uniforms if present in values
+    const maybeSetNumber = (name: string) => {
+      const val =
+        (allUniforms as any)[name] ?? (this as any)[name] ?? ({} as any)
+      // We don't have them in plugin uniform map; try pulling from lastUniformValues cache fallback is not helpful.
+    }
+
+    const setIfPresent = (
+      name: string,
+      setter: (loc: WebGLUniformLocation, v: any) => void
+    ) => {
+      const value = (allUniforms as any)[name] as any
+      const loc = gl.getUniformLocation(program, name)
+      if (loc && value !== undefined) {
+        setter(loc, value)
+        this.lastUniformValues.set(name, value)
+      }
+    }
+
+    // Pull from validatedParameters directly via last call: in this manager, callers pass validatedParameters into updateUniforms of plugins; plugins don't store these extras.
+    // So we try to read from global 'validatedParameters' path isn't available. Instead, allow setting via uniform locations found and values stored in lastUniformValues already.
+    // Fallback: query locations and set from last known values if present in lastUniformValues.
+    const names = [
+      "u_recolorHue",
+      "u_recolorSaturation",
+      "u_recolorLightness",
+      "u_recolorAmount",
+      "u_recolorPreserveLum",
+    ]
+    for (const name of names) {
+      const loc = gl.getUniformLocation(program, name)
+      if (!loc) continue
+      // Try lastUniformValues first; callers should have primed via previous set
+      const cached = this.lastUniformValues.get(name)
+      if (cached !== undefined) {
+        if (name === "u_recolorPreserveLum") {
+          gl.uniform1i(loc, cached ? 1 : 0)
+        } else {
+          gl.uniform1f(loc, Number(cached) || 0)
+        }
+        continue
+      }
+      // As a fallback, set neutral defaults
+      if (name === "u_recolorPreserveLum") gl.uniform1i(loc, 1)
+      else if (name === "u_recolorHue") gl.uniform1f(loc, 0.0)
+      else if (name === "u_recolorSaturation") gl.uniform1f(loc, 50.0)
+      else if (name === "u_recolorLightness") gl.uniform1f(loc, 50.0)
+      else if (name === "u_recolorAmount") gl.uniform1f(loc, 0.0)
+    }
   }
 
   cleanup(): void {

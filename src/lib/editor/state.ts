@@ -55,7 +55,7 @@ export interface AdjustmentLayer extends BaseLayer {
     | "hue"
     | "saturation"
     | "temperature"
-    | "tint"
+    | "recolor"
     | "vibrance"
     | "vintage"
     | "grayscale"

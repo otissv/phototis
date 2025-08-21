@@ -97,7 +97,8 @@ export class VertexShaderPlugin extends BaseShaderPlugin {
     u_invert: 0,
     u_sepia: 0,
     u_grayscale: 0,
-    u_tint: 0,
+    u_recolor: 0,
+    u_recolorColor: [1, 0, 0] as [number, number, number],
     u_vibrance: 0,
     u_noise: 0,
     u_grain: 0,
@@ -147,7 +148,9 @@ export class VertexShaderPlugin extends BaseShaderPlugin {
     if (values.sepia !== undefined) this.uniforms.u_sepia = values.sepia
     if (values.grayscale !== undefined)
       this.uniforms.u_grayscale = values.grayscale
-    if (values.tint !== undefined) this.uniforms.u_tint = values.tint
+    if (values.recolor !== undefined) this.uniforms.u_recolor = values.recolor
+    if (values.u_recolorColor !== undefined)
+      this.uniforms.u_recolorColor = values.u_recolorColor
     if (values.vibrance !== undefined)
       this.uniforms.u_vibrance = values.vibrance
     if (values.noise !== undefined) this.uniforms.u_noise = values.noise

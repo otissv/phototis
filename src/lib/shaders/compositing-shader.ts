@@ -68,6 +68,14 @@ export const LAYER_RENDER_FRAGMENT_SHADER = `
   // No per-effect opacity for solid; global opacity is used via compositing
   uniform vec3 u_solidColor;
   uniform float u_solidAlpha;
+  // Recolor color support
+  uniform vec3 u_recolorColor;
+  // Recolor (Affinity-style) uniforms
+  uniform float u_recolorHue;         // degrees [-180..180] or [0..360]
+  uniform float u_recolorSaturation;  // [0..100]
+  uniform float u_recolorLightness;   // [0..100]
+  uniform int u_recolorPreserveLum;   // 0/1
+  uniform float u_recolorAmount;      // [0..100]
   
   // Layer positioning and cropping
   uniform float u_layerWidth;
@@ -95,7 +103,7 @@ export const LAYER_RENDER_FRAGMENT_SHADER = `
   uniform float u_invert;
   uniform float u_sepia;
   uniform float u_grayscale;
-  uniform float u_tint;
+  uniform float u_recolor;
   uniform float u_vibrance;
   uniform float u_noise;
   uniform float u_grain;
@@ -122,6 +130,55 @@ export const LAYER_RENDER_FRAGMENT_SHADER = `
     vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
     vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
     return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+  }
+
+  // HSL helpers for recolor
+  vec3 rgb2hsl(vec3 c) {
+    float r = c.r, g = c.g, b = c.b;
+    float maxc = max(max(r, g), b);
+    float minc = min(min(r, g), b);
+    float l = (maxc + minc) * 0.5;
+    float h = 0.0;
+    float s = 0.0;
+    if (maxc != minc) {
+      float d = maxc - minc;
+      s = l > 0.5 ? d / (2.0 - maxc - minc) : d / (maxc + minc);
+      if (maxc == r) {
+        h = (g - b) / d + (g < b ? 6.0 : 0.0);
+      } else if (maxc == g) {
+        h = (b - r) / d + 2.0;
+      } else {
+        h = (r - g) / d + 4.0;
+      }
+      h /= 6.0;
+    }
+    return vec3(h, s, l);
+  }
+
+  float hue2rgb(float p, float q, float t) {
+    if (t < 0.0) t += 1.0;
+    if (t > 1.0) t -= 1.0;
+    if (t < 1.0/6.0) return p + (q - p) * 6.0 * t;
+    if (t < 1.0/2.0) return q;
+    if (t < 2.0/3.0) return p + (q - p) * (2.0/3.0 - t) * 6.0;
+    return p;
+  }
+
+  vec3 hsl2rgb(vec3 hsl) {
+    float h = hsl.x;
+    float s = hsl.y;
+    float l = hsl.z;
+    float r, g, b;
+    if (s == 0.0) {
+      r = g = b = l; // achromatic
+    } else {
+      float q = l < 0.5 ? l * (1.0 + s) : l + s - l * s;
+      float p = 2.0 * l - q;
+      r = hue2rgb(p, q, h + 1.0/3.0);
+      g = hue2rgb(p, q, h);
+      b = hue2rgb(p, q, h - 1.0/3.0);
+    }
+    return vec3(r, g, b);
   }
 
   float random(vec2 st) {
@@ -265,8 +322,18 @@ export const LAYER_RENDER_FRAGMENT_SHADER = `
       color.rgb = mix(color.rgb, vec3(gray), u_grayscale / 100.0);
     }
     
-    if (u_tint > 0.0) {
-      color.rgb += vec3(u_tint / 100.0, 0.0, 0.0);
+    // Affinity-style Recolor: set H/S/(L or preserve) and mix by Amount
+    if (u_recolorAmount > 0.0) {
+      vec3 src = color.rgb;
+      vec3 hsl = rgb2hsl(src);
+      float h = mod((u_recolorHue / 360.0) + 1.0, 1.0);
+      float s = clamp(u_recolorSaturation / 100.0, 0.0, 1.0);
+      float l = (u_recolorPreserveLum == 1)
+        ? hsl.z
+        : clamp(u_recolorLightness / 100.0, 0.0, 1.0);
+      vec3 recolored = hsl2rgb(vec3(h, s, l));
+      float amt = clamp(u_recolorAmount / 100.0, 0.0, 1.0);
+      color.rgb = mix(src, recolored, amt);
     }
     
     if (u_vibrance > 0.0) {

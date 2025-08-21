@@ -718,7 +718,7 @@ export class HybridRenderer {
       { name: "u_invert", value: toolsValues.invert },
       { name: "u_sepia", value: toolsValues.sepia },
       { name: "u_grayscale", value: toolsValues.grayscale },
-      { name: "u_tint", value: toolsValues.tint },
+      // recolor handled below for object/number support
       { name: "u_vibrance", value: toolsValues.vibrance },
       { name: "u_noise", value: toolsValues.noise },
       { name: "u_grain", value: toolsValues.grain },
@@ -761,6 +761,73 @@ export class HybridRenderer {
         this.gl.uniform2f(location, value[0], value[1])
       }
     })
+
+    // Handle recolor specially: may be a number or an object { value, color }
+    // Legacy recolor (color + amount)
+    {
+      const recolorAny: any = (toolsValues as any).recolor
+      let recolorAmount = 0
+      let recolorColor: [number, number, number] | null = null
+      if (typeof recolorAny === "number") {
+        recolorAmount = recolorAny
+        recolorColor = [1, 0, 0]
+      } else if (
+        recolorAny &&
+        typeof recolorAny === "object" &&
+        typeof recolorAny.value === "number"
+      ) {
+        recolorAmount = recolorAny.value
+        const hex =
+          typeof recolorAny.color === "string" ? recolorAny.color : "#000000"
+        const rgba = this.hexToRgba01(hex) || [0, 0, 0, 1]
+        recolorColor = [rgba[0], rgba[1], rgba[2]]
+      }
+      const recolorLoc = this.gl.getUniformLocation(
+        this.layerProgram,
+        "u_recolor"
+      )
+      if (recolorLoc) {
+        this.gl.uniform1f(recolorLoc, recolorAmount)
+      }
+      const recolorColorLoc = this.gl.getUniformLocation(
+        this.layerProgram,
+        "u_recolorColor"
+      )
+      if (recolorColorLoc && recolorColor) {
+        this.gl.uniform3f(
+          recolorColorLoc,
+          recolorColor[0],
+          recolorColor[1],
+          recolorColor[2]
+        )
+      }
+    }
+
+    // New HSL-based recolor
+    const recolorHue = (toolsValues as any).recolorHue ?? 0
+    const recolorSat = (toolsValues as any).recolorSaturation ?? 50
+    const recolorLight = (toolsValues as any).recolorLightness ?? 50
+    const recolorPreserve = Boolean((toolsValues as any).recolorPreserveLum)
+    const recolorAmt = (toolsValues as any).recolorAmount ?? 0
+    const uRH = this.gl.getUniformLocation(this.layerProgram, "u_recolorHue")
+    if (uRH) this.gl.uniform1f(uRH, recolorHue)
+    const uRS = this.gl.getUniformLocation(
+      this.layerProgram,
+      "u_recolorSaturation"
+    )
+    if (uRS) this.gl.uniform1f(uRS, recolorSat)
+    const uRL = this.gl.getUniformLocation(
+      this.layerProgram,
+      "u_recolorLightness"
+    )
+    if (uRL) this.gl.uniform1f(uRL, recolorLight)
+    const uRPL = this.gl.getUniformLocation(
+      this.layerProgram,
+      "u_recolorPreserveLum"
+    )
+    if (uRPL) this.gl.uniform1i(uRPL, recolorPreserve ? 1 : 0)
+    const uRA = this.gl.getUniformLocation(this.layerProgram, "u_recolorAmount")
+    if (uRA) this.gl.uniform1f(uRA, recolorAmt)
 
     // Solid adjustment uniforms (color-only; enable if a color is provided)
     const solid = (toolsValues as any).solid

@@ -8,6 +8,7 @@ import { colorPalette } from "@/components/color-palette"
 import type { AdjustmentLayer } from "@/lib/editor/state"
 import { Toggle } from "@/ui/toggle"
 import { ToggleSwitch } from "./toggle-switch"
+import { cn } from "@/lib/utils"
 
 // Helper function to get appropriate icon for adjustment types
 export function getAdjustmentIcon(adjustmentType: string) {
@@ -21,7 +22,7 @@ export function getAdjustmentIcon(adjustmentType: string) {
     case "hue":
     case "saturation":
     case "temperature":
-    case "tint":
+    case "recolor":
       return <Droplets className='w-3 h-3' />
     case "vibrance":
     case "vintage":
@@ -89,15 +90,15 @@ export function AdjustmentLayerEditor({
             onChange={(value) => handleParameterChange(key, value as any)}
           />
         )
-      case "tint":
-        // For tint we keep the slider + color
+      case "recolor":
+        // Legacy recolor kept for compatibility (color + amount)
         if (typeof value === "number") {
           inputValue = {
             value,
-            color: (TOOL_VALUES.tint as any).defaultValue.color,
+            color: (TOOL_VALUES.recolor as any).defaultValue.color,
           }
         } else {
-          inputValue = value ?? (TOOL_VALUES.tint as any).defaultValue
+          inputValue = value ?? (TOOL_VALUES.recolor as any).defaultValue
         }
         return (
           <AdjustmentLayerColorAndSlider
@@ -106,6 +107,37 @@ export function AdjustmentLayerEditor({
             value={inputValue as ToolValueColorType["defaultValue"]}
             onChange={(value) => handleParameterChange(key, value as any)}
           />
+        )
+      case "recolorHue":
+      case "recolorSaturation":
+      case "recolorLightness":
+      case "recolorAmount": {
+        const def = (TOOL_VALUES as Record<string, any>)[key]?.defaultValue ?? 0
+        const num = typeof value === "number" ? value : Number(value) || def
+        return (
+          <div className='grid grid-cols-[56px_1fr] items-center gap-2 px-2 h-10'>
+            <span className='text-xs'>{key.replace("recolor", "")}</span>
+            <AdjustmentLayerSlider
+              key={key}
+              id={key}
+              value={num}
+              onChange={(v) => handleParameterChange(key, v)}
+            />
+          </div>
+        )
+      }
+      case "recolorPreserveLum":
+        return (
+          <div className='p-2'>
+            <span className='text-xs'>Preserve Luminance</span>
+            <AdjustmentLayerToggle
+              key={key}
+              id={key}
+              value={(value ? 100 : 0) as number}
+              onChange={(v) => handleParameterChange(key, v >= 50 ? 1 : 0)}
+              className='rounded-sm'
+            />
+          </div>
         )
       default:
         if (typeof value === "number") {
@@ -123,6 +155,7 @@ export function AdjustmentLayerEditor({
             id={key}
             value={inputValue as number}
             onChange={(value) => handleParameterChange(key, value)}
+            className='px-2'
           />
         )
     }
@@ -163,19 +196,21 @@ export function AdjustmentLayerColor({
   )
 }
 
-export interface AdjustmentLayerSliderProps {
+export interface AdjustmentLayerSliderProps
+  extends React.ComponentProps<"div"> {
   id: string
   value: number
   onChange: (value: number) => void
 }
 
 export function AdjustmentLayerSlider({
+  className,
   id,
   value,
   onChange,
 }: AdjustmentLayerSliderProps) {
   return (
-    <div className='flex items-center gap-2 px-2'>
+    <div className={cn("grid grid-cols-[1fr_32px] items-center", className)}>
       <input
         id={id}
         type='range'
@@ -186,7 +221,7 @@ export function AdjustmentLayerSlider({
         onChange={(e) => onChange(Number(e.target.value))}
         className='h-1 bg-accent rounded-full appearance-none cursor-pointer flex-1'
       />
-      <span className='text-xs'>{value as number}</span>
+      <span className='text-xs block text-right'>{value as number}</span>
     </div>
   )
 }
@@ -202,6 +237,7 @@ export function AdjustmentLayerColorAndSlider({
   value: { value, color },
   onChange,
 }: AdjustmentLayerColorAndSliderProps) {
+  console.log(value, color)
   const handleOnChange =
     (key: "value" | "color") => (input: number | string) => {
       onChange({
@@ -218,7 +254,6 @@ export function AdjustmentLayerColorAndSlider({
         onChange={handleOnChange("value")}
       />
       <Color
-        id={id}
         color={color}
         colors={colorPalette}
         disabled={false}
@@ -232,24 +267,28 @@ export function AdjustmentLayerColorAndSlider({
 }
 
 export interface AdjustmentLayerToggleProps {
+  className?: string
   id: string
+  toggleClassName?: string
   value: number
   onChange: (value: number) => void
 }
 
 export function AdjustmentLayerToggle({
+  className,
   id,
+  toggleClassName,
   value,
   onChange,
 }: AdjustmentLayerToggleProps) {
   return (
-    <div className='overflow-hidden'>
+    <div className={cn("overflow-hidden", className)}>
       <ToggleSwitch
         id={id}
         title='Toggle invert'
         checked={Boolean(value)}
         onCheckedChange={(checked: boolean) => onChange(checked ? 100 : 0)}
-        className='w-full h-10 p-0 rounded-t-none rounded-b-sm'
+        className={cn("w-full h-10 p-0 rounded-t-none rounded-b-sm")}
       />
     </div>
   )
