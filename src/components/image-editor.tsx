@@ -5,10 +5,11 @@ import { PlusIcon, MinusIcon, Menu } from "lucide-react"
 
 import { Button } from "@/ui/button"
 import { cn } from "@/lib/utils"
-import type { SIDEBAR_TOOLS, TOOL_VALUES } from "@/lib/state.image-editor"
+import type { SIDEBAR_TOOLS } from "@/lib/state.image-editor"
 import { ImageEditorCanvas } from "@/components/canvas.image-editor"
 import { ImageEditorSidebar } from "@/components/sidebar.image-editor"
 import { getEditorTools } from "@/components/tools.image-editor"
+import type { TOOL_VALUES } from "@/lib/tools"
 import {
   imageEditorToolsReducer,
   initialState,
@@ -16,9 +17,8 @@ import {
 } from "@/lib/state.image-editor"
 
 import { EditorProvider, useEditorContext } from "@/lib/editor/context"
-
-import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover"
-import { ImageEditorPanels } from "./panels"
+import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover"
+import { ImageEditorPanels } from "@/components/panels"
 
 export interface ImageEditorProps extends React.ComponentProps<"div"> {
   image: File | null

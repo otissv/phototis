@@ -19,25 +19,10 @@ export type ImageEditorToolsState = AdjustLayersType &
   RotateToolsType
 
 export const SIDEBAR_TOOLS = {
-  rotate: ["rotate", "flipVertical", "flipHorizontal"],
-  resize: ["scale", "resize", "upscale", "crop"],
+  effects: ["blur", "grain", "noise", "sharpen"],
   presets: ["presets"],
-  adjust: [
-    "brightness",
-    "contrast",
-    "exposure",
-    "gamma",
-    "grayscale",
-    "hue",
-    "invert",
-    "saturation",
-    "temperature",
-    "tint",
-    "vibrance",
-    "vintage",
-    "solid",
-  ],
-  effects: ["blur", "grain", "noise", "sepia", "sharpen"],
+  resize: ["scale", "resize", "upscale", "crop"],
+  rotate: ["rotate", "flipVertical", "flipHorizontal"],
 }
 export type ImageEditorToolsAction = {
   type: keyof typeof TOOL_VALUES | "reset" | "zoom"

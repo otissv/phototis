@@ -3,7 +3,7 @@
 import React from "react"
 import { Link2 } from "lucide-react"
 
-import type { TOOL_VALUES } from "@/lib/state.image-editor"
+import type { TOOL_VALUES } from "@/lib/tools"
 import { cn } from "@/lib/utils"
 import type { ImageEditorFooterProps } from "./utils.tools"
 import { Input } from "@/ui/input"

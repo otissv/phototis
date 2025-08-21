@@ -1,6 +1,6 @@
 "use client"
 
-import type { TOOL_VALUES } from "@/lib/state.image-editor"
+import type { TOOL_VALUES } from "@/lib/tools"
 import { ImageEditorButton } from "@/components/button.image-editor"
 import { ImageEditorFooterSlider } from "@/components/footer-slider.image-editor"
 
