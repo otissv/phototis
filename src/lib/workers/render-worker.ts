@@ -723,6 +723,37 @@ async function renderLayers(
       progress: 30,
     } as ProgressMessage)
 
+    // Prefer HybridRenderer path for correct transforms and clipping (prevents edge bleed)
+    if (hybridRendererInstance && layerTextures.size > 0) {
+      try {
+        const texMap = new Map<string, WebGLTexture>()
+        for (const [id, tex] of layerTextures) texMap.set(id, tex)
+
+        const orderedLayers = layers.slice() // renderer orders internally
+        hybridRendererInstance.renderLayers(
+          orderedLayers as any,
+          texMap,
+          toolsValues,
+          selectedLayerId,
+          canvasWidth,
+          canvasHeight,
+          layerDimensionsMap
+        )
+
+        const result = (hybridRendererInstance as any).fboManager?.getFBO?.(
+          "result"
+        )
+        const finalTexture: WebGLTexture | null = result?.texture || null
+        if (finalTexture) {
+          await renderToCanvas(finalTexture, canvasWidth, canvasHeight)
+          postMessage({ type: "success", id: messageId } as SuccessMessage)
+          return
+        }
+      } catch (error) {
+        console.error("HybridRenderer worker path failed; falling back", error)
+      }
+    }
+
     // Stage 2: Individual layer rendering with filters
     const renderedLayers = new Map<string, WebGLTexture>()
 

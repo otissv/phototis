@@ -186,48 +186,52 @@ export const LAYER_RENDER_FRAGMENT_SHADER = `
   }
   
   void main() {
-    // Calculate layer positioning and cropping
+    // Canvas pixel in canvas space
     vec2 canvasCoord = v_texCoord * u_resolution;
+
+    // Map to layer-local space (origin at layer top-left)
     vec2 layerCoord = canvasCoord - vec2(u_layerX, u_layerY);
-    
-    // Check if the current pixel is within the layer bounds
-    if (layerCoord.x < 0.0 || layerCoord.x >= u_layerWidth || 
-        layerCoord.y < 0.0 || layerCoord.y >= u_layerHeight) {
-      discard; // Outside layer bounds, make transparent
-    }
-    
-    // Convert to texture coordinates for the layer
+
+    // Normalize to [0,1] in layer space before transforms
     vec2 uv = layerCoord / vec2(u_layerWidth, u_layerHeight);
-    
-    // Apply flip transformations from tool settings only
+
+    // Move to centered coords for inverse transform
+    vec2 c = uv - vec2(0.5);
+
+    // Inverse scale
+    if (u_scale != 1.0 && u_scale != 0.0) {
+      c /= u_scale;
+    }
+
+    // Inverse rotation in pixel space to preserve aspect ratio
+    if (u_rotate != 0.0) {
+      float angle = -u_rotate * 3.14159 / 180.0; // inverse
+      float cs = cos(angle);
+      float sn = sin(angle);
+      // convert to pixel space so X and Y have same units
+      vec2 dims = vec2(u_layerWidth, u_layerHeight);
+      vec2 cpx = c * dims;
+      cpx = vec2(cpx.x * cs - cpx.y * sn, cpx.x * sn + cpx.y * cs);
+      // back to normalized space
+      c = cpx / dims;
+    }
+
+    // Inverse flips
     if (u_flipHorizontal) {
-      uv.x = 1.0 - uv.x;
+      c.x = -c.x;
     }
     if (u_flipVertical) {
-      uv.y = 1.0 - uv.y;
+      c.y = -c.y;
     }
-    
-    // Apply rotation
-    if (u_rotate != 0.0) {
-      float angle = u_rotate * 3.14159 / 180.0;
-      vec2 center = vec2(0.5);
-      vec2 rotated = uv - center;
-      vec2 rotatedCoord = vec2(
-        rotated.x * cos(angle) - rotated.y * sin(angle),
-        rotated.x * sin(angle) + rotated.y * cos(angle)
-      );
-      uv = rotatedCoord + center;
+
+    // Back to UV space
+    uv = c + vec2(0.5);
+
+    // Clip to image bounds after applying transforms
+    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+      discard;
     }
-    
-    // Apply scale
-    if (u_scale != 1.0) {
-      vec2 center = vec2(0.5);
-      uv = (uv - center) * u_scale + center;
-    }
-    
-    // Clamp texture coordinates to prevent artifacts
-    uv = clamp(uv, 0.0, 1.0);
-    
+
     vec4 color = texture2D(u_image, uv);
     // Solid adjustment mixes a solid over current sampled color
     if (u_solidEnabled == 1) {
