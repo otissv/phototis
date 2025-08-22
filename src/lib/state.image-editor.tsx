@@ -24,10 +24,37 @@ export const SIDEBAR_TOOLS = {
   resize: ["scale", "resize", "upscale", "crop"],
   rotate: ["rotate", "flipVertical", "flipHorizontal"],
 }
-export type ImageEditorToolsAction = {
-  type: keyof typeof TOOL_VALUES | "reset" | "zoom"
-  payload: number
-}
+// Define payload types for non-numeric tools
+type ResizePayload = { width: number; height: number }
+type CropPayload = { x: number; y: number; width: number; height: number }
+type RecolorPayload = { value: number; color: string }
+
+type NumericToolKeys = Exclude<
+  keyof typeof TOOL_VALUES,
+  "resize" | "crop" | "recolor" | "solid"
+>
+
+export type ImageEditorToolsAction =
+  | {
+      type: NumericToolKeys | "zoom"
+      payload: number
+    }
+  | {
+      type: "resize"
+      payload: ResizePayload
+    }
+  | {
+      type: "crop"
+      payload: CropPayload
+    }
+  | {
+      type: "recolor"
+      payload: RecolorPayload
+    }
+  | {
+      type: "solid"
+      payload: string
+    }
 
 export type ImageEditorToolsResetAction = {
   type: "reset"
@@ -137,8 +164,53 @@ export function imageEditorToolsReducer(
     }
   }
 
-  return {
-    ...state,
-    [action.type]: (action as ImageEditorToolsAction).payload,
-  } as ImageEditorToolsState
+  // Handle union action payloads
+  switch (action.type) {
+    case "resize": {
+      const payload = action.payload as any
+      return {
+        ...state,
+        resize: {
+          width: Math.max(0, Number(payload?.width) || 0),
+          height: Math.max(0, Number(payload?.height) || 0),
+        },
+      }
+    }
+    case "crop": {
+      const p = action.payload as any
+      return {
+        ...state,
+        crop: {
+          x: Math.max(0, Number(p?.x) || 0),
+          y: Math.max(0, Number(p?.y) || 0),
+          width: Math.max(0, Number(p?.width) || 0),
+          height: Math.max(0, Number(p?.height) || 0),
+        },
+      }
+    }
+    case "recolor": {
+      const p = action.payload as any
+      return {
+        ...state,
+        recolor: {
+          value: Math.max(0, Number(p?.value) || 0),
+          color: typeof p?.color === "string" ? p.color : "#000000",
+        },
+      }
+    }
+    case "solid": {
+      return {
+        ...state,
+        solid:
+          typeof action.payload === "string" ? action.payload : state.solid,
+      }
+    }
+    default: {
+      const a = action as any
+      return {
+        ...state,
+        [a.type]: a.payload,
+      } as ImageEditorToolsState
+    }
+  }
 }

@@ -1,6 +1,7 @@
 import type { ImageEditorToolsState } from "@/lib/state.image-editor"
 import type { TOOL_VALUES } from "@/lib/tools"
 import type { ImageEditorToolsActions } from "@/lib/state.image-editor"
+import type { EditorLayer } from "@/lib/editor/state"
 
 export interface ImageEditorHeaderProps
   extends Omit<React.ComponentProps<"ul">, "onChange" | "onProgress"> {
@@ -21,9 +22,9 @@ export interface ImageEditorFooterProps
   > {
   canvasRef: React.RefObject<HTMLCanvasElement | null>
   drawFnRef: React.RefObject<() => void>
-  image?: File | null
   operator?: string
   progress?: number
+  selectedLayer: EditorLayer | null
   selectedTool: keyof typeof TOOL_VALUES
   toolsValues?: ImageEditorToolsState
   value: number

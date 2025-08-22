@@ -290,7 +290,17 @@ export function ImageEditorCanvas({
             cancelAnimationFrame(existingAnimation)
           }
 
-          // Start smooth animation
+          // Do not animate rotation to avoid tweening when selecting rotated layers
+          if (key === "rotate") {
+            setSmoothToolsValues((prev) => ({
+              ...prev,
+              [key]: targetValue,
+            }))
+            animationRef.current.delete(key)
+            continue
+          }
+
+          // Start smooth animation for other numeric tools
           const startTime = performance.now()
           const duration = 300 // 300ms for smooth transition
 
@@ -341,6 +351,7 @@ export function ImageEditorCanvas({
   ])
 
   // Redraw when debounced tool values change (includes adjustment parameters)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: we only want to react to debounced tools here
   React.useEffect(() => {
     if (isDragActive) return
     const timer = setTimeout(() => {
@@ -971,13 +982,45 @@ export function ImageEditorCanvas({
 
         // Queue render task with worker
         try {
+          // Derive per-render dimensions applying resize only to active layer
+          let dimsForRender = layerDimensionsRef.current
+          try {
+            const selectedDims = layerDimensionsRef.current.get(selectedLayerId)
+            const rz: any = (selectedFiltersRef.current as any)?.resize
+            if (
+              selectedDims &&
+              rz &&
+              typeof rz.width === "number" &&
+              typeof rz.height === "number" &&
+              rz.width > 0 &&
+              rz.height > 0 &&
+              (rz.width !== selectedDims.width ||
+                rz.height !== selectedDims.height)
+            ) {
+              const centeredX = selectedDims.x + selectedDims.width / 2
+              const centeredY = selectedDims.y + selectedDims.height / 2
+              const newWidth = rz.width
+              const newHeight = rz.height
+              const newX = Math.round(centeredX - newWidth / 2)
+              const newY = Math.round(centeredY - newHeight / 2)
+              const clone = new Map(layerDimensionsRef.current)
+              clone.set(selectedLayerId, {
+                width: newWidth,
+                height: newHeight,
+                x: newX,
+                y: newY,
+              })
+              dimsForRender = clone
+            }
+          } catch {}
+
           const taskId = await renderLayersWithWorker(
             canonicalLayers,
             renderingToolsValues,
             selectedLayerId,
             canvasWidth,
             canvasHeight,
-            layerDimensionsRef.current,
+            dimsForRender,
             priority,
             layersSignature
           )
@@ -1044,6 +1087,7 @@ export function ImageEditorCanvas({
         ...smoothToolsValuesRef.current,
         flipHorizontal: selectedFiltersRef.current.flipHorizontal,
         flipVertical: selectedFiltersRef.current.flipVertical,
+        rotate: selectedFiltersRef.current.rotate,
       }
 
       // Create a map of layer textures
@@ -1077,6 +1121,38 @@ export function ImageEditorCanvas({
         layerTextures.size > 0
       ) {
         try {
+          // Apply resize to active layer in hybrid path too
+          let dimsForRender = layerDimensionsRef.current
+          try {
+            const selectedDims = layerDimensionsRef.current.get(selectedLayerId)
+            const rz: any = (selectedFiltersRef.current as any)?.resize
+            if (
+              selectedDims &&
+              rz &&
+              typeof rz.width === "number" &&
+              typeof rz.height === "number" &&
+              rz.width > 0 &&
+              rz.height > 0 &&
+              (rz.width !== selectedDims.width ||
+                rz.height !== selectedDims.height)
+            ) {
+              const centeredX = selectedDims.x + selectedDims.width / 2
+              const centeredY = selectedDims.y + selectedDims.height / 2
+              const newWidth = rz.width
+              const newHeight = rz.height
+              const newX = Math.round(centeredX - newWidth / 2)
+              const newY = Math.round(centeredY - newHeight / 2)
+              const clone = new Map(layerDimensionsRef.current)
+              clone.set(selectedLayerId, {
+                width: newWidth,
+                height: newHeight,
+                x: newX,
+                y: newY,
+              })
+              dimsForRender = clone
+            }
+          } catch {}
+
           hybridRendererRef.current.renderLayers(
             allLayersToRender,
             layerTextures,
@@ -1084,7 +1160,7 @@ export function ImageEditorCanvas({
             selectedLayerId,
             canvasWidth,
             canvasHeight,
-            layerDimensionsRef.current
+            dimsForRender
           )
 
           // Render the final result to canvas

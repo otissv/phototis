@@ -10,6 +10,7 @@ import { Input } from "@/ui/input"
 
 import { Button } from "@/ui/button"
 import { ImageEditorButton } from "@/components/button.image-editor"
+import { ImageLayer } from "@/lib/editor/state"
 
 function getImageDimensions(
   file: File
@@ -59,8 +60,10 @@ ResizeButton.displayName = "ResizeButton"
 
 function ResizeControls({
   onChange,
-  image,
-}: Omit<ImageEditorFooterProps, "dispatch" | "onSelectedToolChange">) {
+  selectedLayer,
+  dispatch,
+  toolsValues,
+}: Omit<ImageEditorFooterProps, "onSelectedToolChange">) {
   const [width, setWidth] = React.useState<number>(0)
   const [height, setHeight] = React.useState<number>(0)
   const [originalAspectRatio, setOriginalAspectRatio] =
@@ -68,20 +71,40 @@ function ResizeControls({
   const [preserveAspectRatio, setPreserveAspectRatio] =
     React.useState<boolean>(true)
 
+  const image = (selectedLayer as ImageLayer).image
+
+  // Initialize from selected layer current resize or image file dimensions
   React.useEffect(() => {
-    const dimensions = async () => {
-      if (!image) return null
-      try {
-        const { width, height } = await getImageDimensions(image)
-        setWidth(width)
-        setHeight(height)
-        setOriginalAspectRatio(width / height)
-      } catch (err) {
-        console.error("Failed to get image size", err)
+    const init = async () => {
+      let w = 0
+      let h = 0
+      const tv: any = toolsValues || {}
+      if (
+        tv.resize &&
+        typeof tv.resize.width === "number" &&
+        typeof tv.resize.height === "number" &&
+        tv.resize.width > 0 &&
+        tv.resize.height > 0
+      ) {
+        w = tv.resize.width
+        h = tv.resize.height
+      } else if (image) {
+        try {
+          const dim = await getImageDimensions(image)
+          w = dim.width
+          h = dim.height
+        } catch (err) {
+          console.error("Failed to get image size", err)
+        }
+      }
+      if (w > 0 && h > 0) {
+        setWidth(w)
+        setHeight(h)
+        setOriginalAspectRatio(w / h)
       }
     }
-    dimensions()
-  }, [image])
+    void init()
+  }, [])
 
   const handleOnChange =
     (type: "width" | "height") => (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -106,7 +129,13 @@ function ResizeControls({
       setWidth(newWidth)
       setHeight(newHeight)
 
-      onChange?.({ width: newWidth, height: newHeight } as any)
+      // Fire local onChange label handler if provided
+      onChange?.(0 as any)
+      // Persist to selected layer filters via reducer
+      dispatch?.({
+        type: "resize",
+        payload: { width: newWidth, height: newHeight },
+      } as any)
     }
 
   return (

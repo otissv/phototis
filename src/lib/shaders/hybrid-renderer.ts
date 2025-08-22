@@ -1095,7 +1095,9 @@ export class HybridRenderer {
           continue
         }
 
-        // Base tools for this image layer: start with safe defaults and merge ONLY effect-type keys from image filters
+        // Base tools for this image layer: start with safe defaults and merge
+        // - effect-type keys from image filters
+        // - orientation keys from image filters (so non-selected layers keep their own transforms)
         const EFFECT_KEYS: Array<keyof Partial<ImageEditorToolsState>> = [
           "blur",
           "blurType",
@@ -1104,6 +1106,12 @@ export class HybridRenderer {
           "sharpen",
           "noise",
           "grain",
+        ]
+        const ORIENTATION_KEYS: Array<keyof Partial<ImageEditorToolsState>> = [
+          "flipHorizontal",
+          "flipVertical",
+          "rotate",
+          "scale",
         ]
         const layerToolsValues = withDefaults(undefined)
         const imgFilters =
@@ -1121,6 +1129,13 @@ export class HybridRenderer {
             ["flipHorizontal", "flipVertical", "rotate", "scale", "zoom"]
           for (const k of INTERACTIVE_KEYS) {
             ;(layerToolsValues as any)[k] = (selectedDefaults as any)[k]
+          }
+        } else {
+          // For non-selected layers, preserve their own orientation (rotate/flip/scale) from filters
+          for (const k of ORIENTATION_KEYS) {
+            if (Object.prototype.hasOwnProperty.call(imgFilters, k)) {
+              ;(layerToolsValues as any)[k] = (imgFilters as any)[k]
+            }
           }
         }
 

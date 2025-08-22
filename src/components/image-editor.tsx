@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils"
 import type { SIDEBAR_TOOLS } from "@/lib/state.image-editor"
 import { ImageEditorCanvas } from "@/components/canvas.image-editor"
 import { ImageEditorSidebar } from "@/components/sidebar.image-editor"
-import { getEditorTools } from "@/components/tools.image-editor"
+import { ImageEditorFooter } from "@/components/tools.image-editor"
 import type { TOOL_VALUES } from "@/lib/tools"
 import {
   imageEditorToolsReducer,
@@ -41,7 +41,7 @@ function ImageEditorInner({
   const [isPanelsOpen, setIsPanelsOpen] = React.useState(false)
 
   const [selectedSidebar, setSelectedSidebar] =
-    React.useState<keyof typeof SIDEBAR_TOOLS>("adjust")
+    React.useState<keyof typeof SIDEBAR_TOOLS>("rotate")
   const [selectedTool, setSelectedTool] =
     React.useState<keyof typeof TOOL_VALUES>("brightness")
   const [progress, setProgress] = React.useState(0)
@@ -52,10 +52,8 @@ function ImageEditorInner({
     getSelectedLayerId,
     updateLayer,
     selectLayer,
-    setBlendMode,
     setZoomPercent,
     state,
-    setEphemeral,
     duplicateLayer,
     removeLayer,
     history,
@@ -166,16 +164,6 @@ function ImageEditorInner({
       setSelectedSidebar(sidebar)
     },
     []
-  )
-
-  const { header: Header, footer: ImageEditorFooter } = React.useMemo(
-    () =>
-      getEditorTools({
-        selectedSidebar,
-        canvasRef,
-        drawFnRef,
-      }),
-    [selectedSidebar]
   )
 
   const handleOnProgress = React.useCallback((progress: number) => {
@@ -401,20 +389,6 @@ function ImageEditorInner({
         </div>
       </div>
 
-      <div className='lg:col-start-2 lg:row-start-1 w-full flex flex-col'>
-        <div className='flex flex-col items-center'>
-          <Header
-            dispatch={dispatch}
-            selectedTool={selectedTool}
-            onSelectedToolChange={handleSelectedToolChange}
-            toolsValues={toolsValues}
-            progress={progress}
-            canvasRef={canvasRef}
-            drawFnRef={drawFnRef}
-          />
-        </div>
-      </div>
-
       <div className='lg:col-start-2 lg:row-start-1 lg:row-span-2 flex flex-col items-center overflow-auto border rounded-sm h-full'>
         <div className='relative h-full'>
           <ImageEditorCanvas
@@ -427,8 +401,13 @@ function ImageEditorInner({
       </div>
 
       <ImageEditorFooter
-        image={image}
-        dispatch={dispatch}
+        selectedLayer={selectedLayer}
+        selectedSidebar={selectedSidebar}
+        dispatch={
+          dispatch as (
+            value: ImageEditorToolsActions | ImageEditorToolsActions[]
+          ) => void
+        }
         selectedTool={selectedTool}
         value={value}
         onSelectedToolChange={handleSelectedToolChange}

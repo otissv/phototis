@@ -44,52 +44,24 @@ import {
 
 import { NoiseButton, NoiseControls } from "@/components/tools/noise.tools"
 import { CropButton, CropControls } from "@/components/tools/crop.tools"
+import type { EditorLayer, ImageLayer } from "@/lib/editor/state"
 
-export function getEditorTools({
+export function ImageEditorFooter({
   selectedSidebar,
-  canvasRef,
-  drawFnRef,
-}: {
+  ...props
+}: ImageEditorFooterProps & {
   selectedSidebar: keyof typeof SIDEBAR_TOOLS
-  canvasRef: React.RefObject<HTMLCanvasElement | null>
-  drawFnRef: React.RefObject<() => void>
 }) {
   switch (selectedSidebar) {
     case "effects":
-      return {
-        header: (_props: ImageEditorHeaderProps) => <></>,
-        footer: (props: ImageEditorFooterProps) => (
-          <EffectsFooter
-            {...props}
-            canvasRef={canvasRef}
-            drawFnRef={drawFnRef}
-          />
-        ),
-      }
+      return <EffectsFooter {...props} />
     case "rotate":
-      return {
-        header: (_props: ImageEditorHeaderProps) => <></>,
-        footer: (props: ImageEditorFooterProps) => (
-          <RotateFooter
-            {...props}
-            canvasRef={canvasRef}
-            drawFnRef={drawFnRef}
-          />
-        ),
-      }
+      return <RotateFooter {...props} />
     case "resize":
-      return {
-        header: (_props: ImageEditorHeaderProps) => <></>,
-        footer: (props: ImageEditorFooterProps) => (
-          <ScaleFooter {...props} canvasRef={canvasRef} drawFnRef={drawFnRef} />
-        ),
-      }
+      return <ScaleFooter {...props} />
 
     default:
-      return {
-        header: (_props: ImageEditorHeaderProps) => <></>,
-        footer: (_props: ImageEditorFooterProps) => <></>,
-      }
+      return null
   }
 }
 
@@ -103,11 +75,11 @@ export function EffectsFooter({
   dispatch,
   toolsValues,
   progress,
-  image,
   onChange: _onChange,
   onProgress: _onProgress,
   canvasRef,
   drawFnRef,
+  selectedLayer,
   ...props
 }: ImageEditorFooterProps) {
   const { history } = useEditorContext()
@@ -163,10 +135,14 @@ export function EffectsFooter({
 
   const Control = React.useMemo(() => {
     const controlProps = {
-      image,
       value,
       progress,
       selectedTool,
+      toolsValues,
+      dispatch,
+      canvasRef,
+      drawFnRef,
+      selectedLayer,
       label: (value: number, operator: string) => {
         if (selectedTool === "rotate") {
           return `${Math.round(value)} ${operator}`
@@ -181,7 +157,7 @@ export function EffectsFooter({
       case "sharpen":
         return <SharpenControls {...controlProps} />
     }
-  }, [selectedTool, value, progress, handleOnChange, image])
+  }, [selectedTool, value, progress, handleOnChange, selectedLayer])
 
   const renderBlurControls = () => {
     if (selectedTool === "blur") {
@@ -283,7 +259,6 @@ export function EffectsFooter({
  * Rotate
  */
 export function RotateFooter({
-  image,
   progress,
   selectedTool,
   toolsValues,
@@ -292,6 +267,7 @@ export function RotateFooter({
   onSelectedToolChange,
   canvasRef,
   drawFnRef,
+  selectedLayer,
   ...props
 }: Omit<ImageEditorFooterProps, "onChange" | "onProgress">) {
   const safeRotate =
@@ -344,11 +320,15 @@ export function RotateFooter({
 
   const Control = React.useMemo(() => {
     const controlProps = {
-      image,
       value,
       progress,
       operator,
       selectedTool,
+      toolsValues,
+      dispatch,
+      canvasRef,
+      drawFnRef,
+      selectedLayer,
       label: (value: number, operator: string) => {
         if (selectedTool === "rotate") {
           return `${Math.round(value)} ${operator}`
@@ -361,7 +341,7 @@ export function RotateFooter({
       case "rotate":
         return <RotationControls {...controlProps} />
     }
-  }, [selectedTool, value, operator, progress, handleOnChange, image])
+  }, [selectedTool, value, operator, progress, handleOnChange, selectedLayer])
 
   return (
     <div {...props}>
@@ -555,7 +535,6 @@ export function TransformHeader({
 }
 
 export function ScaleFooter({
-  image,
   progress,
   selectedTool,
   toolsValues,
@@ -564,6 +543,7 @@ export function ScaleFooter({
   onSelectedToolChange,
   canvasRef,
   drawFnRef,
+  selectedLayer,
   ...props
 }: Omit<ImageEditorFooterProps, "onChange" | "onProgress">) {
   const handleOnChange = React.useCallback(
@@ -584,11 +564,15 @@ export function ScaleFooter({
   // biome-ignore lint/correctness/useExhaustiveDependencies: handleOnChange causes infinite loop
   const Control = React.useMemo(() => {
     const controlProps = {
-      image,
       value,
       progress,
       operator,
       selectedTool,
+      toolsValues,
+      dispatch,
+      canvasRef,
+      drawFnRef,
+      selectedLayer,
       label: (value: number, operator: string) => {
         if (selectedTool === "rotate") {
           return `${Math.round(value)} ${operator}`
@@ -603,13 +587,7 @@ export function ScaleFooter({
       case "scale":
         return <ScaleControls {...controlProps} />
       case "resize":
-        return (
-          <ResizeControls
-            {...controlProps}
-            canvasRef={canvasRef}
-            drawFnRef={drawFnRef}
-          />
-        )
+        return <ResizeControls {...controlProps} />
       case "upscale":
         return (
           <UpscaleButton
@@ -619,7 +597,7 @@ export function ScaleFooter({
           />
         )
     }
-  }, [selectedTool, value, operator, progress, handleOnChange, image])
+  }, [selectedTool, value, operator, progress, handleOnChange, selectedLayer])
 
   return (
     <div {...props}>
