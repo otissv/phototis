@@ -344,11 +344,19 @@ export function EditorProvider({
       parameters: Record<string, number | { value: number; color: string }>,
       position: "top" | "bottom" | number = "top"
     ) => {
-      historyRef.current?.beginTransaction("Add Adjustment Layer")
-      historyRef.current?.push(
-        new AddAdjustmentLayerCommand(adjustmentType, parameters, position)
+      const h = historyRef.current
+      if (!h) return
+      h.beginTransaction("Add Adjustment Layer")
+      const id = `adjustment-${Date.now()}`
+      const cmd = new AddAdjustmentLayerCommand(
+        adjustmentType,
+        parameters,
+        position,
+        id
       )
-      historyRef.current?.endTransaction(true)
+      h.push(cmd)
+      h.push(new SetSelectionCommand([id]))
+      h.endTransaction(true)
     },
     []
   )

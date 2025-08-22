@@ -9,6 +9,7 @@ import type { AdjustmentLayer } from "@/lib/editor/state"
 import { Toggle } from "@/ui/toggle"
 import { ToggleSwitch } from "./toggle-switch"
 import { cn } from "@/lib/utils"
+import { Fragment } from "react"
 
 // Helper function to get appropriate icon for adjustment types
 export function getAdjustmentIcon(adjustmentType: string) {
@@ -56,8 +57,6 @@ export function AdjustmentLayerEditor({
     onUpdate({ [key]: value })
   }
 
-  console.log(layer.parameters)
-
   const renderParameterControl = (
     key: string,
     value: number | ToolValueColorType["defaultValue"]
@@ -71,7 +70,6 @@ export function AdjustmentLayerEditor({
 
         return (
           <AdjustmentLayerSlider
-            key={key}
             id={key}
             value={num}
             onChange={(v) => handleParameterChange(key, v)}
@@ -84,7 +82,6 @@ export function AdjustmentLayerEditor({
       case "invert":
         return (
           <AdjustmentLayerToggle
-            key={key}
             id={key}
             value={value as number}
             onChange={(value) => handleParameterChange(key, value as any)}
@@ -102,7 +99,6 @@ export function AdjustmentLayerEditor({
         return (
           <div className='gap-2 px-2'>
             <AdjustmentLayerSlider
-              key={key}
               id={key}
               value={num}
               onChange={(v) => handleParameterChange(key, v)}
@@ -122,7 +118,6 @@ export function AdjustmentLayerEditor({
         }
         return (
           <AdjustmentLayerColor
-            key={key}
             id={key}
             value={inputValue as string}
             onChange={(value) => handleParameterChange(key, value as any)}
@@ -140,7 +135,6 @@ export function AdjustmentLayerEditor({
         }
         return (
           <AdjustmentLayerColorAndSlider
-            key={key}
             id={key}
             value={inputValue as ToolValueColorType["defaultValue"]}
             onChange={(value) => handleParameterChange(key, value as any)}
@@ -154,7 +148,6 @@ export function AdjustmentLayerEditor({
           <div className='grid grid-cols-[56px_1fr] items-center gap-2 px-2 h-10'>
             <span className='text-xs'>{key.replace("recolor", "")}</span>
             <AdjustmentLayerSlider
-              key={key}
               id={key}
               value={num}
               onChange={(v) => handleParameterChange(key, v)}
@@ -170,7 +163,6 @@ export function AdjustmentLayerEditor({
           <div className='grid grid-cols-[56px_1fr] items-center gap-2 px-2 h-10'>
             <span className='text-xs'>{key.replace("recolor", "")}</span>
             <AdjustmentLayerSlider
-              key={key}
               id={key}
               value={num}
               onChange={(v) => handleParameterChange(key, v)}
@@ -188,7 +180,6 @@ export function AdjustmentLayerEditor({
           <div className='grid grid-cols-[56px_1fr] items-center gap-2 px-2 h-10'>
             <span className='text-xs'>{key.replace("recolor", "")}</span>
             <AdjustmentLayerSlider
-              key={key}
               id={key}
               value={num}
               onChange={(v) => handleParameterChange(key, v)}
@@ -202,7 +193,6 @@ export function AdjustmentLayerEditor({
           <div className='p-2'>
             <span className='text-xs'>Preserve Luminance</span>
             <AdjustmentLayerToggle
-              key={key}
               id={key}
               value={(value ? 100 : 0) as number}
               onChange={(v) => handleParameterChange(key, v >= 50 ? 1 : 0)}
@@ -222,7 +212,6 @@ export function AdjustmentLayerEditor({
         }
         return (
           <AdjustmentLayerSlider
-            key={key}
             id={key}
             value={inputValue as number}
             onChange={(value) => handleParameterChange(key, value)}
@@ -244,9 +233,9 @@ export function AdjustmentLayerEditor({
   return (
     <div className='flex items-center mb-4 rounded-b-sm min-h-10 border'>
       <div className='flex flex-col  w-full'>
-        {Object.entries(layer.parameters).map(([key, value]) =>
-          renderParameterControl(key, value)
-        )}
+        {Object.entries(layer.parameters).map(([key, value]) => (
+          <Fragment key={key}>{renderParameterControl(key, value)}</Fragment>
+        ))}
       </div>
     </div>
   )

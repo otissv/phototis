@@ -98,7 +98,7 @@ export const TOOL_VALUES: Record<ToolValueKeys, ToolValueTypes> = {
     defaultValue: 0,
   },
   gamma: {
-    min: 0,
+    min: 0.1,
     max: 3.0,
     step: 0.01,
     defaultValue: 1,

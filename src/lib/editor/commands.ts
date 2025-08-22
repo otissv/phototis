@@ -22,6 +22,7 @@ export type SerializedCommand =
       adjustmentType: string
       parameters: Record<string, number | { value: number; color: string }>
       position: "top" | "bottom" | number
+      id?: string
     }
   | { type: "removeLayer"; meta: CommandMeta; layerId: LayerId }
   | {
@@ -399,17 +400,20 @@ export class AddAdjustmentLayerCommand implements Command {
     number | { value: number; color: string }
   >
   private readonly position: "top" | "bottom" | number
+  private readonly providedId?: string
   private createdLayerId?: string
 
   constructor(
     adjustmentType: string,
     parameters: Record<string, number | { value: number; color: string }>,
     position: "top" | "bottom" | number = "top",
+    id?: string,
     meta?: Partial<CommandMeta>
   ) {
     this.adjustmentType = adjustmentType
     this.parameters = parameters
     this.position = position
+    this.providedId = id
     this.meta = {
       label: `Add ${adjustmentType} Adjustment`,
       scope: "layers",
@@ -421,7 +425,7 @@ export class AddAdjustmentLayerCommand implements Command {
 
   apply(state: CanonicalEditorState): CanonicalEditorState {
     const newLayer: AdjustmentLayer = {
-      id: `adjustment-${Date.now()}`,
+      id: this.providedId ?? `adjustment-${Date.now()}`,
       name: capitalize(`${this.adjustmentType}`),
       visible: true,
       locked: false,
@@ -450,6 +454,10 @@ export class AddAdjustmentLayerCommand implements Command {
     return { ...state, layers: { order, byId } }
   }
 
+  getCreatedLayerId(): string | undefined {
+    return this.createdLayerId
+  }
+
   invert(): Command {
     if (!this.createdLayerId) {
       throw new Error(
@@ -470,6 +478,7 @@ export class AddAdjustmentLayerCommand implements Command {
       adjustmentType: this.adjustmentType,
       parameters: this.parameters,
       position: this.position,
+      id: this.providedId ?? this.createdLayerId,
     }
   }
 }
@@ -481,7 +490,7 @@ export class UpdateAdjustmentParametersCommand implements Command {
     string,
     number | { value: number; color: string }
   >
-  private previous?: Record<string, number>
+  private previous?: Record<string, number | { value: number; color: string }>
 
   constructor(
     layerId: LayerId,
@@ -549,6 +558,7 @@ export function deserializeCommand(json: SerializedCommand): Command {
         json.adjustmentType,
         json.parameters,
         json.position,
+        json.id,
         json.meta
       )
     case "removeLayer":
