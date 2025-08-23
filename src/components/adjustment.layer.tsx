@@ -381,7 +381,10 @@ export function AdjustmentLayerToggle({
         title='Toggle invert'
         checked={Boolean(value)}
         onCheckedChange={(checked: boolean) => onChange(checked ? 100 : 0)}
-        className={cn("w-full h-10 p-0 rounded-t-none rounded-b-sm")}
+        className={cn(
+          "w-full h-9 p-0 rounded-t-none rounded-b-sm text-xs data-[state=checked]:bg-accent data-[state=checked]:text-foreground"
+        )}
+        classNameThumb='h-8'
       />
     </div>
   )

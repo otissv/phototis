@@ -7,12 +7,13 @@ export interface ImageEditorFooterSliderProps
     React.ComponentProps<"div">,
     "onChange" | "value" | "onDragEnd" | "onDragStart"
   > {
+  isDecimal?: boolean
   operator?: string
+  progress?: number
   selectedTool: keyof typeof TOOL_VALUES
   value: number
-  label?: (value: number, operator: string) => React.ReactNode
+  label?: (value: string, operator: string) => React.ReactNode
   onChange?: (value: number) => void
-  progress?: number
   onDragEnd?: (value: number) => void
   onDragStart?: (value: number) => void
 }
@@ -27,6 +28,7 @@ export function ImageEditorFooterSlider({
   progress,
   onDragEnd,
   onDragStart,
+  isDecimal,
 }: ImageEditorFooterSliderProps) {
   const disabled = Boolean(progress)
 
@@ -50,6 +52,7 @@ export function ImageEditorFooterSlider({
         onChange: onChange || (() => {}),
       })}
       label={label}
+      isDecimal={isDecimal}
       disabled={disabled}
       onDragEnd={(v) => {
         try {

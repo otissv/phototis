@@ -538,7 +538,7 @@ export function validateFilterParameters(parameters: any): {
 
   if (validatedParameters.scale !== undefined) {
     const clampedScale = Math.max(
-      0.1,
+      0.01,
       Math.min(validatedParameters.scale, GPU_SECURITY_CONSTANTS.MAX_SCALE)
     )
     if (clampedScale !== validatedParameters.scale) {

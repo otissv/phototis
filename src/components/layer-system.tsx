@@ -9,7 +9,7 @@ import {
   Layers,
   Lock,
   ChevronDown,
-  Camera,
+  Image,
   Eclipse,
   Palette,
   Sun,
@@ -323,7 +323,7 @@ export function LayerSystem({ className, ...props }: LayerSystemProps) {
       <div className='flex items-center gap-1 border-t border-border p-2'>
         {/* File upload button */}
         <div className='relative h-8 w-8 p-0 flex items-center justify-center rounded-sm hover:bg-muted'>
-          <Camera className='w-4 h-4' />
+          <Image className='w-4 h-4' />
           <input
             type='file'
             accept='image/*'

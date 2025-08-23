@@ -143,12 +143,6 @@ export function EffectsFooter({
       canvasRef,
       drawFnRef,
       selectedLayer,
-      label: (value: number, operator: string) => {
-        if (selectedTool === "rotate") {
-          return `${Math.round(value)} ${operator}`
-        }
-        return `${Math.round(value)} ${operator}`
-      },
       onChange: handleOnChange,
     }
     switch (selectedTool) {
@@ -322,26 +316,19 @@ export function RotateFooter({
     const controlProps = {
       value,
       progress,
-      operator,
       selectedTool,
       toolsValues,
       dispatch,
       canvasRef,
       drawFnRef,
       selectedLayer,
-      label: (value: number, operator: string) => {
-        if (selectedTool === "rotate") {
-          return `${Math.round(value)} ${operator}`
-        }
-        return `${Math.round(value)} ${operator}`
-      },
       onChange: handleOnChange,
     }
     switch (selectedTool) {
       case "rotate":
-        return <RotationControls {...controlProps} />
+        return <RotationControls operator='°' {...controlProps} />
     }
-  }, [selectedTool, value, operator, progress, handleOnChange, selectedLayer])
+  }, [selectedTool, value, progress, handleOnChange, selectedLayer])
 
   return (
     <div {...props}>
@@ -553,39 +540,23 @@ export function ScaleFooter({
     [dispatch, selectedTool]
   )
 
-  let operator = ""
-
-  if (selectedTool === "rotate") {
-    operator = "°"
-  } else if (selectedTool === "scale") {
-    operator = "%"
-  }
-
   // biome-ignore lint/correctness/useExhaustiveDependencies: handleOnChange causes infinite loop
   const Control = React.useMemo(() => {
     const controlProps = {
       value,
       progress,
-      operator,
+
       selectedTool,
       toolsValues,
       dispatch,
       canvasRef,
       drawFnRef,
       selectedLayer,
-      label: (value: number, operator: string) => {
-        if (selectedTool === "rotate") {
-          return `${Math.round(value)} ${operator}`
-        }
-        return `${Math.round(value)} ${operator}`
-      },
       onChange: handleOnChange,
     }
     switch (selectedTool) {
-      case "crop":
-        return <CropControls {...controlProps} />
       case "scale":
-        return <ScaleControls {...controlProps} />
+        return <ScaleControls operator='%' isDecimal={true} {...controlProps} />
       case "resize":
         return <ResizeControls {...controlProps} />
       case "upscale":
@@ -596,8 +567,10 @@ export function ScaleFooter({
             progress={progress}
           />
         )
+      case "crop":
+        return <CropControls {...controlProps} />
     }
-  }, [selectedTool, value, operator, progress, handleOnChange, selectedLayer])
+  }, [selectedTool, value, progress, handleOnChange, selectedLayer])
 
   return (
     <div {...props}>
@@ -606,12 +579,12 @@ export function ScaleFooter({
       </div>
       <ul className='flex gap-2 w-full justify-center'>
         <li>
-          <CropButton
+          <ResizeButton
+            canvasRef={canvasRef}
+            drawFnRef={drawFnRef}
             onSelectedToolChange={onSelectedToolChange}
             selectedTool={selectedTool}
             progress={progress}
-            canvasRef={canvasRef}
-            drawFnRef={drawFnRef}
           />
         </li>
 
@@ -626,20 +599,20 @@ export function ScaleFooter({
         </li>
 
         <li>
-          <ResizeButton
-            canvasRef={canvasRef}
-            drawFnRef={drawFnRef}
-            onSelectedToolChange={onSelectedToolChange}
-            selectedTool={selectedTool}
+          <UpscaleButton
+            value={toolsValues?.upscale || 0}
+            dispatch={dispatch}
             progress={progress}
           />
         </li>
 
         <li>
-          <UpscaleButton
-            value={toolsValues?.upscale || 0}
-            dispatch={dispatch}
+          <CropButton
+            onSelectedToolChange={onSelectedToolChange}
+            selectedTool={selectedTool}
             progress={progress}
+            canvasRef={canvasRef}
+            drawFnRef={drawFnRef}
           />
         </li>
       </ul>

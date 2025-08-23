@@ -10,19 +10,20 @@ import { Input } from "@/ui/input"
 
 export interface SlidingTrackProps
   extends Omit<React.ComponentProps<"div">, "onDragEnd" | "onDragStart"> {
-  min?: number
+  defaultValue?: number
+  disabled?: boolean
   max?: number
+  min?: number
+  operator?: string
+  range?: [number, number] | [string, string]
+  sensitivity?: number
   step?: number
   value?: number
-  defaultValue?: number
-  operator?: string
-  sensitivity?: number
-  onValueChange?: (value: number) => void
-  range?: [number, number] | [string, string]
-  label?: (value: number, operator: string) => React.ReactNode
-  disabled?: boolean
+  isDecimal?: boolean
+  label?: (value: string, operator: string) => React.ReactNode
   onDragEnd?: (value: number) => void
   onDragStart?: (value: number) => void
+  onValueChange?: (value: number) => void
 }
 
 export default function SlidingTrack({
@@ -38,6 +39,7 @@ export default function SlidingTrack({
   disabled = false,
   onDragEnd,
   onDragStart,
+  isDecimal = false,
   ...props
 }: SlidingTrackProps) {
   const [value, setValue] = React.useState(hostValue)
@@ -45,12 +47,13 @@ export default function SlidingTrack({
   const [sliderWidth, setSliderWidth] = React.useState(0)
 
   // Memoize display value to prevent unnecessary recalculations
-  const displayValue = React.useMemo(
-    () =>
-      label?.(value, operator) ||
-      `${operator ? `${value} ${operator}` : value}`,
-    [value, operator, label]
-  )
+  const displayValue = React.useMemo(() => {
+    const valueString = isDecimal ? value.toFixed(2) : value
+    return (
+      label?.(valueString, operator) ||
+      `${operator ? `${valueString} ${operator}` : valueString}`
+    )
+  }, [value, operator, label, isDecimal])
 
   const inputRef = React.useRef<HTMLInputElement>(null)
   const containerRef = React.useRef<HTMLDivElement>(null)

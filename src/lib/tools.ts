@@ -225,7 +225,7 @@ export const TOOL_VALUES: Record<ToolValueKeys, ToolValueTypes> = {
     defaultValue: 0,
   },
   scale: {
-    min: 1,
+    min: 0.01,
     max: 100,
     step: 0.01,
     defaultValue: 1,
