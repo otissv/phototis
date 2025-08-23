@@ -27,7 +27,7 @@ export interface ImageEditorFooterProps
   selectedLayer: EditorLayer | null
   selectedTool: keyof typeof TOOL_VALUES
   toolsValues?: ImageEditorToolsState
-  value: number
+  value: number | { width: number; height: number }
   label?: (value: number, operator: string) => React.ReactNode
   dispatch: (value: ImageEditorToolsActions | ImageEditorToolsActions[]) => void
   onSelectedToolChange: (tool: keyof typeof TOOL_VALUES) => void
