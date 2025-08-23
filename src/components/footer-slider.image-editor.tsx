@@ -5,7 +5,7 @@ import SlidingTrack from "@/components/sliding-track"
 export interface ImageEditorFooterSliderProps
   extends Omit<
     React.ComponentProps<"div">,
-    "onChange" | "value" | "onDragEnd" | "onDragStart"
+    "onChange" | "value" | "onDragEnd" | "onDragStart" | "onProgress"
   > {
   isDecimal?: boolean
   operator?: string
@@ -16,6 +16,7 @@ export interface ImageEditorFooterSliderProps
   onChange?: (value: number) => void
   onDragEnd?: (value: number) => void
   onDragStart?: (value: number) => void
+  onProgress?: (progress: number) => void
 }
 
 export function ImageEditorFooterSlider({

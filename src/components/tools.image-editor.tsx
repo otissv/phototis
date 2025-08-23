@@ -26,7 +26,10 @@ import type {
 import { RotationControls } from "@/components/tools/rotation.tools"
 import { ScaleButton, ScaleControls } from "@/components/tools/scale.tools"
 import { ResizeButton, ResizeControls } from "@/components/tools/resize.tools"
-import { UpscaleButton } from "@/components/tools/upscale.tools"
+import {
+  UpscaleButton,
+  UpscaleControls,
+} from "@/components/tools/upscale.tools"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -44,7 +47,6 @@ import {
 
 import { NoiseButton, NoiseControls } from "@/components/tools/noise.tools"
 import { CropButton, CropControls } from "@/components/tools/crop.tools"
-import type { EditorLayer, ImageLayer } from "@/lib/editor/state"
 
 export function ImageEditorFooter({
   selectedSidebar,
@@ -151,7 +153,17 @@ export function EffectsFooter({
       case "sharpen":
         return <SharpenControls {...controlProps} />
     }
-  }, [selectedTool, value, progress, handleOnChange, selectedLayer])
+  }, [
+    selectedTool,
+    value,
+    progress,
+    handleOnChange,
+    selectedLayer,
+    toolsValues,
+    dispatch,
+    canvasRef,
+    drawFnRef,
+  ])
 
   const renderBlurControls = () => {
     if (selectedTool === "blur") {
@@ -216,7 +228,9 @@ export function EffectsFooter({
   return (
     <div {...props}>
       <div className='flex justify-center overflow-x-auto '>
-        <div className='max-w-lg'>{Control}</div>
+        <div className='max-w-lg w-full flex flex-col items-center justify-center'>
+          {Control}
+        </div>
       </div>
       <ul className='flex gap-6 w-full max-w-lg overflow-x-auto py-2'>
         <li>
@@ -299,7 +313,7 @@ export function RotateFooter({
 
   const handleOnChange = React.useCallback(
     (value: number) => {
-      dispatch({ type: selectedTool, payload: value })
+      dispatch({ type: selectedTool as any, payload: value } as any)
     },
     [dispatch, selectedTool]
   )
@@ -328,12 +342,24 @@ export function RotateFooter({
       case "rotate":
         return <RotationControls operator='°' {...controlProps} />
     }
-  }, [selectedTool, value, progress, handleOnChange, selectedLayer])
+  }, [
+    selectedTool,
+    value,
+    progress,
+    handleOnChange,
+    selectedLayer,
+    toolsValues,
+    dispatch,
+    canvasRef,
+    drawFnRef,
+  ])
 
   return (
     <div {...props}>
       <div className='flex justify-center'>
-        <div className='max-w-lg'>{Control}</div>
+        <div className='max-w-lg w-full flex flex-col items-center justify-center'>
+          {Control}
+        </div>
       </div>
       <ul className='flex gap-2 w-full justify-center'>
         <li className='flex items-center gap-1'>
@@ -531,27 +557,29 @@ export function ScaleFooter({
   canvasRef,
   drawFnRef,
   selectedLayer,
+  onProgress,
   ...props
-}: Omit<ImageEditorFooterProps, "onChange" | "onProgress">) {
+}: Omit<ImageEditorFooterProps, "onChange">) {
   const handleOnChange = React.useCallback(
     (value: number) => {
-      dispatch({ type: selectedTool, payload: value })
+      dispatch({ type: selectedTool as any, payload: value } as any)
     },
     [dispatch, selectedTool]
   )
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: handleOnChange causes infinite loop
+  // biome-ignore lint/correctness/useExhaustiveDependencies: dependencies intentionally limited for stability
   const Control = React.useMemo(() => {
     const controlProps = {
       value,
       progress,
-
       selectedTool,
       toolsValues,
       dispatch,
       canvasRef,
       drawFnRef,
       selectedLayer,
+      onProgress,
       onChange: handleOnChange,
     }
     switch (selectedTool) {
@@ -560,13 +588,7 @@ export function ScaleFooter({
       case "resize":
         return <ResizeControls {...controlProps} />
       case "upscale":
-        return (
-          <UpscaleButton
-            value={toolsValues?.upscale || 0}
-            dispatch={dispatch}
-            progress={progress}
-          />
-        )
+        return <UpscaleControls {...controlProps} />
       case "crop":
         return <CropControls {...controlProps} />
     }
@@ -575,7 +597,9 @@ export function ScaleFooter({
   return (
     <div {...props}>
       <div className='flex justify-center'>
-        <div className='max-w-lg'>{Control}</div>
+        <div className='max-w-lg w-full flex flex-col items-center justify-center'>
+          {Control}
+        </div>
       </div>
       <ul className='flex gap-2 w-full justify-center'>
         <li>
@@ -603,6 +627,10 @@ export function ScaleFooter({
             value={toolsValues?.upscale || 0}
             dispatch={dispatch}
             progress={progress}
+            selectedLayer={selectedLayer}
+            onProgress={onProgress}
+            selectedTool={selectedTool}
+            onSelectedToolChange={onSelectedToolChange}
           />
         </li>
 

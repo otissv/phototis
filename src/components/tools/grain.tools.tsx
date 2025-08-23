@@ -1,20 +1,16 @@
 "use client"
 
-import type { TOOL_VALUES } from "@/lib/tools"
-import { ImageEditorButton } from "@/components/button.image-editor"
+import {
+  ImageEditorButton,
+  type ImageEditorButtonProps,
+} from "@/components/button.image-editor"
 import { ImageEditorFooterSlider } from "@/components/footer-slider.image-editor"
-
-export interface GrainButtonProps {
-  onSelectedToolChange: (tool: keyof typeof TOOL_VALUES) => void
-  selectedTool: keyof typeof TOOL_VALUES
-  progress?: number
-}
 
 function GrainButton({
   onSelectedToolChange,
   selectedTool,
   progress,
-}: GrainButtonProps) {
+}: ImageEditorButtonProps) {
   return (
     <ImageEditorButton
       variant='ghost'

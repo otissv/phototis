@@ -205,6 +205,7 @@ export function imageEditorToolsReducer(
           typeof action.payload === "string" ? action.payload : state.solid,
       }
     }
+
     default: {
       const a = action as any
       return {

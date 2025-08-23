@@ -389,8 +389,8 @@ function ImageEditorInner({
         </div>
       </div>
 
-      <div className='lg:col-start-2 lg:row-start-1 lg:row-span-2 flex flex-col items-center overflow-auto border rounded-sm h-full'>
-        <div className='relative h-full'>
+      <div className='lg:col-start-2 lg:row-start-1 lg:row-span-2 flex flex-col items-center overflow-auto border rounded-sm '>
+        <div className='relative '>
           <ImageEditorCanvas
             onProgress={handleOnProgress}
             id='image-editor-canvas'

@@ -3,14 +3,15 @@
 import React from "react"
 import { Link2 } from "lucide-react"
 
-import type { TOOL_VALUES } from "@/lib/tools"
 import { cn } from "@/lib/utils"
-import type { ImageEditorFooterProps } from "./utils.tools"
+import type { ImageEditorFooterProps } from "@/components/tools/utils.tools"
 import { Input } from "@/ui/input"
-
 import { Button } from "@/ui/button"
-import { ImageEditorButton } from "@/components/button.image-editor"
-import { ImageLayer } from "@/lib/editor/state"
+import {
+  ImageEditorButton,
+  type ImageEditorButtonProps,
+} from "@/components/button.image-editor"
+import type { ImageLayer } from "@/lib/editor/state"
 
 function getImageDimensions(
   file: File
@@ -32,19 +33,11 @@ function getImageDimensions(
   })
 }
 
-export interface ResizeButtonProps {
-  onSelectedToolChange: (tool: keyof typeof TOOL_VALUES) => void
-  selectedTool: keyof typeof TOOL_VALUES
-  progress?: number
-  canvasRef: React.RefObject<HTMLCanvasElement | null>
-  drawFnRef: React.RefObject<() => void>
-}
-
 function ResizeButton({
   onSelectedToolChange,
   selectedTool,
   progress,
-}: ResizeButtonProps) {
+}: ImageEditorButtonProps) {
   return (
     <ImageEditorButton
       variant='ghost'

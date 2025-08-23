@@ -4,8 +4,10 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/ui/button"
 
 export interface ImageEditorButtonProps
-  extends React.ComponentProps<typeof Button> {
+  extends Omit<React.ComponentProps<typeof Button>, "onProgress" | "progress"> {
+  progress?: number
   isActive?: boolean
+  onProgress?: (progress: number) => void
 }
 
 export function ImageEditorButton({
