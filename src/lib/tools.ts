@@ -23,10 +23,14 @@ export type ToolValueDimensionType = {
 }
 export type ToolValueCropType = {
   overlay: "thirdGrid" | "phiGrid" | "goldenGrid" | "diagonals"
+  x: number
+  y: number
   width: number
   height: number
   defaultValue: {
     overlay: "thirdGrid" | "phiGrid" | "goldenGrid" | "diagonals"
+    x: number
+    y: number
     width: number
     height: number
   }
@@ -249,10 +253,14 @@ export const TOOL_VALUES: Record<ToolValueKeys, ToolValueTypes> = {
     },
   },
   crop: {
+    x: 0,
+    y: 0,
     width: 0,
     height: 0,
     overlay: "thirdGrid",
     defaultValue: {
+      x: 0,
+      y: 0,
       width: 0,
       height: 0,
       overlay: "thirdGrid",
@@ -268,6 +276,8 @@ export type ResizeToolsType = {
   }
   upscale: number
   crop: {
+    x: number
+    y: number
     width: number
     height: number
     overlay: "thirdGrid" | "phiGrid" | "goldenGrid" | "diagonals"

@@ -47,6 +47,11 @@ import {
 
 import { NoiseButton, NoiseControls } from "@/components/tools/noise.tools"
 import { CropButton, CropControls } from "@/components/tools/crop.tools"
+import type {
+  ToolValueCropType,
+  ToolValueDimensionType,
+  ToolValueNumberType,
+} from "@/lib/tools"
 
 export function ImageEditorFooter({
   selectedSidebar,
@@ -571,7 +576,6 @@ export function ScaleFooter({
   // biome-ignore lint/correctness/useExhaustiveDependencies: dependencies intentionally limited for stability
   const Control = React.useMemo(() => {
     const controlProps = {
-      value,
       progress,
       selectedTool,
       toolsValues,
@@ -584,13 +588,30 @@ export function ScaleFooter({
     }
     switch (selectedTool) {
       case "scale":
-        return <ScaleControls operator='%' isDecimal={true} {...controlProps} />
+        return (
+          <ScaleControls
+            operator='%'
+            isDecimal={true}
+            value={value as ToolValueNumberType["defaultValue"]}
+            {...controlProps}
+          />
+        )
       case "resize":
-        return <ResizeControls {...controlProps} />
+        return (
+          <ResizeControls
+            value={value as ToolValueDimensionType["defaultValue"]}
+            {...controlProps}
+          />
+        )
       case "upscale":
-        return <UpscaleControls {...controlProps} />
+        return <UpscaleControls {...controlProps} value={value as number} />
       case "crop":
-        return <CropControls {...controlProps} />
+        return (
+          <CropControls
+            {...controlProps}
+            value={value as ToolValueCropType["defaultValue"]}
+          />
+        )
     }
   }, [selectedTool, value, progress, handleOnChange, selectedLayer])
 

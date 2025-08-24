@@ -1,7 +1,7 @@
 "use client"
 
 import React from "react"
-import { Link2 } from "lucide-react"
+import { Expand, Link2 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import type { ImageEditorFooterProps } from "@/components/tools/utils.tools"
@@ -44,7 +44,9 @@ function ResizeButton({
       onClick={() => onSelectedToolChange("resize")}
       isActive={selectedTool === "resize"}
       disabled={progress}
+      className='flex items-center gap-2'
     >
+      <Expand className='h-4 w-4' />
       Resize
     </ImageEditorButton>
   )

@@ -26,7 +26,13 @@ export const SIDEBAR_TOOLS = {
 }
 // Define payload types for non-numeric tools
 type ResizePayload = { width: number; height: number }
-type CropPayload = { x: number; y: number; width: number; height: number }
+type CropPayload = {
+  x?: number
+  y?: number
+  width?: number
+  height?: number
+  overlay?: "thirdGrid" | "phiGrid" | "goldenGrid" | "diagonals"
+}
 type RecolorPayload = { value: number; color: string }
 
 type NumericToolKeys = Exclude<
@@ -181,10 +187,12 @@ export function imageEditorToolsReducer(
       return {
         ...state,
         crop: {
-          x: Math.max(0, Number(p?.x) || 0),
-          y: Math.max(0, Number(p?.y) || 0),
-          width: Math.max(0, Number(p?.width) || 0),
-          height: Math.max(0, Number(p?.height) || 0),
+          x: Math.max(0, Number(p?.x ?? state.crop?.x ?? 0)),
+          y: Math.max(0, Number(p?.y ?? state.crop?.y ?? 0)),
+          width: Math.max(0, Number(p?.width ?? state.crop?.width ?? 0)),
+          height: Math.max(0, Number(p?.height ?? state.crop?.height ?? 0)),
+          overlay:
+            (p?.overlay as any) ?? (state.crop as any)?.overlay ?? "thirdGrid",
         },
       }
     }

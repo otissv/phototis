@@ -8,12 +8,6 @@ import {
   type ImageEditorButtonProps,
 } from "@/components/button.image-editor"
 import type { ImageEditorFooterProps } from "./utils.tools"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/ui/dropdown-menu"
 import { Button } from "@/ui/button"
 import {
   Select,
@@ -23,7 +17,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/ui/select"
-import { ToolValueCropType } from "@/lib/tools"
+import type { ToolValueCropType } from "@/lib/tools"
+import { Input } from "@/ui/input"
 
 function CropButton({
   onSelectedToolChange,
@@ -46,38 +41,100 @@ function CropButton({
 CropButton.displayName = "CropButton"
 
 function CropControls({
+  selectedLayer,
   value,
+  dispatch,
 }: Omit<ImageEditorFooterProps, "onSelectedToolChange">) {
   const hostValue = value as ToolValueCropType["defaultValue"]
 
+  const [overlay, setOverlay] = React.useState(hostValue.overlay)
   const [width, setWidth] = React.useState(hostValue.width)
   const [height, setHeight] = React.useState(hostValue.height)
-  const [overlay, setOverlay] = React.useState(hostValue.overlay)
 
-  const handleOverlayChange = (value: string) => {
-    setOverlay(value as "thirdGrid" | "phiGrid" | "goldenGrid" | "diagonals")
+  React.useEffect(() => {
+    setOverlay(hostValue.overlay)
+    setWidth(hostValue.width)
+    setHeight(hostValue.height)
+  }, [hostValue.overlay, hostValue.width, hostValue.height])
+
+  const handleOverlayChange = (next: string) => {
+    const ov = next as "thirdGrid" | "phiGrid" | "goldenGrid" | "diagonals"
+    setOverlay(ov)
+    dispatch?.({ type: "crop", payload: { overlay: ov } as any })
   }
 
-  const handleWidthChange = (value: string) => {
-    setWidth(Number.parseInt(value))
+  const handleWidthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const w = Number(e.target.value) || 0
+    setWidth(w)
+    dispatch?.({ type: "crop", payload: { width: w } as any })
+    try {
+      window.dispatchEvent(
+        new CustomEvent("phototis:crop-values-changed", {
+          detail: { width: w, height },
+        })
+      )
+    } catch {}
   }
 
-  const handleHeightChange = (value: string) => {
-    setHeight(Number.parseInt(value))
+  const handleHeightChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const h = Number(e.target.value) || 0
+    setHeight(h)
+    dispatch?.({ type: "crop", payload: { height: h } as any })
+    try {
+      window.dispatchEvent(
+        new CustomEvent("phototis:crop-values-changed", {
+          detail: { width, height: h },
+        })
+      )
+    } catch {}
   }
+
+  const handleSave = React.useCallback(() => {
+    // Notify canvas to commit crop on the selected layer
+    const ev = new CustomEvent("phototis:commit-crop")
+    window.dispatchEvent(ev)
+  }, [])
+
+  // Sync width/height when overlay rectangle changes on canvas
+  React.useEffect(() => {
+    const handler = (e: Event) => {
+      try {
+        const detail = (e as CustomEvent).detail as {
+          width?: number
+          height?: number
+        }
+        if (!detail) return
+        const w = Number(detail.width ?? width)
+        const h = Number(detail.height ?? height)
+        if (!Number.isNaN(w)) setWidth(w)
+        if (!Number.isNaN(h)) setHeight(h)
+        dispatch?.({ type: "crop", payload: { width: w, height: h } as any })
+      } catch {}
+    }
+    window.addEventListener("phototis:crop-rect-changed", handler)
+    // Request initial values when controls mount (or tool shown)
+    try {
+      window.dispatchEvent(new CustomEvent("phototis:request-crop-rect"))
+    } catch {}
+    return () =>
+      window.removeEventListener("phototis:crop-rect-changed", handler)
+  }, [width, height])
 
   return (
-    <div className='flex items-center justify-center gap-2 text-s my-4'>
+    <div className='flex items-center justify-center gap-6 text-s my-4'>
       <div className='flex items-center gap-2'>
         <span>Crop: </span>
         <span>
-          {width} x {height}
+          <Input type='number' value={width} onChange={handleWidthChange} />
+          x
+          <Input type='number' value={height} onChange={handleHeightChange} />
+          px
         </span>
-        px
       </div>
       <Select defaultValue={overlay} onValueChange={handleOverlayChange}>
-        <SelectTrigger className='h-8 w-28 rounded-sm'>
+        <SelectTrigger className='h-8 w-28 rounded-sm flex items-center gap-2'>
           <SelectValue placeholder='Third Grid' />
+          <ChevronDown className='h-4 w-4' />
         </SelectTrigger>
         <SelectContent className='rounded-sm'>
           <SelectItem value='thirdGrid'>Third Grid</SelectItem>
@@ -87,7 +144,11 @@ function CropControls({
         </SelectContent>
       </Select>
 
-      <Button size='icon' className='rounded-sm h-8 w-fit px-4'>
+      <Button
+        size='icon'
+        className='rounded-sm h-8 w-fit px-4'
+        onClick={handleSave}
+      >
         Save
       </Button>
     </div>

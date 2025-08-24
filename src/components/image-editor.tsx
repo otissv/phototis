@@ -15,6 +15,7 @@ import {
   initialState,
   type ImageEditorToolsActions,
 } from "@/lib/state.image-editor"
+import { SetActiveToolCommand } from "@/lib/editor/commands"
 
 import { EditorProvider, useEditorContext } from "@/lib/editor/context"
 import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover"
@@ -92,6 +93,8 @@ function ImageEditorInner({
         return toolsValues.rotate
       case "scale":
         return toolsValues.scale
+      case "crop":
+        return toolsValues.crop
       case "brightness":
         return toolsValues.brightness
       case "contrast":
@@ -133,6 +136,7 @@ function ImageEditorInner({
     selectedTool,
     toolsValues.rotate,
     toolsValues.scale,
+    toolsValues.crop,
     toolsValues.brightness,
     toolsValues.contrast,
     toolsValues.hue,
@@ -155,15 +159,30 @@ function ImageEditorInner({
   const handleSelectedToolChange = React.useCallback(
     (tool: keyof typeof TOOL_VALUES) => {
       setSelectedTool(tool)
+      // Sync canonical active tool so canvas can react (e.g., crop overlay)
+      try {
+        history.begin("Set Tool")
+        history.push(
+          new SetActiveToolCommand({ sidebar: selectedSidebar, tool } as any)
+        )
+        history.end(true)
+      } catch {}
     },
-    []
+    [history, selectedSidebar]
   )
 
   const handleSelectedSidebarChange = React.useCallback(
     (sidebar: keyof typeof SIDEBAR_TOOLS) => {
       setSelectedSidebar(sidebar)
+      try {
+        history.begin("Set Sidebar")
+        history.push(
+          new SetActiveToolCommand({ sidebar, tool: selectedTool } as any)
+        )
+        history.end(true)
+      } catch {}
     },
-    []
+    [history, selectedTool]
   )
 
   const handleOnProgress = React.useCallback((progress: number) => {

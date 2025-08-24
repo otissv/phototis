@@ -1,5 +1,7 @@
 "use client"
 
+import { Scaling } from "lucide-react"
+
 import {
   ImageEditorButton,
   type ImageEditorButtonProps,
@@ -17,7 +19,9 @@ function ScaleButton({
       onClick={() => onSelectedToolChange("scale")}
       isActive={selectedTool === "scale"}
       disabled={progress}
+      className='flex items-center gap-2'
     >
+      <Scaling className='h-4 w-4' />
       Scale
     </ImageEditorButton>
   )

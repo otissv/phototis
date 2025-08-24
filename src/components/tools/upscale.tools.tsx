@@ -1,17 +1,17 @@
 "use client"
 
 import React from "react"
+import { ImageUpscale } from "lucide-react"
 
 import {
   ImageEditorButton,
   type ImageEditorButtonProps,
 } from "@/components/button.image-editor"
-import type { ImageEditorToolsActions } from "@/lib/state.image-editor"
-import type { EditorLayer, ImageLayer } from "@/lib/editor/state"
+import type { ImageLayer } from "@/lib/editor/state"
 import { useEditorContext } from "@/lib/editor/context"
 import { upscaleTool } from "@/components/tools/upscaler"
 import { Progress } from "@/ui/progress"
-import { ImageEditorFooterProps } from "./utils.tools"
+import type { ImageEditorFooterProps } from "./utils.tools"
 import { cn } from "@/lib/utils"
 
 function UpscaleButton({
@@ -19,7 +19,6 @@ function UpscaleButton({
   value,
   dispatch,
   selectedLayer,
-  onSelectedToolChange,
   selectedTool,
   onProgress,
 }: ImageEditorButtonProps) {
@@ -29,7 +28,6 @@ function UpscaleButton({
 
   React.useEffect(() => {
     setUpscale(value)
-    onSelectedToolChange("upscale")
   }, [value])
 
   const toFile = React.useCallback(
@@ -104,16 +102,17 @@ function UpscaleButton({
     upscale,
     onProgress,
     toFile,
-    onSelectedToolChange,
   ])
 
   return (
     <ImageEditorButton
       variant='ghost'
-      onClick={handleUpscale}
+      // onClick={handleUpscale}
       isActive={selectedTool === "upscale"}
       disabled={Boolean(progress) || isRunning}
+      className='flex items-center gap-2'
     >
+      <ImageUpscale className='h-4 w-4' />
       Upscale
     </ImageEditorButton>
   )

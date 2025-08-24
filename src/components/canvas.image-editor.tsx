@@ -50,8 +50,13 @@ export function ImageEditorCanvas({
   ...props
 }: ImageEditorCanvasProps) {
   const { history } = useEditorContext()
-  const { getOrderedLayers, getSelectedLayerId, state, addImageLayer } =
-    useEditorContext()
+  const {
+    getOrderedLayers,
+    getSelectedLayerId,
+    state,
+    addImageLayer,
+    updateLayer,
+  } = useEditorContext()
   const selectedLayerId = getSelectedLayerId() || "layer-1"
   const isDragActive = state.ephemeral.interaction.isDragging
   const canonicalLayers = getOrderedLayers()
@@ -388,6 +393,20 @@ export function ImageEditorCanvas({
   // Container ref for viewport calculations
   const containerRef = React.useRef<HTMLDivElement>(null)
   const overlayRef = React.useRef<HTMLCanvasElement>(null)
+
+  // Crop tool interaction state (canvas-space pixel coords)
+  const [cropRect, setCropRect] = React.useState<{
+    x: number
+    y: number
+    width: number
+    height: number
+  } | null>(null)
+  const cropDragRef = React.useRef<{
+    mode: "move" | "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw" | null
+    startX: number
+    startY: number
+    startRect: { x: number; y: number; width: number; height: number }
+  } | null>(null)
 
   // Create a compact signature representing layers order and relevant props
   const layersSignature = React.useMemo(() => {
@@ -726,6 +745,344 @@ export function ImageEditorCanvas({
       scale: 1,
     })
   }, [viewportX, viewportY, viewportScale])
+
+  // Reset crop rect each time the crop tool is selected (transition into crop)
+  const prevToolRef = React.useRef<string | null>(null)
+  React.useEffect(() => {
+    const current = state.canonical.activeTool.tool
+    const prev = prevToolRef.current
+    if (current === "crop" && prev !== "crop") {
+      const dims = layerDimensionsRef.current.get(selectedLayerId)
+      if (dims) {
+        setCropRect({
+          x: Math.max(0, dims.x),
+          y: Math.max(0, dims.y),
+          width: dims.width,
+          height: dims.height,
+        })
+        try {
+          window.dispatchEvent(
+            new CustomEvent("phototis:crop-rect-changed", {
+              detail: { width: dims.width, height: dims.height },
+            })
+          )
+          setTimeout(() => {
+            try {
+              window.dispatchEvent(
+                new CustomEvent("phototis:crop-rect-changed", {
+                  detail: { width: dims.width, height: dims.height },
+                })
+              )
+            } catch {}
+          }, 0)
+        } catch {}
+      } else {
+        setCropRect({
+          x: 0,
+          y: 0,
+          width: canvasDimensions.width,
+          height: canvasDimensions.height,
+        })
+        try {
+          window.dispatchEvent(
+            new CustomEvent("phototis:crop-rect-changed", {
+              detail: {
+                width: canvasDimensions.width,
+                height: canvasDimensions.height,
+              },
+            })
+          )
+          setTimeout(() => {
+            try {
+              window.dispatchEvent(
+                new CustomEvent("phototis:crop-rect-changed", {
+                  detail: {
+                    width: canvasDimensions.width,
+                    height: canvasDimensions.height,
+                  },
+                })
+              )
+            } catch {}
+          }, 0)
+        } catch {}
+      }
+    }
+    prevToolRef.current = current
+  }, [
+    state.canonical.activeTool.tool,
+    selectedLayerId,
+    canvasDimensions.width,
+    canvasDimensions.height,
+  ])
+
+  // Draw crop overlay grid on overlay canvas
+  React.useEffect(() => {
+    const activeTool = state.canonical.activeTool.tool
+    const canvas = overlayRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+    // Clear
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    if (activeTool !== "crop" || !cropRect) return
+    // Darken outside crop area
+    ctx.save()
+    ctx.fillStyle = "rgba(0,0,0,0.45)"
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    ctx.clearRect(cropRect.x, cropRect.y, cropRect.width, cropRect.height)
+    ctx.restore()
+    // Draw border
+    ctx.save()
+    ctx.strokeStyle = "rgba(255,255,255,0.9)"
+    ctx.lineWidth = 1
+    ctx.strokeRect(
+      cropRect.x + 0.5,
+      cropRect.y + 0.5,
+      cropRect.width - 1,
+      cropRect.height - 1
+    )
+    // Grid overlay types
+    const overlayType =
+      (selectedFiltersRef.current as any)?.crop?.overlay || "thirdGrid"
+    ctx.strokeStyle = "rgba(255,255,255,0.65)"
+    ctx.lineWidth = 1
+    const x = cropRect.x
+    const y = cropRect.y
+    const w = cropRect.width
+    const h = cropRect.height
+    if (
+      overlayType === "thirdGrid" ||
+      overlayType === "goldenGrid" ||
+      overlayType === "phiGrid"
+    ) {
+      const thirds = overlayType === "thirdGrid"
+      const phi = overlayType === "phiGrid"
+      const golden = overlayType === "goldenGrid"
+      const ratios = thirds
+        ? [1 / 3, 2 / 3]
+        : phi
+          ? [0.382, 0.618]
+          : [0.382, 0.618]
+      for (const r of ratios) {
+        const gx = x + w * r
+        ctx.beginPath()
+        ctx.moveTo(gx + 0.5, y)
+        ctx.lineTo(gx + 0.5, y + h)
+        ctx.stroke()
+      }
+      for (const r of ratios) {
+        const gy = y + h * r
+        ctx.beginPath()
+        ctx.moveTo(x, gy + 0.5)
+        ctx.lineTo(x + w, gy + 0.5)
+        ctx.stroke()
+      }
+    } else if (overlayType === "diagonals") {
+      ctx.beginPath()
+      ctx.moveTo(x, y)
+      ctx.lineTo(x + w, y + h)
+      ctx.moveTo(x + w, y)
+      ctx.lineTo(x, y + h)
+      ctx.stroke()
+    }
+    ctx.restore()
+  }, [state.canonical.activeTool.tool, cropRect])
+
+  // Sync cropRect size from tool inputs (width/height) while preserving center
+  React.useEffect(() => {
+    if (state.canonical.activeTool.tool !== "crop") return
+    if (!cropRect) return
+    const c = (selectedFiltersRef.current as any)?.crop
+    if (!c) return
+    const newW = Number(c.width) || cropRect.width
+    const newH = Number(c.height) || cropRect.height
+    if (newW === cropRect.width && newH === cropRect.height) return
+    const clamp = (v: number, min: number, max: number) =>
+      Math.max(min, Math.min(max, v))
+    const cx = cropRect.x + cropRect.width / 2
+    const cy = cropRect.y + cropRect.height / 2
+    const nx = clamp(
+      Math.round(cx - newW / 2),
+      0,
+      Math.max(0, canvasDimensions.width - newW)
+    )
+    const ny = clamp(
+      Math.round(cy - newH / 2),
+      0,
+      Math.max(0, canvasDimensions.height - newH)
+    )
+    setCropRect({
+      x: nx,
+      y: ny,
+      width: Math.round(newW),
+      height: Math.round(newH),
+    })
+  }, [
+    state.canonical.activeTool.tool,
+    cropRect,
+    canvasDimensions.width,
+    canvasDimensions.height,
+  ])
+
+  // Directly respond to control input events to update overlay immediately
+  React.useEffect(() => {
+    const handler = (e: Event) => {
+      if (state.canonical.activeTool.tool !== "crop") return
+      const detail = (e as CustomEvent).detail as {
+        width?: number
+        height?: number
+      }
+      if (!detail || !cropRect) return
+      const w = Math.max(1, Number(detail.width ?? cropRect.width))
+      const h = Math.max(1, Number(detail.height ?? cropRect.height))
+      if (w === cropRect.width && h === cropRect.height) return
+      const clamp = (v: number, min: number, max: number) =>
+        Math.max(min, Math.min(max, v))
+      const cx = cropRect.x + cropRect.width / 2
+      const cy = cropRect.y + cropRect.height / 2
+      const nx = clamp(
+        Math.round(cx - w / 2),
+        0,
+        Math.max(0, canvasDimensions.width - w)
+      )
+      const ny = clamp(
+        Math.round(cy - h / 2),
+        0,
+        Math.max(0, canvasDimensions.height - h)
+      )
+      setCropRect({ x: nx, y: ny, width: w, height: h })
+      try {
+        window.dispatchEvent(
+          new CustomEvent("phototis:crop-rect-changed", {
+            detail: { width: w, height: h },
+          })
+        )
+      } catch {}
+    }
+    window.addEventListener("phototis:crop-values-changed", handler)
+    return () =>
+      window.removeEventListener("phototis:crop-values-changed", handler)
+  }, [
+    state.canonical.activeTool.tool,
+    cropRect,
+    canvasDimensions.width,
+    canvasDimensions.height,
+  ])
+
+  // Commit crop handler (triggered by UI Save)
+  const commitCrop = React.useCallback(async () => {
+    if (!cropRect) return
+    const imageData = imageDataCacheRef.current.get(selectedLayerId)
+    const dims = layerDimensionsRef.current.get(selectedLayerId)
+    if (!imageData || !dims) return
+    // Map canvas-space crop rect to image pixel coords
+    const scaleX = imageData.width / Math.max(1, dims.width)
+    const scaleY = imageData.height / Math.max(1, dims.height)
+    const cropXImg = Math.round((cropRect.x - dims.x) * scaleX)
+    const cropYImg = Math.round((cropRect.y - dims.y) * scaleY)
+    const cropWImg = Math.round(cropRect.width * scaleX)
+    const cropHImg = Math.round(cropRect.height * scaleY)
+    const sx = Math.max(0, Math.min(imageData.width, cropXImg))
+    const sy = Math.max(0, Math.min(imageData.height, cropYImg))
+    const sw = Math.max(1, Math.min(imageData.width - sx, cropWImg))
+    const sh = Math.max(1, Math.min(imageData.height - sy, cropHImg))
+    // Draw cropped region to a canvas
+    const srcCanvas = document.createElement("canvas")
+    srcCanvas.width = imageData.width
+    srcCanvas.height = imageData.height
+    const sctx = srcCanvas.getContext("2d")
+    if (!sctx) return
+    sctx.putImageData(imageData, 0, 0)
+    const outCanvas = document.createElement("canvas")
+    outCanvas.width = sw
+    outCanvas.height = sh
+    const octx = outCanvas.getContext("2d")
+    if (!octx) return
+    octx.drawImage(srcCanvas, sx, sy, sw, sh, 0, 0, sw, sh)
+    await new Promise<void>((resolve) => setTimeout(() => resolve(), 0))
+    // Update caches immediately for seamless redraw
+    try {
+      const newImageData = octx.getImageData(0, 0, sw, sh)
+      imageDataCacheRef.current.set(selectedLayerId, newImageData)
+      layerDimensionsRef.current.set(selectedLayerId, {
+        width: sw,
+        height: sh,
+        x: Math.max(0, Math.min(dims.x, canvasDimensions.width - sw)),
+        y: Math.max(0, Math.min(dims.y, canvasDimensions.height - sh)),
+      })
+      const gl = glRef.current
+      const prevTex = textureCacheRef.current.get(selectedLayerId)
+      if (gl && prevTex) {
+        gl.deleteTexture(prevTex)
+      }
+      textureCacheRef.current.delete(selectedLayerId)
+    } catch {}
+
+    outCanvas.toBlob((blob) => {
+      if (!blob) return
+      const file = new File([blob], "crop.png", {
+        type: blob.type || "image/png",
+      })
+      // Update selected layer with new image and reset crop tool values
+      try {
+        const current = state.canonical.layers.byId[selectedLayerId] as any
+        const nextFilters = {
+          ...(current?.filters || {}),
+          crop: {
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 0,
+            overlay: (current?.filters?.crop?.overlay || "thirdGrid") as any,
+          },
+        }
+        history.begin("Crop")
+        updateLayer(selectedLayerId, { filters: nextFilters } as any)
+        // Use image blob as a new file URL and reload via addImageLayer replacement path
+        // For now, rely on caches for immediate view; external state can handle persistence
+        history.end(true)
+        setCropRect(null)
+        // Force redraw after image reload
+        setTimeout(() => {
+          drawRef.current?.()
+        }, 50)
+      } catch (e) {
+        console.error("Crop commit failed", e)
+      }
+    }, "image/png")
+  }, [
+    cropRect,
+    selectedLayerId,
+    state.canonical.layers.byId,
+    updateLayer,
+    history,
+    canvasDimensions.width,
+    canvasDimensions.height,
+  ])
+
+  // Listen for commit event from controls
+  React.useEffect(() => {
+    const handler = () => void commitCrop()
+    window.addEventListener("phototis:commit-crop", handler)
+    return () => window.removeEventListener("phototis:commit-crop", handler)
+  }, [commitCrop])
+
+  // Respond to request-crop-rect from controls to initialize inputs on first open
+  React.useEffect(() => {
+    const handleRequest = () => {
+      if (!cropRect) return
+      try {
+        window.dispatchEvent(
+          new CustomEvent("phototis:crop-rect-changed", {
+            detail: { width: cropRect.width, height: cropRect.height },
+          })
+        )
+      } catch {}
+    }
+    window.addEventListener("phototis:request-crop-rect", handleRequest)
+    return () =>
+      window.removeEventListener("phototis:request-crop-rect", handleRequest)
+  }, [cropRect])
 
   // Initialize WebGL context and shaders
   React.useEffect(() => {
@@ -1383,20 +1740,163 @@ export function ImageEditorCanvas({
           {...props}
           id='image-editor-canvas'
         />
-        {/* Preview overlay canvas for tool previews */}
-        <canvas
-          className={cn(
-            "absolute inset-0 pointer-events-none transition-all duration-200"
-          )}
-          style={{
-            width: canvasDimensions.width,
-            height: canvasDimensions.height,
-          }}
-          width={canvasDimensions.width}
-          height={canvasDimensions.height}
-          id='image-editor-overlay'
-          ref={overlayRef}
-        />
+        {/* Preview overlay canvas for tool previews (visible only for crop) */}
+        {state.canonical.activeTool.tool === "crop" && (
+          <canvas
+            className={cn(
+              "absolute inset-0 pointer-events-none transition-all duration-200"
+            )}
+            style={{
+              width: canvasDimensions.width,
+              height: canvasDimensions.height,
+            }}
+            width={canvasDimensions.width}
+            height={canvasDimensions.height}
+            id='image-editor-overlay'
+            ref={overlayRef}
+          />
+        )}
+        {/* Interactive crop overlay */}
+        {state.canonical.activeTool.tool === "crop" && cropRect && (
+          <div
+            className={cn(
+              "absolute border border-white/80 outline outline-black/40",
+              "bg-transparent"
+            )}
+            style={{
+              left: `${cropRect.x}px`,
+              top: `${cropRect.y}px`,
+              width: `${cropRect.width}px`,
+              height: `${cropRect.height}px`,
+              cursor:
+                cropDragRef.current?.mode === "move" ? "grabbing" : "move",
+            }}
+            onPointerDown={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              const rect = (
+                e.currentTarget.parentElement as HTMLElement
+              ).getBoundingClientRect()
+              // Determine handle by target dataset
+              const target = e.target as HTMLElement
+              const handle =
+                (target.getAttribute("data-handle") as any) || "move"
+              cropDragRef.current = {
+                mode: handle,
+                startX: e.clientX - rect.left,
+                startY: e.clientY - rect.top,
+                startRect: { ...cropRect },
+              }
+              ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+            }}
+            onPointerMove={(e) => {
+              const drag = cropDragRef.current
+              if (!drag) return
+              const container = e.currentTarget.parentElement as HTMLElement
+              const bounds = container.getBoundingClientRect()
+              const px = e.clientX - bounds.left
+              const py = e.clientY - bounds.top
+              const { startX, startY, startRect } = drag
+              const mode = drag.mode || "move"
+              let nx = startRect.x
+              let ny = startRect.y
+              let nw = startRect.width
+              let nh = startRect.height
+              const dx = px - startX
+              const dy = py - startY
+              const minSize = 8
+              const clamp = (v: number, min: number, max: number) =>
+                Math.max(min, Math.min(max, v))
+              if (mode === "move") {
+                nx = clamp(startRect.x + dx, 0, canvasDimensions.width - nw)
+                ny = clamp(startRect.y + dy, 0, canvasDimensions.height - nh)
+              } else {
+                const left = startRect.x
+                const top = startRect.y
+                const right = startRect.x + startRect.width
+                const bottom = startRect.y + startRect.height
+                let nleft = left
+                let ntop = top
+                let nright = right
+                let nbottom = bottom
+                if (mode.includes("w"))
+                  nleft = clamp(left + dx, 0, right - minSize)
+                if (mode.includes("e"))
+                  nright = clamp(
+                    right + dx,
+                    left + minSize,
+                    canvasDimensions.width
+                  )
+                if (mode.includes("n"))
+                  ntop = clamp(top + dy, 0, bottom - minSize)
+                if (mode.includes("s"))
+                  nbottom = clamp(
+                    bottom + dy,
+                    top + minSize,
+                    canvasDimensions.height
+                  )
+                nx = nleft
+                ny = ntop
+                nw = nright - nleft
+                nh = nbottom - ntop
+              }
+              setCropRect({
+                x: Math.round(nx),
+                y: Math.round(ny),
+                width: Math.round(nw),
+                height: Math.round(nh),
+              })
+              try {
+                window.dispatchEvent(
+                  new CustomEvent("phototis:crop-rect-changed", {
+                    detail: {
+                      width: Math.round(nw),
+                      height: Math.round(nh),
+                    },
+                  })
+                )
+              } catch {}
+            }}
+            onPointerUp={(e) => {
+              cropDragRef.current = null
+              ;(e.currentTarget as HTMLElement).releasePointerCapture(
+                e.pointerId
+              )
+            }}
+          >
+            {(["nw", "n", "ne", "e", "se", "s", "sw", "w"] as const).map(
+              (h) => (
+                <div
+                  key={h}
+                  data-handle={h}
+                  className='absolute bg-white border border-black/40'
+                  style={{
+                    width: 8,
+                    height: 8,
+                    left: h.includes("w")
+                      ? -4
+                      : h.includes("e")
+                        ? cropRect.width - 4
+                        : cropRect.width / 2 - 4,
+                    top: h.includes("n")
+                      ? -4
+                      : h.includes("s")
+                        ? cropRect.height - 4
+                        : cropRect.height / 2 - 4,
+                    cursor:
+                      h === "n" || h === "s"
+                        ? "ns-resize"
+                        : h === "e" || h === "w"
+                          ? "ew-resize"
+                          : h === "ne" || h === "sw"
+                            ? "nesw-resize"
+                            : "nwse-resize",
+                  }}
+                />
+              )
+            )}
+          </div>
+        )}
         {/* Drag overlay indicator */}
         <div
           className={cn(
