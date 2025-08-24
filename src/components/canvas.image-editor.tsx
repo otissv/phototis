@@ -98,6 +98,7 @@ export function ImageEditorCanvas({
   // Stable refs for worker state to avoid re-render loops in draw
   const isWorkerReadyRef = React.useRef(false)
   const isWorkerProcessingRef = React.useRef(false)
+
   React.useEffect(() => {
     isWorkerReadyRef.current = isWorkerReady
   }, [isWorkerReady])
@@ -120,8 +121,6 @@ export function ImageEditorCanvas({
     width: 800,
     height: 600,
   })
-
-  // Use the actual ref for dependencies; avoid stringifying the ref
 
   // Track canvases we've already initialized to avoid duplicate init
   const initializedCanvasesRef = React.useRef<WeakSet<HTMLCanvasElement>>(
@@ -215,6 +214,7 @@ export function ImageEditorCanvas({
 
     if (selectedLayer.type === "image") {
       const imageLayer = selectedLayer as any
+      console.log(imageLayer.filters)
       if (imageLayer.filters) {
         effects = { ...effects, ...imageLayer.filters }
       }
@@ -841,9 +841,9 @@ export function ImageEditorCanvas({
       cropRect.width - 1,
       cropRect.height - 1
     )
+
     // Grid overlay types
-    const overlayType =
-      (selectedFiltersRef.current as any)?.crop?.overlay || "thirdGrid"
+    const overlayType = (selectedFiltersRef.current as any)?.crop?.overlay
     ctx.strokeStyle = "rgba(255,255,255,0.65)"
     ctx.lineWidth = 1
     const x = cropRect.x
@@ -1026,6 +1026,7 @@ export function ImageEditorCanvas({
       // Update selected layer with new image and reset crop tool values
       try {
         const current = state.canonical.layers.byId[selectedLayerId] as any
+
         const nextFilters = {
           ...(current?.filters || {}),
           crop: {
@@ -1066,6 +1067,36 @@ export function ImageEditorCanvas({
     window.addEventListener("phototis:commit-crop", handler)
     return () => window.removeEventListener("phototis:commit-crop", handler)
   }, [commitCrop])
+
+  // Re-render overlay when overlay grid option changes (from controls)
+  React.useEffect(() => {
+    const handler = (e: Event) => {
+      try {
+        const ov = (e as CustomEvent).detail?.overlay as
+          | "thirdGrid"
+          | "phiGrid"
+          | "goldenGrid"
+          | "diagonals"
+          | undefined
+        if (ov) {
+          const layer = state.canonical.layers.byId[selectedLayerId] as any
+          const currentFilters = (layer?.filters || {}) as any
+          const nextFilters = {
+            ...currentFilters,
+            crop: {
+              ...(currentFilters.crop || {}),
+              overlay: ov,
+            },
+          }
+          updateLayer(selectedLayerId, { filters: nextFilters } as any)
+        }
+      } catch {}
+      setCropRect((r) => (r ? { ...r } : r))
+    }
+    window.addEventListener("phototis:crop-overlay-changed", handler)
+    return () =>
+      window.removeEventListener("phototis:crop-overlay-changed", handler)
+  }, [updateLayer, selectedLayerId, state.canonical.layers.byId])
 
   // Respond to request-crop-rect from controls to initialize inputs on first open
   React.useEffect(() => {
@@ -1871,8 +1902,8 @@ export function ImageEditorCanvas({
                   data-handle={h}
                   className='absolute bg-white border border-black/40'
                   style={{
-                    width: 8,
-                    height: 8,
+                    width: 12,
+                    height: 12,
                     left: h.includes("w")
                       ? -4
                       : h.includes("e")
@@ -1898,7 +1929,7 @@ export function ImageEditorCanvas({
           </div>
         )}
         {/* Drag overlay indicator */}
-        <div
+        {/* <div
           className={cn(
             "absolute inset-0 pointer-events-none flex items-center justify-center opacity-0 transition-opacity duration-200",
             "bg-blue-500/20 border-dashed border-blue-500 backdrop-blur-sm",
@@ -1909,7 +1940,7 @@ export function ImageEditorCanvas({
             width: canvasDimensions.width,
             height: canvasDimensions.height,
           }}
-        />
+        /> */}
       </motion.div>
 
       {/* Worker error indicator */}

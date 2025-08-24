@@ -57,16 +57,23 @@ function CropControls({
     setHeight(hostValue.height)
   }, [hostValue.overlay, hostValue.width, hostValue.height])
 
-  const handleOverlayChange = (next: string) => {
-    const ov = next as "thirdGrid" | "phiGrid" | "goldenGrid" | "diagonals"
-    setOverlay(ov)
-    dispatch?.({ type: "crop", payload: { overlay: ov } as any })
+  const handleOverlayGridChange = (next: string) => {
+    const overlay = next as "thirdGrid" | "phiGrid" | "goldenGrid" | "diagonals"
+    setOverlay(overlay)
+    dispatch?.({ type: "crop", payload: { overlay } as any })
+    try {
+      window.dispatchEvent(
+        new CustomEvent("phototis:crop-overlay-changed", {
+          detail: { overlay },
+        })
+      )
+    } catch {}
   }
 
   const handleWidthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const w = Number(e.target.value) || 0
     setWidth(w)
-    dispatch?.({ type: "crop", payload: { width: w } as any })
+    dispatch?.({ type: "crop", payload: { width: w, overlay } as any })
     try {
       window.dispatchEvent(
         new CustomEvent("phototis:crop-values-changed", {
@@ -79,7 +86,7 @@ function CropControls({
   const handleHeightChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const h = Number(e.target.value) || 0
     setHeight(h)
-    dispatch?.({ type: "crop", payload: { height: h } as any })
+    dispatch?.({ type: "crop", payload: { height: h, overlay } as any })
     try {
       window.dispatchEvent(
         new CustomEvent("phototis:crop-values-changed", {
@@ -95,8 +102,9 @@ function CropControls({
     window.dispatchEvent(ev)
   }, [])
 
-  // Sync width/height when overlay rectangle changes on canvas
+  // biome-ignore lint/correctness/useExhaustiveDependencies: dispatch causes infinite loop
   React.useEffect(() => {
+    // Sync width/height when overlay rectangle changes on canvas
     const handler = (e: Event) => {
       try {
         const detail = (e as CustomEvent).detail as {
@@ -108,7 +116,10 @@ function CropControls({
         const h = Number(detail.height ?? height)
         if (!Number.isNaN(w)) setWidth(w)
         if (!Number.isNaN(h)) setHeight(h)
-        dispatch?.({ type: "crop", payload: { width: w, height: h } as any })
+        dispatch?.({
+          type: "crop",
+          payload: { width: w, height: h, overlay } as any,
+        })
       } catch {}
     }
     window.addEventListener("phototis:crop-rect-changed", handler)
@@ -131,7 +142,7 @@ function CropControls({
           px
         </span>
       </div>
-      <Select defaultValue={overlay} onValueChange={handleOverlayChange}>
+      <Select defaultValue={overlay} onValueChange={handleOverlayGridChange}>
         <SelectTrigger className='h-8 w-28 rounded-sm flex items-center gap-2'>
           <SelectValue placeholder='Third Grid' />
           <ChevronDown className='h-4 w-4' />
@@ -139,8 +150,8 @@ function CropControls({
         <SelectContent className='rounded-sm'>
           <SelectItem value='thirdGrid'>Third Grid</SelectItem>
           <SelectItem value='phiGrid'>Phi Grid</SelectItem>
-          <SelectItem value='goldenGrid'>Golden Grid</SelectItem>
-          <SelectItem value='diagonals'>Diagonals</SelectItem>
+          {/* <SelectItem value='goldenGrid'>Golden Grid</SelectItem> */}
+          {/* <SelectItem value='diagonals'>Diagonals</SelectItem> */}
         </SelectContent>
       </Select>
 

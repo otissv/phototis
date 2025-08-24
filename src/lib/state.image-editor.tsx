@@ -184,6 +184,7 @@ export function imageEditorToolsReducer(
     }
     case "crop": {
       const p = action.payload as any
+
       return {
         ...state,
         crop: {
