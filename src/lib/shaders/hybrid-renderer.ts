@@ -702,6 +702,17 @@ export class HybridRenderer {
   ): void {
     if (!this.gl || !this.layerProgram) return
 
+    // Canvas coords used in fragment shader are bottom-left origin (via v_texCoord).
+    // Our UI/canvas overlay uses top-left origin for layer positions.
+    // Convert provided top-left based Y to bottom-left based Y so the rendered
+    // texture aligns exactly with the overlay rectangle after crop.
+    const resolvedLayerWidth = layerWidth || canvasWidth
+    const resolvedLayerHeight = layerHeight || canvasHeight
+    const resolvedLayerX = layerX || 0
+    const resolvedLayerYTopLeft = layerY || 0
+    const resolvedLayerYBottomLeft =
+      canvasHeight - (resolvedLayerYTopLeft + resolvedLayerHeight)
+
     const uniforms = [
       { name: "u_brightness", value: toolsValues.brightness },
       { name: "u_contrast", value: toolsValues.contrast },
@@ -728,10 +739,10 @@ export class HybridRenderer {
       { name: "u_flipVertical", value: toolsValues.flipVertical },
       { name: "u_opacity", value: opacity },
       { name: "u_resolution", value: [canvasWidth, canvasHeight] },
-      { name: "u_layerWidth", value: layerWidth || canvasWidth },
-      { name: "u_layerHeight", value: layerHeight || canvasHeight },
-      { name: "u_layerX", value: layerX || 0 },
-      { name: "u_layerY", value: layerY || 0 },
+      { name: "u_layerWidth", value: resolvedLayerWidth },
+      { name: "u_layerHeight", value: resolvedLayerHeight },
+      { name: "u_layerX", value: resolvedLayerX },
+      { name: "u_layerY", value: resolvedLayerYBottomLeft },
     ]
 
     // Some uniforms are declared as bools in GLSL. Ensure we pass them correctly

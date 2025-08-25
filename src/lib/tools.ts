@@ -22,13 +22,27 @@ export type ToolValueDimensionType = {
   }
 }
 export type ToolValueCropType = {
-  overlay: "thirdGrid" | "phiGrid" | "goldenGrid" | "diagonals"
+  overlay:
+    | "thirdGrid"
+    | "phiGrid"
+    | "goldenGrid"
+    | "goldenRatio"
+    | "goldenSpiral"
+    | "grid"
+    | "diagonals"
   x: number
   y: number
   width: number
   height: number
   defaultValue: {
-    overlay: "thirdGrid" | "phiGrid" | "goldenGrid" | "diagonals"
+    overlay:
+      | "thirdGrid"
+      | "phiGrid"
+      | "goldenGrid"
+      | "goldenRatio"
+      | "goldenSpiral"
+      | "grid"
+      | "diagonals"
     x: number
     y: number
     width: number
@@ -280,7 +294,13 @@ export type ResizeToolsType = {
     y: number
     width: number
     height: number
-    overlay: "thirdGrid" | "phiGrid" | "goldenGrid" | "diagonals"
+    overlay:
+      | "thirdGrid"
+      | "phiGrid"
+      | "goldenGrid"
+      | "goldenRatio"
+      | "grid"
+      | "diagonals"
   }
   zoom: number
 }

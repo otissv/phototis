@@ -68,7 +68,6 @@ function UpscaleButton({
           // upscale-js reports 0..1
           const pct = Math.max(0, Math.min(100, Math.round((p || 0) * 100)))
           onProgress?.(pct)
-          console.log("upscale progress", pct)
         },
       })
       try {

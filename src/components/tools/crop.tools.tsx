@@ -135,23 +135,33 @@ function CropControls({
     <div className='flex items-center justify-center gap-6 text-s my-4'>
       <div className='flex items-center gap-2'>
         <span>Crop: </span>
-        <span>
-          <Input type='number' value={width} onChange={handleWidthChange} />
-          x
-          <Input type='number' value={height} onChange={handleHeightChange} />
-          px
-        </span>
+        <Input
+          type='number'
+          value={width}
+          onChange={handleWidthChange}
+          className='w-20'
+        />
+        x
+        <Input
+          type='number'
+          value={height}
+          onChange={handleHeightChange}
+          className='w-20'
+        />
+        px
       </div>
       <Select defaultValue={overlay} onValueChange={handleOverlayGridChange}>
-        <SelectTrigger className='h-8 w-28 rounded-sm flex items-center gap-2'>
+        <SelectTrigger className='h-8 w-36 rounded-sm flex items-center gap-2'>
           <SelectValue placeholder='Third Grid' />
           <ChevronDown className='h-4 w-4' />
         </SelectTrigger>
         <SelectContent className='rounded-sm'>
           <SelectItem value='thirdGrid'>Third Grid</SelectItem>
-          <SelectItem value='phiGrid'>Phi Grid</SelectItem>
+          <SelectItem value='grid'>Grid</SelectItem>
+          <SelectItem value='goldenRatio'>Golden Ratio</SelectItem>
           {/* <SelectItem value='goldenGrid'>Golden Grid</SelectItem> */}
-          {/* <SelectItem value='diagonals'>Diagonals</SelectItem> */}
+          {/* <SelectItem value='goldenSpiral'>Golden Spiral</SelectItem> */}
+          <SelectItem value='diagonals'>Diagonals</SelectItem>
         </SelectContent>
       </Select>
 
