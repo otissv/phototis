@@ -52,6 +52,7 @@ import type {
   ToolValueDimensionType,
   ToolValueNumberType,
 } from "@/lib/tools"
+import { cn } from "@/lib/utils"
 
 export function ImageEditorFooter({
   selectedSidebar,
@@ -65,7 +66,13 @@ export function ImageEditorFooter({
     case "rotate":
       return <RotateFooter {...props} />
     case "resize":
+      return <ResizeFooter {...props} />
+    case "scale":
       return <ScaleFooter {...props} />
+    case "upscale":
+      return <UpscaleFooter {...props} />
+    case "crop":
+      return <CropFooter {...props} />
 
     default:
       return null
@@ -563,6 +570,7 @@ export function ScaleFooter({
   drawFnRef,
   selectedLayer,
   onProgress,
+  className,
   ...props
 }: Omit<ImageEditorFooterProps, "onChange">) {
   const handleOnChange = React.useCallback(
@@ -572,99 +580,151 @@ export function ScaleFooter({
     [dispatch, selectedTool]
   )
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: handleOnChange causes infinite loop
-  // biome-ignore lint/correctness/useExhaustiveDependencies: dependencies intentionally limited for stability
-  const Control = React.useMemo(() => {
-    const controlProps = {
-      progress,
-      selectedTool,
-      toolsValues,
-      dispatch,
-      canvasRef,
-      drawFnRef,
-      selectedLayer,
-      onProgress,
-      onChange: handleOnChange,
-    }
-    switch (selectedTool) {
-      case "scale":
-        return (
-          <ScaleControls
-            operator='%'
-            isDecimal={true}
-            value={value as ToolValueNumberType["defaultValue"]}
-            {...controlProps}
-          />
-        )
-      case "resize":
-        return (
-          <ResizeControls
-            value={value as ToolValueDimensionType["defaultValue"]}
-            {...controlProps}
-          />
-        )
-      case "upscale":
-        return <UpscaleControls {...controlProps} value={value as number} />
-      case "crop":
-        return (
-          <CropControls
-            {...controlProps}
-            value={value as ToolValueCropType["defaultValue"]}
-          />
-        )
-    }
-  }, [selectedTool, value, progress, handleOnChange, selectedLayer])
+  const controlProps = {
+    progress,
+    selectedTool,
+    toolsValues,
+    dispatch,
+    canvasRef,
+    drawFnRef,
+    selectedLayer,
+    onProgress,
+    onChange: handleOnChange,
+  }
 
   return (
-    <div {...props}>
-      <div className='flex justify-center'>
-        <div className='max-w-lg w-full flex flex-col items-center justify-center'>
-          {Control}
-        </div>
-      </div>
-      <ul className='flex gap-2 w-full justify-center'>
-        <li>
-          <ResizeButton
-            canvasRef={canvasRef}
-            drawFnRef={drawFnRef}
-            onSelectedToolChange={onSelectedToolChange}
-            selectedTool={selectedTool}
-            progress={progress}
-          />
-        </li>
+    <div className={cn("flex justify-center", className)} {...props}>
+      <ScaleControls
+        operator='%'
+        isDecimal={true}
+        value={value as ToolValueNumberType["defaultValue"]}
+        {...controlProps}
+      />
+    </div>
+  )
+}
 
-        <li>
-          <ScaleButton
-            onSelectedToolChange={onSelectedToolChange}
-            selectedTool={selectedTool}
-            progress={progress}
-            canvasRef={canvasRef}
-            drawFnRef={drawFnRef}
-          />
-        </li>
+export function ResizeFooter({
+  progress,
+  selectedTool,
+  toolsValues,
+  value,
+  dispatch,
+  onSelectedToolChange,
+  canvasRef,
+  drawFnRef,
+  selectedLayer,
+  onProgress,
+  className,
+  ...props
+}: Omit<ImageEditorFooterProps, "onChange">) {
+  const handleOnChange = React.useCallback(
+    (value: number) => {
+      dispatch({ type: selectedTool as any, payload: value } as any)
+    },
+    [dispatch, selectedTool]
+  )
 
-        <li>
-          <UpscaleButton
-            value={toolsValues?.upscale || 0}
-            dispatch={dispatch}
-            progress={progress}
-            selectedLayer={selectedLayer}
-            onProgress={onProgress}
-            selectedTool={selectedTool}
-            onSelectedToolChange={onSelectedToolChange}
-          />
-        </li>
+  const controlProps = {
+    progress,
+    selectedTool,
+    toolsValues,
+    dispatch,
+    canvasRef,
+    drawFnRef,
+    selectedLayer,
+    onProgress,
+    onChange: handleOnChange,
+  }
 
-        <li>
-          <CropButton
-            onSelectedToolChange={onSelectedToolChange}
-            selectedTool={selectedTool}
-            progress={progress}
-            canvasRef={canvasRef}
-            drawFnRef={drawFnRef}
-          />
-        </li>
-      </ul>
+  return (
+    <div className={cn("flex justify-center", className)} {...props}>
+      <ResizeControls
+        value={value as ToolValueDimensionType["defaultValue"]}
+        {...controlProps}
+      />
+    </div>
+  )
+}
+
+export function UpscaleFooter({
+  progress,
+  selectedTool,
+  toolsValues,
+  value,
+  dispatch,
+  onSelectedToolChange,
+  canvasRef,
+  drawFnRef,
+  selectedLayer,
+  onProgress,
+  className,
+  ...props
+}: Omit<ImageEditorFooterProps, "onChange">) {
+  const handleOnChange = React.useCallback(
+    (value: number) => {
+      dispatch({ type: selectedTool as any, payload: value } as any)
+    },
+    [dispatch, selectedTool]
+  )
+
+  const controlProps = {
+    progress,
+    selectedTool,
+    toolsValues,
+    dispatch,
+    canvasRef,
+    drawFnRef,
+    selectedLayer,
+    onProgress,
+    onChange: handleOnChange,
+  }
+  return (
+    <div className={cn("flex justify-center", className)} {...props}>
+      <UpscaleControls {...controlProps} value={value as number} />
+    </div>
+  )
+}
+
+export function CropFooter({
+  progress,
+  selectedTool,
+  toolsValues,
+  value,
+  dispatch,
+  onSelectedToolChange,
+  canvasRef,
+  drawFnRef,
+  selectedLayer,
+  onProgress,
+  className,
+  ...props
+}: Omit<ImageEditorFooterProps, "onChange">) {
+  const handleOnChange = React.useCallback(
+    (value: number) => {
+      dispatch({ type: selectedTool as any, payload: value } as any)
+    },
+    [dispatch, selectedTool]
+  )
+
+  const controlProps = {
+    progress,
+    selectedTool,
+    toolsValues,
+    dispatch,
+    canvasRef,
+    drawFnRef,
+    selectedLayer,
+    onProgress,
+    onChange: handleOnChange,
+  }
+
+  return (
+    <div className={cn("flex justify-center", className)} {...props}>
+      <CropControls
+        {...controlProps}
+        value={value as ToolValueCropType["defaultValue"]}
+      />
     </div>
   )
 }

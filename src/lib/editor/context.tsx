@@ -11,6 +11,7 @@ import type {
   ViewportModel,
   ActiveToolModel,
   EphemeralEditorState,
+  DocumentLayer,
 } from "@/lib/editor/state"
 import {
   normalizeLayers,
@@ -32,7 +33,7 @@ import {
 } from "@/lib/editor/commands"
 import { loadDocument } from "@/lib/editor/persistence"
 
-type EditorContextValue = {
+export type EditorContextValue = {
   state: EditorRuntimeState
   setCanonical: (
     updater: (s: CanonicalEditorState) => CanonicalEditorState
@@ -146,7 +147,18 @@ export function EditorProvider({
       image: initialImage ?? undefined,
     }
 
-    const layers = normalizeLayers([baseLayer])
+    const documentLayer: DocumentLayer = {
+      id: "document",
+      name: "Document",
+      type: "document",
+      filters: { ...defaultFilters },
+      visible: true,
+      locked: true,
+      opacity: 100,
+      blendMode: "normal",
+    }
+
+    const layers = normalizeLayers([baseLayer, documentLayer])
     const canonical: CanonicalEditorState = { ...base.canonical, layers }
     const result = { canonical, ephemeral: base.ephemeral }
     assertInvariants(canonical)

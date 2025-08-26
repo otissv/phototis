@@ -393,7 +393,7 @@ export function HistoryControls({
         </ul>
       </section>
 
-      <div className='flex items-center justify-between text-[11px] text-muted-foreground p-2 border'>
+      <div className='flex items-center justify-between text-[11px] text-muted-foreground p-2 border-t'>
         <div>
           {inspected.counts?.past ?? past.length} steps,{" "}
           {inspected.counts?.future ?? future.length} redo

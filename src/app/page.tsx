@@ -53,7 +53,7 @@ export default function Home() {
         </ul>
       </nav> */}
 
-      <main className='p-2 h-full relative'>
+      <main className='h-full relative'>
         <Router route={route} setRoute={handleRouteChange} />
       </main>
     </DndProvider>

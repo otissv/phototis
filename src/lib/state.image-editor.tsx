@@ -10,30 +10,33 @@ import {
   type ToolValueDimensionType,
   type ToolValueStepType,
   type ToolValueStringType,
+  type CropToolsType,
+  type ScaleToolsType,
+  type UpscaleToolsType,
 } from "@/lib/tools"
 
 export type ImageEditorToolsState = AdjustLayersType &
   FilterToolsType &
   HistoryToolsState &
   ResizeToolsType &
-  RotateToolsType
+  RotateToolsType &
+  CropToolsType &
+  ScaleToolsType &
+  UpscaleToolsType
 
 export const SIDEBAR_TOOLS = {
   effects: ["blur", "grain", "noise", "sharpen"],
   presets: ["presets"],
-  resize: ["scale", "resize", "upscale", "crop"],
+  scale: ["scale"],
+  resize: ["resize"],
+  upscale: ["upscale"],
+  crop: ["crop"],
   rotate: ["rotate", "flipVertical", "flipHorizontal"],
 }
 // Define payload types for non-numeric tools
-type ResizePayload = { width: number; height: number }
-type CropPayload = {
-  x?: number
-  y?: number
-  width?: number
-  height?: number
-  overlay?: "thirdGrid" | "phiGrid" | "goldenGrid" | "diagonals"
-}
-type RecolorPayload = { value: number; color: string }
+type ResizePayload = ResizeToolsType["resize"]
+type CropPayload = CropToolsType["crop"]
+type RecolorPayload = AdjustLayersType["recolor"]
 
 type NumericToolKeys = Exclude<
   keyof typeof TOOL_VALUES,

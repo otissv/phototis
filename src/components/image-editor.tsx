@@ -339,7 +339,7 @@ function ImageEditorInner({
   return (
     <div
       {...props}
-      className='lg:grid lg:grid-cols-[80px_1fr_auto] lg:grid-rows-[auto_1fr_auto] justify-center gap-x-4 h-full'
+      className='lg:grid lg:grid-cols-[65px_1fr_auto] lg:grid-rows-[auto_1fr_auto] justify-center h-full'
     >
       <div className='lg:col-start-1 lg:row-start-1 lg:row-end-3 flex'>
         <div className='lg:hidden'>
@@ -361,11 +361,12 @@ function ImageEditorInner({
               )}
             >
               <ImageEditorSidebar
-                selected={selectedSidebar}
                 onSelectedToolChange={handleSelectedToolChange}
                 onChange={handleSelectedSidebarChange}
                 dispatch={dispatch}
                 progress={progress}
+                selectedLayer={selectedLayer}
+                selectedSidebar={selectedSidebar}
               />
             </PopoverContent>
           </Popover>
@@ -373,11 +374,12 @@ function ImageEditorInner({
 
         <div className='hidden lg:block'>
           <ImageEditorSidebar
-            selected={selectedSidebar}
             onSelectedToolChange={handleSelectedToolChange}
             onChange={handleSelectedSidebarChange}
             dispatch={dispatch}
             progress={progress}
+            selectedLayer={selectedLayer}
+            selectedSidebar={selectedSidebar}
           />
         </div>
 
@@ -402,13 +404,14 @@ function ImageEditorInner({
               <ImageEditorPanels
                 className='lg:row-span-3 w-full'
                 defaultValue='layers'
+                setSelectedSidebar={setSelectedSidebar}
               />
             </PopoverContent>
           </Popover>
         </div>
       </div>
 
-      <div className='lg:col-start-2 lg:row-start-1 lg:row-span-2 flex flex-col items-center overflow-auto border rounded-sm '>
+      <div className='lg:col-start-2 lg:row-start-1 lg:row-span-2 flex flex-col items-center overflow-auto border'>
         <div className='relative '>
           <ImageEditorCanvas
             onProgress={handleOnProgress}
@@ -449,6 +452,7 @@ function ImageEditorInner({
           className='lg:row-span-3 w-full'
           defaultValue='layers'
           notify={notify}
+          setSelectedSidebar={setSelectedSidebar}
         />
       </div>
     </div>

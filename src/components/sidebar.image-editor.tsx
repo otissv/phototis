@@ -2,6 +2,7 @@
 
 import {
   Blend,
+  Crop,
   Funnel,
   ImageUpscale,
   RotateCwSquare,
@@ -9,7 +10,7 @@ import {
   Sparkles,
 } from "lucide-react"
 
-import { Button } from "@/ui/button"
+import { Button, type ButtonProps } from "@/ui/button"
 import { cn } from "@/lib/utils"
 import type { TOOL_VALUES } from "@/lib/tools"
 import {
@@ -19,105 +20,159 @@ import {
 
 export interface ImageEditorSidebarProps
   extends Omit<React.ComponentProps<"ul">, "onChange"> {
-  selected: keyof typeof SIDEBAR_TOOLS
+  progress?: number
+  selectedLayer: Layer
+  selectedSidebar: keyof typeof SIDEBAR_TOOLS
+  dispatch: React.Dispatch<ImageEditorToolsActions>
   onChange: (selected: keyof typeof SIDEBAR_TOOLS) => void
   onSelectedToolChange: (tool: keyof typeof TOOL_VALUES) => void
-  dispatch: React.Dispatch<ImageEditorToolsActions>
-  progress?: number
 }
 export function ImageEditorSidebar({
-  selected,
   className,
   onChange,
   onSelectedToolChange,
   dispatch,
   progress,
+  selectedLayer,
+  selectedSidebar,
   ...props
 }: ImageEditorSidebarProps) {
-  return (
-    <ul className={cn("flex flex-col gap-2", className)} {...props}>
-      <li>
-        <Button
-          title='Rotate'
-          variant='ghost'
-          className={cn("flex flex-col rounded-md text-xs size-18", {
-            "bg-accent text-accent-foreground": selected === "rotate",
-          })}
-          onClick={() => {
-            onChange("rotate")
+  const isDocumentLayer = selectedLayer?.id === "document"
 
-            if (!SIDEBAR_TOOLS.rotate.includes(selected)) {
-              onSelectedToolChange("rotate")
-            }
-          }}
+  return (
+    <ul className={cn("flex flex-col gap-2 p-2", className)} {...props}>
+      <li>
+        <SidebarButton
+          title='Rotate'
+          footerType='rotate'
           disabled={progress}
+          selectedSidebar={selectedSidebar}
+          onChange={onChange}
+          onSelectedToolChange={onSelectedToolChange}
         >
           <RotateCwSquare />
           Rotate
-        </Button>
+        </SidebarButton>
       </li>
 
       <li>
-        <Button
+        <SidebarButton
           title='Resize'
-          variant='ghost'
-          className={cn("flex flex-col rounded-md text-xs size-18", {
-            "bg-accent text-accent-foreground": selected === "resize",
-          })}
-          onClick={() => {
-            onChange("resize")
-
-            if (!SIDEBAR_TOOLS.resize.includes(selected)) {
-              onSelectedToolChange("resize")
-            }
-          }}
+          footerType='resize'
           disabled={progress}
+          selectedSidebar={selectedSidebar}
+          onChange={onChange}
+          onSelectedToolChange={onSelectedToolChange}
         >
           <ImageUpscale />
           Resize
-        </Button>
+        </SidebarButton>
       </li>
 
       <li>
-        <Button
-          title='Filters'
-          variant='ghost'
-          className={cn("flex flex-col rounded-md text-xs size-18", {
-            "bg-accent text-accent-foreground": selected === "effects",
-          })}
-          onClick={() => {
-            onChange("effects")
-
-            if (!SIDEBAR_TOOLS.effects.includes(selected)) {
-              onSelectedToolChange("blur")
-            }
-          }}
+        <SidebarButton
+          title='Scale'
+          footerType='scale'
           disabled={progress}
+          selectedSidebar={selectedSidebar}
+          onChange={onChange}
+          onSelectedToolChange={onSelectedToolChange}
+        >
+          <ImageUpscale />
+          Scale
+        </SidebarButton>
+      </li>
+
+      <li>
+        <SidebarButton
+          title='Upscale'
+          footerType='upscale'
+          disabled={progress}
+          selectedSidebar={selectedSidebar}
+          onChange={onChange}
+          onSelectedToolChange={onSelectedToolChange}
+        >
+          <ImageUpscale />
+          Upscale
+        </SidebarButton>
+      </li>
+
+      <li>
+        <SidebarButton
+          title='Crop'
+          footerType='crop'
+          disabled={progress}
+          selectedSidebar={selectedSidebar}
+          onChange={onChange}
+          onSelectedToolChange={onSelectedToolChange}
+        >
+          <Crop />
+          Crop
+        </SidebarButton>
+      </li>
+
+      <li>
+        <SidebarButton
+          title='Filters'
+          footerType='effects'
+          disabled={progress || isDocumentLayer}
+          selectedSidebar={selectedSidebar}
+          onChange={onChange}
+          onSelectedToolChange={onSelectedToolChange}
         >
           <SlidersHorizontal />
           Filters
-        </Button>
+        </SidebarButton>
       </li>
       <li>
-        <Button
+        <SidebarButton
           title='Presets'
-          variant='ghost'
-          className={cn("flex flex-col rounded-md text-xs size-18", {
-            "bg-accent text-accent-foreground": selected === "presets",
-          })}
-          onClick={() => {
-            onChange("presets")
-
-            if (!SIDEBAR_TOOLS.effects.includes(selected)) {
-              onSelectedToolChange("blur")
-            }
-          }}
-          disabled={progress}
+          footerType='presets'
+          disabled={progress || isDocumentLayer}
+          selectedSidebar={selectedSidebar}
+          onChange={onChange}
+          onSelectedToolChange={onSelectedToolChange}
         >
           <Sparkles />
           Presets
-        </Button>
+        </SidebarButton>
       </li>
     </ul>
+  )
+}
+
+interface SidebarButtonProps extends Omit<ButtonProps, "selected"> {
+  footerType: keyof typeof SIDEBAR_TOOLS
+  selectedSidebar: keyof typeof SIDEBAR_TOOLS
+  onChange: (selected: keyof typeof SIDEBAR_TOOLS) => void
+  onSelectedToolChange: (tool: keyof typeof TOOL_VALUES) => void
+}
+
+function SidebarButton({
+  footerType,
+  selectedSidebar,
+  onChange,
+  onSelectedToolChange,
+  disabled,
+  children,
+  title,
+}: SidebarButtonProps) {
+  return (
+    <Button
+      title={title}
+      variant='ghost'
+      className={cn("flex flex-col rounded-md text-xs size-12", {
+        "bg-accent text-accent-foreground": selectedSidebar === footerType,
+      })}
+      onClick={() => {
+        onChange(footerType)
+        if (!SIDEBAR_TOOLS.rotate.includes(selectedSidebar)) {
+          onSelectedToolChange(footerType as keyof typeof TOOL_VALUES)
+        }
+      }}
+      disabled={disabled}
+    >
+      {children}
+    </Button>
   )
 }

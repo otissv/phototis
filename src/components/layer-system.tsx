@@ -15,6 +15,7 @@ import {
   Sun,
   Droplets,
   Sparkles,
+  File,
 } from "lucide-react"
 import { useDrag, useDrop } from "react-dnd"
 import { Button } from "@/ui/button"
@@ -33,8 +34,7 @@ import {
   AdjustmentLayerEditor,
   getAdjustmentIcon,
 } from "@/components/adjustment.layer"
-
-export interface LayerSystemProps extends React.ComponentProps<"div"> {}
+import type { SIDEBAR_TOOLS } from "@/lib/state.image-editor"
 
 // Drag item type for react-dnd
 const ItemTypes = {
@@ -50,7 +50,15 @@ interface DragItem {
 // Global drag state to prevent updates during drag
 let isGlobalDragActive = false
 
-export function LayerSystem({ className, ...props }: LayerSystemProps) {
+export interface LayerSystemProps extends React.ComponentProps<"div"> {
+  setSelectedSidebar: (sidebar: keyof typeof SIDEBAR_TOOLS) => void
+}
+
+export function LayerSystem({
+  className,
+  setSelectedSidebar,
+  ...props
+}: LayerSystemProps) {
   const {
     getOrderedLayers,
     getSelectedLayerId,
@@ -67,17 +75,11 @@ export function LayerSystem({ className, ...props }: LayerSystemProps) {
     setOpacity,
     addAdjustmentLayer,
     state,
-    setEphemeral,
   } = useEditorContext()
 
   const layers = getOrderedLayers()
   const selectedLayerId = getSelectedLayerId()
   const isDragActive = state.ephemeral.interaction.isDragging
-
-  const handleAddLayer = React.useCallback(() => {
-    if (isDragActive) return
-    addEmptyLayer()
-  }, [addEmptyLayer, isDragActive])
 
   const handleFileUpload = React.useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -199,6 +201,8 @@ export function LayerSystem({ className, ...props }: LayerSystemProps) {
     return layers.find((layer) => layer.id === selectedLayerId)
   }, [layers, selectedLayerId])
 
+  const isDocumentLayerSelected = selectedLayerId === "document"
+
   return (
     <div className={cn("w-full space-y-2", className)} {...props}>
       <div className='flex items-center  h-12 p-2 text-xs justify-between border-b gap-2'>
@@ -211,7 +215,9 @@ export function LayerSystem({ className, ...props }: LayerSystemProps) {
                 variant='ghost'
                 size='sm'
                 className='h-8 px-2 text-xs'
-                disabled={isDragActive || isGlobalDragActive}
+                disabled={
+                  isDragActive || isGlobalDragActive || isDocumentLayerSelected
+                }
               >
                 <span className='whitespace-nowrap'>
                   {currentLayer?.blendMode
@@ -255,7 +261,9 @@ export function LayerSystem({ className, ...props }: LayerSystemProps) {
                 )
               }
               className=' px-2 py-1 h-8 border-none'
-              disabled={isDragActive || isGlobalDragActive}
+              disabled={
+                isDragActive || isGlobalDragActive || isDocumentLayerSelected
+              }
             />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -263,7 +271,11 @@ export function LayerSystem({ className, ...props }: LayerSystemProps) {
                   variant='ghost'
                   size='sm'
                   className='size-8 p-0 rounded-sm'
-                  disabled={isDragActive || isGlobalDragActive}
+                  disabled={
+                    isDragActive ||
+                    isGlobalDragActive ||
+                    isDocumentLayerSelected
+                  }
                 >
                   <ChevronDown className='w-3 h-3' />
                 </Button>
@@ -299,7 +311,7 @@ export function LayerSystem({ className, ...props }: LayerSystemProps) {
 
       <div className='space-y-2 px-2 transition-all'>
         {layers.map((layer, index) => {
-          return (
+          return layer.type !== "document" ? (
             <DraggableLayerItem
               key={layer.id}
               layer={layer}
@@ -316,8 +328,14 @@ export function LayerSystem({ className, ...props }: LayerSystemProps) {
               }
               onMoveLayer={handleMoveLayer}
             />
-          )
+          ) : null
         })}
+
+        <DocumentLayerItem
+          isSelected={selectedLayerId === "document"}
+          layer={layers[1]}
+          setSelectedSidebar={setSelectedSidebar}
+        />
       </div>
 
       <div className='flex items-center gap-1 border-t border-border p-2'>
@@ -333,7 +351,6 @@ export function LayerSystem({ className, ...props }: LayerSystemProps) {
             title='Upload image to new layer'
           />
         </div>
-
         <div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -342,6 +359,7 @@ export function LayerSystem({ className, ...props }: LayerSystemProps) {
                 variant='ghost'
                 size='sm'
                 className='h-8 w-8 p-0'
+                disabled={isDragActive || isGlobalDragActive}
               >
                 <Eclipse className='w-4 h-4' />
               </Button>
@@ -474,18 +492,6 @@ export function LayerSystem({ className, ...props }: LayerSystemProps) {
         <div className='text-xs ml-auto text-muted-foreground'>
           {layers.length === 1 ? "1 layer" : `${layers.length} layers`}
         </div>
-
-        {/* Empty layer button */}
-        {/* <Button
-          variant='ghost'
-          size='sm'
-          onClick={handleAddLayer}
-          className='h-8 w-8 p-0'
-          disabled={isDragActive || isGlobalDragActive}
-          title='Add empty layer'
-        >
-          <Layers className='w-4 h-4' />
-        </Button> */}
       </div>
     </div>
   )
@@ -761,6 +767,42 @@ function LayerItemContent({
     <>
       <div className='flex flex-col items-center justify-between'>
         <div className='flex items-center'>
+          <div className='flex-1 w-32'>
+            {isEditing ? (
+              <Input
+                value={editName}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setEditName(e.target.value)
+                }
+                onBlur={handleNameSubmit}
+                onKeyDown={handleNameKeyDown}
+                className={cn(
+                  "h-6 text-sm rounded-sm outline-none px-1",
+                  "focus-visible:ring-0 focus-visible:ring-transparent focus-visible:ring-offset-0"
+                )}
+                autoFocus
+                disabled={isDragActive}
+              />
+            ) : (
+              <div className='flex items-center gap-2'>
+                <LayerThumbnail layer={layer} />
+                <Button
+                  variant='ghost'
+                  className={cn(
+                    "text-sm truncate flex items-center gap-1 h-6 flex-1 justify-start px-1 rounded-sm cursor-grab",
+                    "hover:bg-transparent"
+                  )}
+                  onDoubleClick={() => !isDragActive && setIsEditing(true)}
+                  disabled={isDragActive}
+                >
+                  <span className='text-xs whitespace-nowrap truncate'>
+                    {layer.name}
+                  </span>
+                </Button>
+              </div>
+            )}
+          </div>
+
           <Button
             title='Toggle layer visibility'
             variant='ghost'
@@ -797,42 +839,6 @@ function LayerItemContent({
               )}
             />
           </Button>
-
-          <div className='flex-1 w-32'>
-            {isEditing ? (
-              <Input
-                value={editName}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setEditName(e.target.value)
-                }
-                onBlur={handleNameSubmit}
-                onKeyDown={handleNameKeyDown}
-                className={cn(
-                  "h-6 text-sm rounded-sm outline-none px-1",
-                  "focus-visible:ring-0 focus-visible:ring-transparent focus-visible:ring-offset-0"
-                )}
-                autoFocus
-                disabled={isDragActive}
-              />
-            ) : (
-              <div className='flex items-center gap-2'>
-                <LayerThumbnail layer={layer} />
-                <Button
-                  variant='ghost'
-                  className={cn(
-                    "text-sm truncate flex items-center gap-1 h-6 flex-1 justify-start px-1 rounded-sm cursor-grab",
-                    "hover:bg-transparent"
-                  )}
-                  onDoubleClick={() => !isDragActive && setIsEditing(true)}
-                  disabled={isDragActive}
-                >
-                  <span className='text-xs whitespace-nowrap truncate'>
-                    {layer.name}
-                  </span>
-                </Button>
-              </div>
-            )}
-          </div>
 
           <div className='flex gap-1'>
             <Button
@@ -934,6 +940,44 @@ function LayerThumbnail({ layer }: { layer: EditorLayer }) {
         alt={layer.name}
         className='w-full h-full object-cover'
       />
+    </div>
+  )
+}
+
+interface DocumentLayerItemProps extends React.ComponentProps<"div"> {
+  isSelected: boolean
+  layer: EditorLayer
+  setSelectedSidebar: (sidebar: keyof typeof SIDEBAR_TOOLS) => void
+}
+
+export function DocumentLayerItem({
+  isSelected,
+  layer,
+  setSelectedSidebar,
+}: DocumentLayerItemProps) {
+  const { selectLayer } = useEditorContext()
+  return (
+    <div className='border-t pt-1'>
+      <Button
+        variant='ghost'
+        size='sm'
+        className={cn(
+          "cursor-pointer transition-colors w-full text-left text-xs rounded-sm space-y-1 h-9 justify-start pl-1",
+          isSelected
+            ? "border-primary bg-primary/10"
+            : "border-border hover:border-primary/50",
+          isSelected && layer.type === "adjustment" && "rounded-b-none"
+        )}
+        onClick={() => {
+          selectLayer("document")
+          setSelectedSidebar("rotate")
+        }}
+      >
+        <div className='flex items-center p-1'>
+          <File className='w-4 h-4 mr-[14px]' />
+          <span>Document</span>
+        </div>
+      </Button>
     </div>
   )
 }

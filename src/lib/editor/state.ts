@@ -36,6 +36,8 @@ export interface BaseLayer {
   type: LayerType
 }
 
+// Document layer
+
 // Image layer with embedded filters (current system)
 export interface ImageLayer extends BaseLayer {
   type: "image"
@@ -87,7 +89,12 @@ export interface MaskData {
 }
 
 // Union type for all layer types
-export type EditorLayer = ImageLayer | AdjustmentLayer | GroupLayer | SolidLayer
+export type EditorLayer =
+  | ImageLayer
+  | AdjustmentLayer
+  | GroupLayer
+  | SolidLayer
+  | DocumentLayer
 
 // Legacy support - keep the old interface for backward compatibility
 export interface LegacyEditorLayer {

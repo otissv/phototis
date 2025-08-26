@@ -21,33 +21,8 @@ export type ToolValueDimensionType = {
     height: number
   }
 }
-export type ToolValueCropType = {
-  overlay:
-    | "thirdGrid"
-    | "phiGrid"
-    | "goldenGrid"
-    | "goldenRatio"
-    | "goldenSpiral"
-    | "grid"
-    | "diagonals"
-  x: number
-  y: number
-  width: number
-  height: number
-  defaultValue: {
-    overlay:
-      | "thirdGrid"
-      | "phiGrid"
-      | "goldenGrid"
-      | "goldenRatio"
-      | "goldenSpiral"
-      | "grid"
-      | "diagonals"
-    x: number
-    y: number
-    width: number
-    height: number
-  }
+export type ToolValueCropType = CropToolsType["crop"] & {
+  defaultValue: CropToolsType["crop"]
 }
 
 export type ToolValueColorType = {
@@ -74,6 +49,9 @@ export type ToolValueKeys =
   | FilterType
   | RotateType
   | ResizeType
+  | CropType
+  | ScaleType
+  | UpscaleType
 
 export const TOOL_VALUES: Record<ToolValueKeys, ToolValueTypes> = {
   // Adjustment values
@@ -283,24 +261,9 @@ export const TOOL_VALUES: Record<ToolValueKeys, ToolValueTypes> = {
 }
 
 export type ResizeToolsType = {
-  scale: number
   resize: {
     width: number
     height: number
-  }
-  upscale: number
-  crop: {
-    x: number
-    y: number
-    width: number
-    height: number
-    overlay:
-      | "thirdGrid"
-      | "phiGrid"
-      | "goldenGrid"
-      | "goldenRatio"
-      | "grid"
-      | "diagonals"
   }
   zoom: number
 }
@@ -310,6 +273,24 @@ export type RotateToolsType = {
   scale: number
   flipVertical: boolean
   flipHorizontal: boolean
+}
+
+export type CropToolsType = {
+  crop: {
+    x: number
+    y: number
+    width: number
+    height: number
+    overlay: "thirdGrid" | "goldenSpiral" | "grid" | "diagonals"
+  }
+}
+
+export type ScaleToolsType = {
+  scale: number
+}
+
+export type UpscaleToolsType = {
+  upscale: number
 }
 
 export type AdjustLayersType = {
@@ -353,3 +334,6 @@ export type AdjustmentType = keyof AdjustLayersType
 export type FilterType = keyof FilterToolsType
 export type RotateType = keyof RotateToolsType
 export type ResizeType = keyof ResizeToolsType
+export type CropType = keyof CropToolsType
+export type ScaleType = keyof ScaleToolsType
+export type UpscaleType = keyof UpscaleToolsType
