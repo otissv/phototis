@@ -44,17 +44,16 @@ export function ImageEditorSidebar({
     <ul className={cn("flex flex-col gap-2 p-2", className)} {...props}>
       <li>
         <SidebarButton
-          title={
-            isDocumentLayer ? "Rotate Document (All Layers)" : "Rotate Layer"
-          }
+          title='Rotate Layer'
           footerType='rotate'
-          disabled={progress || isDocumentLayer}
+          disabled={progress}
           selectedSidebar={selectedSidebar}
           onChange={onChange}
           onSelectedToolChange={onSelectedToolChange}
+          isDocumentLayer={isDocumentLayer}
         >
           <RotateCwSquare />
-          {isDocumentLayer ? "Document Rotate" : "Rotate"}
+          Rotate
         </SidebarButton>
       </li>
 
@@ -62,10 +61,11 @@ export function ImageEditorSidebar({
         <SidebarButton
           title='Resize'
           footerType='resize'
-          disabled={progress || isDocumentLayer}
+          disabled={progress}
           selectedSidebar={selectedSidebar}
           onChange={onChange}
           onSelectedToolChange={onSelectedToolChange}
+          isDocumentLayer={isDocumentLayer}
         >
           <ImageUpscale />
           Resize
@@ -76,10 +76,11 @@ export function ImageEditorSidebar({
         <SidebarButton
           title='Scale'
           footerType='scale'
-          disabled={progress || isDocumentLayer}
+          disabled={progress}
           selectedSidebar={selectedSidebar}
           onChange={onChange}
           onSelectedToolChange={onSelectedToolChange}
+          isDocumentLayer={isDocumentLayer}
         >
           <ImageUpscale />
           Scale
@@ -90,10 +91,11 @@ export function ImageEditorSidebar({
         <SidebarButton
           title='Upscale'
           footerType='upscale'
-          disabled={progress || isDocumentLayer}
+          disabled={progress}
           selectedSidebar={selectedSidebar}
           onChange={onChange}
           onSelectedToolChange={onSelectedToolChange}
+          isDocumentLayer={isDocumentLayer}
         >
           <ImageUpscale />
           Upscale
@@ -104,10 +106,11 @@ export function ImageEditorSidebar({
         <SidebarButton
           title='Crop'
           footerType='crop'
-          disabled={progress || isDocumentLayer}
+          disabled={progress}
           selectedSidebar={selectedSidebar}
           onChange={onChange}
           onSelectedToolChange={onSelectedToolChange}
+          isDocumentLayer={isDocumentLayer}
         >
           <Crop />
           Crop
@@ -149,6 +152,7 @@ interface SidebarButtonProps extends Omit<ButtonProps, "selected"> {
   selectedSidebar: keyof typeof SIDEBAR_TOOLS
   onChange: (selected: keyof typeof SIDEBAR_TOOLS) => void
   onSelectedToolChange: (tool: keyof typeof TOOL_VALUES) => void
+  isDocumentLayer?: boolean
 }
 
 function SidebarButton({
@@ -159,14 +163,19 @@ function SidebarButton({
   disabled,
   children,
   title,
+  className,
+  isDocumentLayer,
 }: SidebarButtonProps) {
   return (
     <Button
       title={title}
       variant='ghost'
-      className={cn("flex flex-col rounded-md text-xs size-12", {
-        "bg-accent text-accent-foreground": selectedSidebar === footerType,
-      })}
+      className={cn(
+        "flex flex-col rounded-md text-xs size-12 hover:bg-blue-500/50",
+        selectedSidebar === footerType && "bg-accent text-accent-foreground",
+        selectedSidebar === footerType && isDocumentLayer && "bg-blue-500/50",
+        className
+      )}
       onClick={() => {
         onChange(footerType)
         if (!SIDEBAR_TOOLS.rotate.includes(selectedSidebar)) {

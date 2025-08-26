@@ -395,6 +395,8 @@ export function ImageEditorCanvas({
   const transformX = useTransform(viewportX, (x) => `${x}px`)
   const transformY = useTransform(viewportY, (y) => `${y}px`)
   const transformScale = useTransform(viewportScale, (scale) => scale)
+  // Viewport rotation from canonical state (degrees)
+  const viewportRotation = state.canonical.viewport.rotation ?? 0
 
   // Container ref for viewport calculations
   const containerRef = React.useRef<HTMLDivElement>(null)
@@ -730,7 +732,7 @@ export function ImageEditorCanvas({
 
       setViewport({ x: newX, y: newY, scale: newScale })
     },
-    [viewportX, viewportY, viewportScale, history]
+    [viewportX, viewportY, viewportScale]
   )
 
   // Double-click to reset viewport
@@ -1408,19 +1410,18 @@ export function ImageEditorCanvas({
       `}</style>
 
       <motion.div
-        className='relative transition-all duration-200 image-editor-checkerboard'
+        className='relative image-editor-checkerboard'
         style={{
           // x: transformX,
           // y: transformY,
           scale: transformScale,
-          // transformOrigin: "0 0",
-          // width: canvasDimensions.width,
-          // height: canvasDimensions.height,
+          rotate: `${viewportRotation}deg`,
+          // Keep origin centered so rotation is around canvas center
+          transformOrigin: "50% 50%",
         }}
       >
         <canvas
           ref={canvasRef}
-          className={cn("transition-all duration-200")}
           style={{
             width: canvasDimensions.width,
             height: canvasDimensions.height,
@@ -1439,9 +1440,7 @@ export function ImageEditorCanvas({
         {/* Preview overlay canvas for tool previews (visible only for crop) */}
         {state.canonical.activeTool.tool === "crop" && (
           <canvas
-            className={cn(
-              "absolute inset-0 pointer-events-none transition-all duration-200"
-            )}
+            className={cn("absolute inset-0 pointer-events-none duration-200")}
             style={{
               width: canvasDimensions.width,
               height: canvasDimensions.height,

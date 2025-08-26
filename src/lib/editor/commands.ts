@@ -568,7 +568,7 @@ export class DocumentRotateCommand implements Command {
     this.rotation = rotation
     this.previousRotations = previousRotations
     this.meta = {
-      label: `Rotate Document ${rotation > 0 ? '+' : ''}${rotation}°`,
+      label: `Rotate Document ${rotation > 0 ? "+" : ""}${rotation}°`,
       scope: "document",
       timestamp: Date.now(),
       coalescable: false,
@@ -578,7 +578,7 @@ export class DocumentRotateCommand implements Command {
 
   apply(state: CanonicalEditorState): CanonicalEditorState {
     const byId = { ...state.layers.byId }
-    
+
     // Apply rotation to all image layers
     for (const layerId of state.layers.order) {
       const layer = byId[layerId]
@@ -586,7 +586,7 @@ export class DocumentRotateCommand implements Command {
         const imageLayer = layer as any
         const currentRotation = imageLayer.filters?.rotate || 0
         const newRotation = (currentRotation + this.rotation + 360) % 360
-        
+
         byId[layerId] = {
           ...imageLayer,
           filters: {
@@ -607,16 +607,12 @@ export class DocumentRotateCommand implements Command {
   }
 
   invert(prev: CanonicalEditorState): Command {
-    return new DocumentRotateCommand(
-      -this.rotation,
-      this.previousRotations,
-      {
-        label: `Undo Rotate Document ${this.rotation > 0 ? '+' : ''}${this.rotation}°`,
-        scope: "document",
-        timestamp: Date.now(),
-        coalescable: false,
-      }
-    )
+    return new DocumentRotateCommand(-this.rotation, this.previousRotations, {
+      label: `Undo Rotate Document ${this.rotation > 0 ? "+" : ""}${this.rotation}°`,
+      scope: "document",
+      timestamp: Date.now(),
+      coalescable: false,
+    })
   }
 
   estimateSize(): number {
@@ -632,7 +628,9 @@ export class DocumentRotateCommand implements Command {
     }
   }
 
-  static deserialize(data: SerializedCommand & { type: "documentRotate" }): DocumentRotateCommand {
+  static deserialize(
+    data: SerializedCommand & { type: "documentRotate" }
+  ): DocumentRotateCommand {
     return new DocumentRotateCommand(
       data.rotation,
       data.previousRotations,

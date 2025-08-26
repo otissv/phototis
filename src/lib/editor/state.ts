@@ -148,6 +148,8 @@ export interface ViewportModel {
   /** Canvas pan offsets in CSS pixels of the viewport. */
   panX: number
   panY: number
+  /** Viewport rotation in degrees (0-359). */
+  rotation: number
   /** Feature toggles */
   snappingEnabled: boolean
   guidesVisible: boolean
@@ -245,6 +247,7 @@ export function createDefaultViewport(): ViewportModel {
     zoom: 100,
     panX: 0,
     panY: 0,
+    rotation: 0,
     snappingEnabled: true,
     guidesVisible: false,
   }
@@ -478,6 +481,16 @@ export function validateEditorState(
     errors.push({
       path: "viewport.panY",
       message: "panY must be a finite number",
+    })
+  }
+  if (
+    !Number.isFinite((state.viewport as any).rotation) ||
+    (state.viewport as any).rotation < 0 ||
+    (state.viewport as any).rotation >= 360
+  ) {
+    errors.push({
+      path: "viewport.rotation",
+      message: "rotation must be a finite number in [0, 360)",
     })
   }
 

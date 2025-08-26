@@ -666,10 +666,8 @@ function DraggableLayerItem({
       <div
         ref={ref}
         className={cn(
-          "cursor-pointer transition-colors w-full text-left rounded-sm space-y-1",
-          isSelected
-            ? "border-primary bg-primary/10"
-            : "border-border hover:border-primary/50",
+          "xxxxxxxxxx cursor-pointer transition-colors w-full text-left rounded-sm space-y-1 hover:bg-primary/10",
+          isSelected && "border-primary bg-primary/10 ",
           isSelected && layer.type === "adjustment" && "rounded-b-none",
           isDragging && "opacity-50",
           isOver && "border-primary/30"
@@ -962,10 +960,9 @@ export function DocumentLayerItem({
         variant='ghost'
         size='sm'
         className={cn(
-          "cursor-pointer transition-colors w-full text-left text-xs rounded-sm space-y-1 h-9 justify-start pl-1",
-          isSelected
-            ? "border-blue-500 bg-blue-500"
-            : "hover:bg-blue-500 hover:border-blue-500"
+          "cursor-pointer transition-colors w-full text-left text-xs rounded-sm space-y-1 h-9 justify-start pl-1 hover:bg-primary/10",
+          isSelected &&
+            "border-blue-500/50 bg-blue-500/50 hover:bg-blue-500/50 hover:border-blue-500/50"
         )}
         onClick={() => {
           selectLayer("document")
