@@ -3,5 +3,10 @@
     "Finetune",
     "phototis",
     "regl"
-  ]
+  ],
+  "workbench.preferredDarkColorTheme": "Default Dark Modern",
+  "workbench.colorTheme": "Default Dark Modern",
+  "workbench.preferredLightColorTheme": "Default Dark Modern",
+  "scm.inputFontSize": 14,
+  "editor.formatOnSave": true
 }

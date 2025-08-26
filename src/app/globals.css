@@ -158,3 +158,11 @@ body {
   outline: 1px solid var(--ring);
   outline-offset: 21x;
 }
+
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 #00000000;
+}
+
+
+
