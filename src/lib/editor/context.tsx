@@ -31,6 +31,7 @@ import {
   AddAdjustmentLayerCommand,
   UpdateAdjustmentParametersCommand,
   DocumentRotateCommand,
+  DocumentFlipCommand,
 } from "@/lib/editor/commands"
 import { loadDocument } from "@/lib/editor/persistence"
 
@@ -76,6 +77,7 @@ export type EditorContextValue = {
   setActiveTool: (active: ActiveToolModel) => void
   setZoomPercent: (zoom: number) => void
   rotateDocument: (rotation: number) => void
+  flipDocument: (opts: { horizontal?: boolean; vertical?: boolean }) => void
   history: {
     begin: (name: string) => void
     push: (command: Command) => void
@@ -458,6 +460,40 @@ export function EditorProvider({
     h.endTransaction(true)
   }, [])
 
+  const flipDocument = React.useCallback(
+    (opts: { horizontal?: boolean; vertical?: boolean }) => {
+      const currentLayers = canonicalRef.current.layers
+      const previousFlips: Record<
+        string,
+        { flipHorizontal: boolean; flipVertical: boolean }
+      > = {}
+      for (const layerId of currentLayers.order) {
+        const layer = currentLayers.byId[layerId]
+        if (layer.type === "image") {
+          const imageLayer = layer as any
+          previousFlips[layerId] = {
+            flipHorizontal: Boolean(imageLayer.filters?.flipHorizontal),
+            flipVertical: Boolean(imageLayer.filters?.flipVertical),
+          }
+        }
+      }
+
+      const h = historyRef.current
+      if (!h) return
+      h.beginTransaction(
+        `Flip Document${opts.horizontal ? " H" : ""}${opts.vertical ? " V" : ""}`
+      )
+      h.push(
+        new DocumentFlipCommand(
+          { flipHorizontal: opts.horizontal, flipVertical: opts.vertical },
+          previousFlips
+        )
+      )
+      h.endTransaction(true)
+    },
+    []
+  )
+
   const value: EditorContextValue = React.useMemo(
     () => ({
       state: runtime,
@@ -484,6 +520,7 @@ export function EditorProvider({
       setActiveTool,
       setZoomPercent,
       rotateDocument,
+      flipDocument,
       history: {
         begin: (name: string) => historyRef.current?.beginTransaction(name),
         push: (cmd: Command) => historyRef.current?.push(cmd),
@@ -547,6 +584,7 @@ export function EditorProvider({
       setActiveTool,
       setZoomPercent,
       rotateDocument,
+      flipDocument,
     ]
   )
 

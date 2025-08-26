@@ -52,6 +52,16 @@ export type SerializedCommand =
       rotation: number
       previousRotations: Record<LayerId, number>
     }
+  | {
+      type: "documentFlip"
+      meta: CommandMeta
+      flipHorizontal?: boolean
+      flipVertical?: boolean
+      previousFlips: Record<
+        LayerId,
+        { flipHorizontal: boolean; flipVertical: boolean }
+      >
+    }
 
 function deepSize(obj: unknown): number {
   try {
@@ -639,6 +649,118 @@ export class DocumentRotateCommand implements Command {
   }
 }
 
+export class DocumentFlipCommand implements Command {
+  meta: CommandMeta
+  private readonly flipHorizontal?: boolean
+  private readonly flipVertical?: boolean
+  private readonly previousFlips: Record<
+    LayerId,
+    { flipHorizontal: boolean; flipVertical: boolean }
+  >
+
+  constructor(
+    opts: { flipHorizontal?: boolean; flipVertical?: boolean },
+    previousFlips: Record<
+      LayerId,
+      { flipHorizontal: boolean; flipVertical: boolean }
+    >,
+    meta?: Partial<CommandMeta>
+  ) {
+    this.flipHorizontal = opts.flipHorizontal
+    this.flipVertical = opts.flipVertical
+    this.previousFlips = previousFlips
+    const dir =
+      `${opts.flipHorizontal ? "H" : ""}${opts.flipVertical ? " V" : ""}`.trim() ||
+      ""
+    this.meta = {
+      label: `Flip Document${dir ? ` ${dir}` : ""}`,
+      scope: "document",
+      timestamp: Date.now(),
+      coalescable: false,
+      ...meta,
+    }
+  }
+
+  apply(state: CanonicalEditorState): CanonicalEditorState {
+    const byId = { ...state.layers.byId }
+    for (const layerId of state.layers.order) {
+      const layer = byId[layerId]
+      if (layer.type === "image") {
+        const imageLayer = layer as any
+        const curFH = Boolean(imageLayer.filters?.flipHorizontal)
+        const curFV = Boolean(imageLayer.filters?.flipVertical)
+        const nextFH = this.flipHorizontal ? !curFH : curFH
+        const nextFV = this.flipVertical ? !curFV : curFV
+        byId[layerId] = {
+          ...imageLayer,
+          filters: {
+            ...imageLayer.filters,
+            flipHorizontal: nextFH,
+            flipVertical: nextFV,
+          },
+        }
+      }
+      // Mirror state on the document layer so preview uniforms reflect flips when document is selected
+      if (layer.type === "document") {
+        const docLayer = layer as any
+        const curFH = Boolean(docLayer.filters?.flipHorizontal)
+        const curFV = Boolean(docLayer.filters?.flipVertical)
+        const nextFH = this.flipHorizontal ? !curFH : curFH
+        const nextFV = this.flipVertical ? !curFV : curFV
+        byId[layerId] = {
+          ...docLayer,
+          filters: {
+            ...docLayer.filters,
+            flipHorizontal: nextFH,
+            flipVertical: nextFV,
+          },
+        }
+      }
+    }
+
+    return {
+      ...state,
+      layers: {
+        ...state.layers,
+        byId,
+      },
+    }
+  }
+
+  invert(): Command {
+    // Flip is its own inverse: applying the same flips again reverts
+    return new DocumentFlipCommand(
+      { flipHorizontal: this.flipHorizontal, flipVertical: this.flipVertical },
+      this.previousFlips,
+      { label: `Undo ${this.meta.label}` }
+    )
+  }
+
+  estimateSize(): number {
+    return 128 + deepSize(this.previousFlips)
+  }
+
+  serialize(): SerializedCommand {
+    return {
+      type: "documentFlip",
+      meta: this.meta,
+      flipHorizontal: this.flipHorizontal,
+      flipVertical: this.flipVertical,
+      previousFlips: this.previousFlips,
+    }
+  }
+
+  static deserialize(
+    data: SerializedCommand & { type: "documentFlip" }
+  ): DocumentFlipCommand {
+    return new DocumentFlipCommand(
+      { flipHorizontal: data.flipHorizontal, flipVertical: data.flipVertical },
+      data.previousFlips,
+      data.meta
+    )
+  }
+}
+
 export function deserializeCommand(json: SerializedCommand): Command {
   switch (json.type) {
     case "addLayer":
@@ -671,6 +793,8 @@ export function deserializeCommand(json: SerializedCommand): Command {
       return new SetActiveToolCommand(json.active, json.meta)
     case "documentRotate":
       return DocumentRotateCommand.deserialize(json)
+    case "documentFlip":
+      return DocumentFlipCommand.deserialize(json)
     default:
       throw new Error(`Unknown command type ${(json as any).type}`)
   }

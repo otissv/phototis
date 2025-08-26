@@ -358,6 +358,7 @@ export function ImageEditorCanvas({
     effectiveFilters.flipHorizontal,
     effectiveFilters.flipVertical,
     effectiveFilters.rotate,
+    state.canonical.viewport.rotation,
     isDragActive,
   ])
 
@@ -434,6 +435,15 @@ export function ImageEditorCanvas({
           const keys = Object.keys(params).sort()
           adjSig = `adj:${keys.map((k) => `${k}:${params[k]}`).join("|")}`
         }
+        // Include orientation signature so flips/rotation changes trigger redraws
+        let orientSig = "orient:0:0:0"
+        try {
+          const f: any = (l as any).filters || {}
+          const fh = f.flipHorizontal ? 1 : 0
+          const fv = f.flipVertical ? 1 : 0
+          const rot = typeof f.rotate === "number" ? Math.round(f.rotate) : 0
+          orientSig = `orient:${fh}:${fv}:${rot}`
+        } catch {}
         return [
           l.id,
           l.visible ? 1 : 0,
@@ -442,6 +452,7 @@ export function ImageEditorCanvas({
           l.blendMode,
           imageSig,
           adjSig,
+          orientSig,
         ].join(":")
       })
       .join("|")

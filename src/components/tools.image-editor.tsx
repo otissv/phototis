@@ -290,7 +290,7 @@ export function RotateFooter({
   selectedLayer,
   ...props
 }: Omit<ImageEditorFooterProps, "onChange" | "onProgress">) {
-  const { rotateDocument } = useEditorContext()
+  const { rotateDocument, flipDocument } = useEditorContext()
   const isDocumentLayer = selectedLayer?.id === "document"
 
   const safeRotate =
@@ -332,42 +332,28 @@ export function RotateFooter({
 
   const handleFlipHorizontal = () => {
     if (isDocumentLayer) {
-      // Document flip - apply to all layers
-      // For now, we'll just flip the selected layer, but this could be enhanced
-      // to flip all layers as a document operation
-      dispatch([
-        {
-          type: "flipHorizontal",
-          payload: safeFlipH ? 0 : 1,
-        },
-      ])
-    } else {
-      // Individual layer flip
-      dispatch([
-        {
-          type: "flipHorizontal",
-          payload: safeFlipH ? 0 : 1,
-        },
-      ])
+      flipDocument({ horizontal: true })
+      return
     }
+    // Individual layer flip
+    dispatch([
+      {
+        type: "flipHorizontal",
+        payload: safeFlipH ? 0 : 1,
+      },
+    ])
   }
 
   const handleFlipVertical = () => {
     if (isDocumentLayer) {
-      // Document flip - apply to all layers
-      // For now, we'll just flip the selected layer, but this could be enhanced
-      // to flip all layers as a document operation
-      dispatch({
-        type: "flipVertical",
-        payload: safeFlipV ? 0 : 1,
-      })
-    } else {
-      // Individual layer flip
-      dispatch({
-        type: "flipVertical",
-        payload: safeFlipV ? 0 : 1,
-      })
+      flipDocument({ vertical: true })
+      return
     }
+    // Individual layer flip
+    dispatch({
+      type: "flipVertical",
+      payload: safeFlipV ? 0 : 1,
+    })
   }
 
   const handleOnChange = React.useCallback(
