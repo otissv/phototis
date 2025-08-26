@@ -20,6 +20,8 @@ import { SetActiveToolCommand } from "@/lib/editor/commands";
 import { EditorProvider, useEditorContext } from "@/lib/editor/context";
 import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover";
 import { ImageEditorPanels } from "@/components/panels";
+import type { EditorLayer } from "@/lib/editor/state";
+import { EffectsFooter } from "@/components/tools.image-editor";
 
 export interface ImageEditorProps extends React.ComponentProps<"div"> {
 	image: File | null;
@@ -66,7 +68,16 @@ function ImageEditorInner({
 	}, [getSelectedLayer]);
 
 	const toolsValues = React.useMemo(() => {
-		return selectedLayer?.filters || initialState;
+		// If document layer is selected, use document filters
+		if (selectedLayer?.id === "document" && selectedLayer.type === "document") {
+			return (selectedLayer as any).filters || initialState;
+		}
+		// For image layers, use their filters
+		if (selectedLayer?.type === "image") {
+			return (selectedLayer as any).filters || initialState;
+		}
+		// For other layer types, return initial state
+		return initialState;
 	}, [selectedLayer]);
 
 	const dispatch = React.useCallback(
@@ -76,13 +87,18 @@ function ImageEditorInner({
 
 			if (!current || !selectedId) return;
 
+			// Only allow filter updates for image and document layers
+			if (current.type !== "image" && current.type !== "document") return;
+
+			const currentFilters = (current as any).filters || initialState;
 			const newFilters = Array.isArray(action)
 				? action.reduce((acc, curr) => {
 						return imageEditorToolsReducer(acc, curr);
-					}, current.filters)
-				: imageEditorToolsReducer(current.filters, action);
+					}, currentFilters)
+				: imageEditorToolsReducer(currentFilters, action);
 
-			updateLayer(selectedId, { filters: newFilters });
+			// Cast to any to bypass type checking for filters property
+			updateLayer(selectedId, { filters: newFilters } as any);
 		},
 		[selectedLayer, getSelectedLayerId, updateLayer],
 	);
@@ -174,8 +190,9 @@ function ImageEditorInner({
 	const handleSelectedSidebarChange = React.useCallback(
 		(sidebar: keyof typeof SIDEBAR_TOOLS) => {
 			setSelectedSidebar(sidebar);
+			// Sync canonical active tool so canvas can react (e.g., crop overlay)
 			try {
-				history.begin("Set Sidebar");
+				history.begin("Set Tool");
 				history.push(
 					new SetActiveToolCommand({ sidebar, tool: selectedTool } as any),
 				);
@@ -365,7 +382,7 @@ function ImageEditorInner({
 								onChange={handleSelectedSidebarChange}
 								dispatch={dispatch}
 								progress={progress}
-								selectedLayer={selectedLayer}
+								selectedLayer={selectedLayer || ({} as EditorLayer)}
 								selectedSidebar={selectedSidebar}
 							/>
 						</PopoverContent>
@@ -378,7 +395,7 @@ function ImageEditorInner({
 						onChange={handleSelectedSidebarChange}
 						dispatch={dispatch}
 						progress={progress}
-						selectedLayer={selectedLayer}
+						selectedLayer={selectedLayer || ({} as EditorLayer)}
 						selectedSidebar={selectedSidebar}
 					/>
 				</div>
@@ -415,9 +432,10 @@ function ImageEditorInner({
 				className={cn(
 					"lg:col-start-2 lg:row-start-1 lg:row-span-2",
 					"flex flex-col items-center overflow-auto border custom-scrollbar",
+					selectedLayer?.type === "document" && "border-blue-500 border-2",
 				)}
 			>
-				<div className="relative ">
+				<div className="relative">
 					<ImageEditorCanvas
 						onProgress={handleOnProgress}
 						id="image-editor-canvas"
@@ -428,7 +446,7 @@ function ImageEditorInner({
 			</div>
 
 			<ImageEditorFooter
-				selectedLayer={selectedLayer}
+				selectedLayer={selectedLayer || ({} as EditorLayer)}
 				selectedSidebar={selectedSidebar}
 				dispatch={
 					dispatch as (

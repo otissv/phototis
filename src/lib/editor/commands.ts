@@ -46,6 +46,12 @@ export type SerializedCommand =
   | { type: "setSelection"; meta: CommandMeta; selected: LayerId[] }
   | { type: "setViewport"; meta: CommandMeta; patch: Partial<ViewportModel> }
   | { type: "setActiveTool"; meta: CommandMeta; active: ActiveToolModel }
+  | {
+      type: "documentRotate"
+      meta: CommandMeta
+      rotation: number
+      previousRotations: Record<LayerId, number>
+    }
 
 function deepSize(obj: unknown): number {
   try {
@@ -549,6 +555,92 @@ export class UpdateAdjustmentParametersCommand implements Command {
   }
 }
 
+export class DocumentRotateCommand implements Command {
+  meta: CommandMeta
+  private readonly rotation: number
+  private readonly previousRotations: Record<LayerId, number>
+
+  constructor(
+    rotation: number,
+    previousRotations: Record<LayerId, number>,
+    meta?: Partial<CommandMeta>
+  ) {
+    this.rotation = rotation
+    this.previousRotations = previousRotations
+    this.meta = {
+      label: `Rotate Document ${rotation > 0 ? '+' : ''}${rotation}°`,
+      scope: "document",
+      timestamp: Date.now(),
+      coalescable: false,
+      ...meta,
+    }
+  }
+
+  apply(state: CanonicalEditorState): CanonicalEditorState {
+    const byId = { ...state.layers.byId }
+    
+    // Apply rotation to all image layers
+    for (const layerId of state.layers.order) {
+      const layer = byId[layerId]
+      if (layer.type === "image") {
+        const imageLayer = layer as any
+        const currentRotation = imageLayer.filters?.rotate || 0
+        const newRotation = (currentRotation + this.rotation + 360) % 360
+        
+        byId[layerId] = {
+          ...imageLayer,
+          filters: {
+            ...imageLayer.filters,
+            rotate: newRotation,
+          },
+        }
+      }
+    }
+
+    return {
+      ...state,
+      layers: {
+        ...state.layers,
+        byId,
+      },
+    }
+  }
+
+  invert(prev: CanonicalEditorState): Command {
+    return new DocumentRotateCommand(
+      -this.rotation,
+      this.previousRotations,
+      {
+        label: `Undo Rotate Document ${this.rotation > 0 ? '+' : ''}${this.rotation}°`,
+        scope: "document",
+        timestamp: Date.now(),
+        coalescable: false,
+      }
+    )
+  }
+
+  estimateSize(): number {
+    return 128 + deepSize(this.rotation) + deepSize(this.previousRotations)
+  }
+
+  serialize(): SerializedCommand {
+    return {
+      type: "documentRotate",
+      meta: this.meta,
+      rotation: this.rotation,
+      previousRotations: this.previousRotations,
+    }
+  }
+
+  static deserialize(data: SerializedCommand & { type: "documentRotate" }): DocumentRotateCommand {
+    return new DocumentRotateCommand(
+      data.rotation,
+      data.previousRotations,
+      data.meta
+    )
+  }
+}
+
 export function deserializeCommand(json: SerializedCommand): Command {
   switch (json.type) {
     case "addLayer":
@@ -579,6 +671,8 @@ export function deserializeCommand(json: SerializedCommand): Command {
       return new SetViewportCommand(json.patch, json.meta)
     case "setActiveTool":
       return new SetActiveToolCommand(json.active, json.meta)
+    case "documentRotate":
+      return DocumentRotateCommand.deserialize(json)
     default:
       throw new Error(`Unknown command type ${(json as any).type}`)
   }

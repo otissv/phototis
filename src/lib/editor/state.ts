@@ -23,7 +23,7 @@ import type { TOOL_VALUES } from "@/lib/tools"
 export type LayerId = string
 
 // New layer type system
-export type LayerType = "image" | "adjustment" | "group" | "solid"
+export type LayerType = "image" | "adjustment" | "group" | "solid" | "document"
 
 // Base layer properties shared by all layer types
 export interface BaseLayer {
@@ -79,6 +79,12 @@ export interface GroupLayer extends BaseLayer {
 export interface SolidLayer extends BaseLayer {
   type: "solid"
   color: [number, number, number, number] // RGBA
+}
+
+// Document layer for global document properties
+export interface DocumentLayer extends BaseLayer {
+  type: "document"
+  filters: ImageEditorToolsState
 }
 
 // Mask data for adjustment layers
