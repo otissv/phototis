@@ -2,7 +2,7 @@
 
 import Upscaler from "upscaler"
 
-import type { ImageEditorToolsState } from "@/lib/state.image-editor"
+import type { ImageEditorToolsState } from "@/lib/tools/tools-state"
 
 const upscaler = new Upscaler()
 

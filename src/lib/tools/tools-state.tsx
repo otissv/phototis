@@ -1,24 +1,24 @@
 import {
   TOOL_VALUES,
-  type ToolValueCropType,
   type AdjustLayersType,
+  type CropToolsType,
+  type DimensionsToolsType,
   type FilterToolsType,
-  type ResizeToolsType,
   type RotateToolsType,
+  type ScaleToolsType,
   type ToolValueBooleanType,
   type ToolValueColorType,
+  type ToolValueCropType,
   type ToolValueDimensionType,
   type ToolValueStepType,
   type ToolValueStringType,
-  type CropToolsType,
-  type ScaleToolsType,
   type UpscaleToolsType,
-} from "@/lib/tools"
+} from "@/lib/tools/tools"
 
 export type ImageEditorToolsState = AdjustLayersType &
   FilterToolsType &
   HistoryToolsState &
-  ResizeToolsType &
+  DimensionsToolsType &
   RotateToolsType &
   CropToolsType &
   ScaleToolsType &
@@ -28,42 +28,53 @@ export const SIDEBAR_TOOLS = {
   effects: ["blur", "grain", "noise", "sharpen"],
   presets: ["presets"],
   scale: ["scale"],
-  resize: ["resize"],
+  dimensions: ["dimensions"],
+  dimensionsCanvas: ["dimensionsCanvas"],
   upscale: ["upscale"],
   crop: ["crop"],
   rotate: ["rotate", "flipVertical", "flipHorizontal"],
 }
 // Define payload types for non-numeric tools
-type ResizePayload = ResizeToolsType["resize"]
+type DimensionsPayload = DimensionsToolsType["dimensions"]
 type CropPayload = CropToolsType["crop"]
 type RecolorPayload = AdjustLayersType["recolor"]
 
 type NumericToolKeys = Exclude<
   keyof typeof TOOL_VALUES,
-  "resize" | "crop" | "recolor" | "solid"
+  "dimensions" | "crop" | "recolor" | "solid"
 >
 
+export type NumericToolAction = {
+  type: NumericToolKeys | "zoom"
+  payload: number
+}
+
+export type DimensionsToolAction = {
+  type: "dimensions"
+  payload: DimensionsPayload
+}
+
+export type CropToolAction = {
+  type: "crop"
+  payload: CropPayload
+}
+
+export type RecolorToolAction = {
+  type: "recolor"
+  payload: RecolorPayload
+}
+
+export type SolidToolAction = {
+  type: "solid"
+  payload: string
+}
+
 export type ImageEditorToolsAction =
-  | {
-      type: NumericToolKeys | "zoom"
-      payload: number
-    }
-  | {
-      type: "resize"
-      payload: ResizePayload
-    }
-  | {
-      type: "crop"
-      payload: CropPayload
-    }
-  | {
-      type: "recolor"
-      payload: RecolorPayload
-    }
-  | {
-      type: "solid"
-      payload: string
-    }
+  | NumericToolAction
+  | DimensionsToolAction
+  | CropToolAction
+  | RecolorToolAction
+  | SolidToolAction
 
 export type ImageEditorToolsResetAction = {
   type: "reset"
@@ -92,7 +103,7 @@ export type HistoryToolsState = {
   historyPosition: number
 }
 
-export const initialState: ImageEditorToolsState = {
+export const initialToolsState: ImageEditorToolsState = {
   // History values
   history: [],
   historyPosition: 0,
@@ -104,13 +115,16 @@ export const initialState: ImageEditorToolsState = {
     .defaultValue as ToolValueBooleanType["defaultValue"],
   rotate: TOOL_VALUES.rotate.defaultValue as ToolValueStepType["defaultValue"],
 
-  // Resize values
   crop: TOOL_VALUES.crop.defaultValue as ToolValueCropType["defaultValue"],
-  resize: TOOL_VALUES.resize
+
+  dimensions: TOOL_VALUES.dimensions
     .defaultValue as ToolValueDimensionType["defaultValue"],
+
   scale: TOOL_VALUES.scale.defaultValue as ToolValueStepType["defaultValue"],
+
   upscale: TOOL_VALUES.upscale
     .defaultValue as ToolValueStepType["defaultValue"],
+
   zoom: TOOL_VALUES.zoom.defaultValue as ToolValueStepType["defaultValue"],
 
   // Basic adjustment values
@@ -168,61 +182,68 @@ export function imageEditorToolsReducer(
 ): ImageEditorToolsState {
   if (action.type === "reset") {
     return {
-      ...initialState,
+      ...initialToolsState,
       zoom: state.zoom,
     }
   }
 
   // Handle union action payloads
   switch (action.type) {
-    case "resize": {
-      const payload = action.payload as any
+    case "dimensions": {
+      const { payload } = action as DimensionsToolAction
       return {
         ...state,
-        resize: {
+        dimensions: {
           width: Math.max(0, Number(payload?.width) || 0),
           height: Math.max(0, Number(payload?.height) || 0),
+          x: Math.max(0, Number(payload?.x) || 0),
+          y: Math.max(0, Number(payload?.y) || 0),
         },
       }
     }
     case "crop": {
-      const p = action.payload as any
+      const { payload } = action as CropToolAction
 
       return {
         ...state,
         crop: {
-          x: Math.max(0, Number(p?.x ?? state.crop?.x ?? 0)),
-          y: Math.max(0, Number(p?.y ?? state.crop?.y ?? 0)),
-          width: Math.max(0, Number(p?.width ?? state.crop?.width ?? 0)),
-          height: Math.max(0, Number(p?.height ?? state.crop?.height ?? 0)),
+          x: Math.max(0, Number(payload?.x ?? state.crop?.x ?? 0)),
+          y: Math.max(0, Number(payload?.y ?? state.crop?.y ?? 0)),
+          width: Math.max(0, Number(payload?.width ?? state.crop?.width ?? 0)),
+          height: Math.max(
+            0,
+            Number(payload?.height ?? state.crop?.height ?? 0)
+          ),
           overlay:
-            (p?.overlay as any) ?? (state.crop as any)?.overlay ?? "thirdGrid",
+            (payload?.overlay as any) ??
+            (state.crop as any)?.overlay ??
+            "thirdGrid",
         },
       }
     }
     case "recolor": {
-      const p = action.payload as any
+      const { payload } = action as RecolorToolAction
       return {
         ...state,
         recolor: {
-          value: Math.max(0, Number(p?.value) || 0),
-          color: typeof p?.color === "string" ? p.color : "#000000",
+          value: Math.max(0, Number(payload?.value) || 0),
+          color: typeof payload?.color === "string" ? payload.color : "#000000",
         },
       }
     }
     case "solid": {
+      const { payload } = action as SolidToolAction
       return {
         ...state,
-        solid:
-          typeof action.payload === "string" ? action.payload : state.solid,
+        solid: typeof payload === "string" ? payload : state.solid,
       }
     }
 
     default: {
-      const a = action as any
+      const { type, payload } = action as NumericToolAction
       return {
         ...state,
-        [a.type]: a.payload,
+        [type]: payload,
       } as ImageEditorToolsState
     }
   }

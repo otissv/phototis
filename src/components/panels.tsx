@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs"
 import { HistoryControls } from "./history-controls.image-editor"
 import { LayerSystem } from "@/components/layer-system"
 import { cn } from "@/lib/utils"
-import type { SIDEBAR_TOOLS } from "@/lib/state.image-editor"
+import type { SIDEBAR_TOOLS } from "@/lib/tools/tools-state"
 
 interface ImageEditorPanelsProps extends React.ComponentProps<typeof Tabs> {
   notify?: ({ message, title }: { message: string; title?: string }) => void

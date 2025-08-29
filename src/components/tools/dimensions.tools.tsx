@@ -33,7 +33,7 @@ function getImageDimensions(
   })
 }
 
-function ResizeButton({
+function DimensionsButton({
   onSelectedToolChange,
   selectedTool,
   progress,
@@ -41,19 +41,19 @@ function ResizeButton({
   return (
     <ImageEditorButton
       variant='ghost'
-      onClick={() => onSelectedToolChange("resize")}
-      isActive={selectedTool === "resize"}
+      onClick={() => onSelectedToolChange("dimensions")}
+      isActive={selectedTool === "dimensions"}
       disabled={progress}
       className='flex items-center gap-2'
     >
       <Expand className='h-4 w-4' />
-      Resize
+      Dimensions
     </ImageEditorButton>
   )
 }
-ResizeButton.displayName = "ResizeButton"
+DimensionsButton.displayName = "DimensionsButton"
 
-function ResizeControls({
+function DimensionsControls({
   onChange,
   selectedLayer,
   dispatch,
@@ -71,31 +71,31 @@ function ResizeControls({
   // Initialize from selected layer current resize or image file dimensions
   React.useEffect(() => {
     const init = async () => {
-      let w = 0
-      let h = 0
+      let width = 0
+      let height = 0
       const tv: any = toolsValues || {}
       if (
-        tv.resize &&
-        typeof tv.resize.width === "number" &&
-        typeof tv.resize.height === "number" &&
-        tv.resize.width > 0 &&
-        tv.resize.height > 0
+        tv.dimensions &&
+        typeof tv.dimensions.width === "number" &&
+        typeof tv.dimensions.height === "number" &&
+        tv.dimensions.width > 0 &&
+        tv.dimensions.height > 0
       ) {
-        w = tv.resize.width
-        h = tv.resize.height
+        width = tv.dimensions.width
+        height = tv.dimensions.height
       } else if (image) {
         try {
           const dim = await getImageDimensions(image)
-          w = dim.width
-          h = dim.height
+          width = dim.width
+          height = dim.height
         } catch (err) {
           console.error("Failed to get image size", err)
         }
       }
-      if (w > 0 && h > 0) {
-        setWidth(w)
-        setHeight(h)
-        setOriginalAspectRatio(w / h)
+      if (width > 0 && height > 0) {
+        setWidth(width)
+        setHeight(height)
+        setOriginalAspectRatio(width / height)
       }
     }
     void init()
@@ -128,7 +128,7 @@ function ResizeControls({
       onChange?.(0 as any)
       // Persist to selected layer filters via reducer
       dispatch?.({
-        type: "resize",
+        type: "dimensions",
         payload: { width: newWidth, height: newHeight },
       } as any)
     }
@@ -179,5 +179,5 @@ function ResizeControls({
     </div>
   )
 }
-ResizeControls.displayName = "ResizeControls"
-export { ResizeButton, ResizeControls }
+DimensionsControls.displayName = "DimensionsControls"
+export { DimensionsButton, DimensionsControls }

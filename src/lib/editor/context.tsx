@@ -18,7 +18,7 @@ import {
   createEditorRuntimeState,
   assertInvariants,
 } from "@/lib/editor/state"
-import { initialState as defaultFilters } from "@/lib/state.image-editor"
+import { initialToolsState as defaultFilters } from "@/lib/tools/tools-state"
 import { HistoryManager, type Command } from "@/lib/editor/history"
 import {
   AddLayerCommand,
@@ -32,52 +32,12 @@ import {
   UpdateAdjustmentParametersCommand,
   DocumentRotateCommand,
   DocumentFlipCommand,
+  DocumentDimensionsCommand,
 } from "@/lib/editor/commands"
 import { loadDocument } from "@/lib/editor/persistence"
 
 export type EditorContextValue = {
   state: EditorRuntimeState
-  setCanonical: (
-    updater: (s: CanonicalEditorState) => CanonicalEditorState
-  ) => void
-  setEphemeral: (
-    updater: (s: EphemeralEditorState) => EphemeralEditorState
-  ) => void
-  getOrderedLayers: () => EditorLayer[]
-  getSelectedLayerId: () => LayerId | null
-  getSelectedLayer: () => EditorLayer | null
-  selectLayer: (layerId: LayerId | null) => void
-  addEmptyLayer: () => void
-  addImageLayer: (file: File) => void
-  removeLayer: (layerId: LayerId) => void
-  duplicateLayer: (layerId: LayerId) => void
-  reorderLayers: (fromIndex: number, toIndex: number) => void
-  updateLayer: (
-    layerId: LayerId,
-    update: Partial<Omit<EditorLayer, "id">>
-  ) => void
-  pushLayerUpdate: (
-    layerId: LayerId,
-    update: Partial<Omit<EditorLayer, "id">>
-  ) => void
-  addAdjustmentLayer: (
-    adjustmentType: string,
-    parameters: Record<string, number>,
-    position: "top" | "bottom" | number
-  ) => void
-  updateAdjustmentParameters: (
-    layerId: LayerId,
-    parameters: Record<string, number>
-  ) => void
-  setBlendMode: (layerId: LayerId, blendMode: EditorLayer["blendMode"]) => void
-  setOpacity: (layerId: LayerId, opacity: number) => void
-  setLayerName: (layerId: LayerId, name: string) => void
-  toggleVisibility: (layerId: LayerId) => void
-  toggleLock: (layerId: LayerId) => void
-  setActiveTool: (active: ActiveToolModel) => void
-  setZoomPercent: (zoom: number) => void
-  rotateDocument: (rotation: number) => void
-  flipDocument: (opts: { horizontal?: boolean; vertical?: boolean }) => void
   history: {
     begin: (name: string) => void
     push: (command: Command) => void
@@ -103,19 +63,62 @@ export type EditorContextValue = {
       counts: { past: number; future: number }
       usedBytes: number
     }
-    addCheckpoint?: (name: string) => void
-    jumpToCheckpoint?: (id: string) => void
-    clearHistory?: () => void
-    clearRedo?: () => void
-    setMaxBytes?: (bytes: number) => void
-    setThumbnailProvider?: (
-      provider: (() => Promise<string | null> | string | null) | null
-    ) => void
-    isTransactionActive?: () => boolean
-    deleteStepsBeforeIndex?: (idx: number) => void
-    deleteStepsAfterIndex?: (idx: number) => void
-    exportDocumentAtIndex?: (idx: number) => any
   }
+  addAdjustmentLayer: (
+    adjustmentType: string,
+    parameters: Record<string, number>,
+    position: "top" | "bottom" | number
+  ) => void
+  addCheckpoint?: (name: string) => void
+  addEmptyLayer: () => void
+  addImageLayer: (file: File) => void
+  clearHistory?: () => void
+  clearRedo?: () => void
+  deleteStepsAfterIndex?: (idx: number) => void
+  deleteStepsBeforeIndex?: (idx: number) => void
+  duplicateLayer: (layerId: LayerId) => void
+  exportDocumentAtIndex?: (idx: number) => any
+  flipDocument: (opts: { horizontal?: boolean; vertical?: boolean }) => void
+  getLayerById: (layerId: LayerId) => EditorLayer | null
+  getOrderedLayers: () => EditorLayer[]
+  getSelectedLayer: () => EditorLayer | null
+  getSelectedLayerId: () => LayerId | null
+  dimensionsDocument?: (size: { width: number; height: number }) => void
+  isTransactionActive?: () => boolean
+  jumpToCheckpoint?: (id: string) => void
+  pushLayerUpdate: (
+    layerId: LayerId,
+    update: Partial<Omit<EditorLayer, "id">>
+  ) => void
+  removeLayer: (layerId: LayerId) => void
+  reorderLayers: (fromIndex: number, toIndex: number) => void
+  rotateDocument: (rotation: number) => void
+  selectLayer: (layerId: LayerId | null) => void
+  setActiveTool: (active: ActiveToolModel) => void
+  setBlendMode: (layerId: LayerId, blendMode: EditorLayer["blendMode"]) => void
+  setCanonical: (
+    updater: (s: CanonicalEditorState) => CanonicalEditorState
+  ) => void
+  setEphemeral: (
+    updater: (s: EphemeralEditorState) => EphemeralEditorState
+  ) => void
+  setLayerName: (layerId: LayerId, name: string) => void
+  setMaxBytes?: (bytes: number) => void
+  setOpacity: (layerId: LayerId, opacity: number) => void
+  setThumbnailProvider?: (
+    provider: (() => Promise<string | null> | string | null) | null
+  ) => void
+  setZoomPercent: (zoom: number) => void
+  toggleLock: (layerId: LayerId) => void
+  toggleVisibility: (layerId: LayerId) => void
+  updateAdjustmentParameters: (
+    layerId: LayerId,
+    parameters: Record<string, number>
+  ) => void
+  updateLayer: (
+    layerId: LayerId,
+    update: Partial<Omit<EditorLayer, "id">>
+  ) => void
 }
 
 const EditorContext = React.createContext<EditorContextValue | null>(null)
@@ -155,9 +158,9 @@ export function EditorProvider({
       id: "document",
       name: "Document",
       type: "document",
-      filters: { ...defaultFilters },
       visible: true,
-      locked: true,
+      locked: false,
+      filters: { ...defaultFilters },
       opacity: 100,
       blendMode: "normal",
     }
@@ -245,6 +248,13 @@ export function EditorProvider({
       setRuntime((prev) => ({ ...prev, ephemeral: updater(prev.ephemeral) }))
     },
     []
+  )
+
+  const getLayerById = React.useCallback(
+    (layerId: LayerId): EditorLayer | null => {
+      return runtime.canonical.layers.byId[layerId] ?? null
+    },
+    [runtime.canonical.layers.byId]
   )
 
   const getOrderedLayers = React.useCallback((): EditorLayer[] => {
@@ -494,33 +504,31 @@ export function EditorProvider({
     []
   )
 
+  const dimensionsDocument = React.useCallback(
+    (size: { width: number; height: number }) => {
+      try {
+        const h = historyRef.current
+        if (!h) return
+        h.beginTransaction(`Dimensions Document ${size.width}×${size.height}`)
+        h.push(new DocumentDimensionsCommand(size.width, size.height))
+        h.endTransaction(true)
+      } catch (error) {
+        // Log the error for debugging
+        console.error("Failed to update document dimensions:", error)
+
+        // You could add a toast notification here if you have a notification system
+        // For now, we'll just log it and let the UI handle the error state
+
+        // Revert the local state change by notifying the component
+        // This will be handled by the validation in the UI component
+      }
+    },
+    []
+  )
+
   const value: EditorContextValue = React.useMemo(
     () => ({
       state: runtime,
-      setCanonical,
-      setEphemeral,
-      getOrderedLayers,
-      getSelectedLayerId,
-      getSelectedLayer,
-      selectLayer,
-      addEmptyLayer,
-      addImageLayer,
-      removeLayer,
-      duplicateLayer,
-      reorderLayers,
-      updateLayer,
-      pushLayerUpdate,
-      addAdjustmentLayer,
-      updateAdjustmentParameters,
-      setBlendMode,
-      setOpacity,
-      setLayerName,
-      toggleVisibility,
-      toggleLock,
-      setActiveTool,
-      setZoomPercent,
-      rotateDocument,
-      flipDocument,
       history: {
         begin: (name: string) => historyRef.current?.beginTransaction(name),
         push: (cmd: Command) => historyRef.current?.push(cmd),
@@ -557,34 +565,63 @@ export function EditorProvider({
         exportDocumentAtIndex: (idx: number) =>
           historyRef.current?.exportDocumentAtIndex(idx),
       },
+
+      addAdjustmentLayer,
+      addEmptyLayer,
+      addImageLayer,
+      duplicateLayer,
+      flipDocument,
+      dimensionsDocument,
+      getLayerById,
+      getOrderedLayers,
+      getSelectedLayer,
+      getSelectedLayerId,
+      pushLayerUpdate,
+      removeLayer,
+      reorderLayers,
+      rotateDocument,
       save: () => historyRef.current?.save().catch(() => {}),
+      selectLayer,
+      setActiveTool,
+      setBlendMode,
+      setCanonical,
+      setEphemeral,
+      setLayerName,
+      setOpacity,
+      setZoomPercent,
+      toggleLock,
+      toggleVisibility,
+      updateAdjustmentParameters,
+      updateLayer,
     }),
     [
       runtime,
-      setCanonical,
-      setEphemeral,
-      getOrderedLayers,
-      getSelectedLayerId,
-      getSelectedLayer,
-      selectLayer,
+      addAdjustmentLayer,
       addEmptyLayer,
       addImageLayer,
-      removeLayer,
       duplicateLayer,
-      reorderLayers,
-      updateLayer,
-      pushLayerUpdate,
-      addAdjustmentLayer,
-      updateAdjustmentParameters,
-      setBlendMode,
-      setOpacity,
-      setLayerName,
-      toggleVisibility,
-      toggleLock,
-      setActiveTool,
-      setZoomPercent,
-      rotateDocument,
       flipDocument,
+      dimensionsDocument,
+      getLayerById,
+      getOrderedLayers,
+      getSelectedLayer,
+      getSelectedLayerId,
+      pushLayerUpdate,
+      removeLayer,
+      reorderLayers,
+      rotateDocument,
+      selectLayer,
+      setActiveTool,
+      setBlendMode,
+      setCanonical,
+      setEphemeral,
+      setLayerName,
+      setOpacity,
+      setZoomPercent,
+      toggleLock,
+      toggleVisibility,
+      updateAdjustmentParameters,
+      updateLayer,
     ]
   )
 

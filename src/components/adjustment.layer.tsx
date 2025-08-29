@@ -2,7 +2,7 @@
 
 import { Eclipse, Palette, Sun, Droplets, Sparkles } from "lucide-react"
 
-import { TOOL_VALUES, type ToolValueColorType } from "@/lib/tools"
+import { TOOL_VALUES, type ToolValueColorType } from "@/lib/tools/tools"
 import { Color } from "@/components/color"
 import { colorPalette } from "@/components/color-palette"
 import type { AdjustmentLayer } from "@/lib/editor/state"

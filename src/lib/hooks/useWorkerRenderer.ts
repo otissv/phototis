@@ -4,7 +4,7 @@
 import React from "react"
 import { WorkerManager, TaskPriority } from "@/lib/workers/worker-manager"
 import type { Layer } from "@/layer-system/layer-system"
-import type { ImageEditorToolsState } from "@/lib/state.image-editor"
+import type { ImageEditorToolsState } from "@/lib/tools/tools-state"
 
 // Worker renderer state
 interface WorkerRendererState {

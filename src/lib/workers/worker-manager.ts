@@ -2,7 +2,7 @@
 // Manages communication between main thread and render workers
 
 import type { ImageLayer } from "@/lib/editor/state"
-import type { ImageEditorToolsState } from "@/lib/state.image-editor"
+import type { ImageEditorToolsState } from "@/lib/tools/tools-state"
 import { CanvasStateManager } from "@/lib/canvas-state-manager"
 
 // Worker message types

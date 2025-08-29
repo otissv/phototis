@@ -29,12 +29,12 @@ import {
 import { BLEND_MODE_NAMES, type BlendMode } from "@/lib/shaders/blend-modes"
 import { useEditorContext } from "@/lib/editor/context"
 import type { EditorLayer, AdjustmentLayer } from "@/lib/editor/state"
-import { TOOL_VALUES } from "@/lib/tools"
+import { TOOL_VALUES } from "@/lib/tools/tools"
 import {
   AdjustmentLayerEditor,
   getAdjustmentIcon,
 } from "@/components/adjustment.layer"
-import type { SIDEBAR_TOOLS } from "@/lib/state.image-editor"
+import type { SIDEBAR_TOOLS } from "@/lib/tools/tools-state"
 
 // Drag item type for react-dnd
 const ItemTypes = {
@@ -966,7 +966,7 @@ export function DocumentLayerItem({
         )}
         onClick={() => {
           selectLayer("document")
-          setSelectedSidebar("rotate")
+          setSelectedSidebar("dimensionsCanvas")
         }}
       >
         <div className='flex items-center p-1'>

@@ -16,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/ui/select"
-import type { CropToolsType, ToolValueCropType } from "@/lib/tools"
+import type { CropToolsType, ToolValueCropType } from "@/lib/tools/tools"
 import { Input } from "@/ui/input"
 import type { EditorContextValue } from "@/lib/editor/context"
 import type { LayerDimensions } from "../canvas.image-editor"
@@ -330,7 +330,7 @@ function useCrop({
       const grid = overlayType === "grid"
 
       if (grid) {
-        // Photoshop-style grid: 8x8 subdivisions (adjustable in prefs; 8 is a common default)
+        // grid: 8x8 subdivisions (adjustable in prefs; 8 is a common default)
         const cols = 8
         const rows = 8
         const dx = w / cols
@@ -373,7 +373,7 @@ function useCrop({
       }
     } else if (overlayType === "goldenSpiral") {
       // Golden Spiral overlay: fit a golden rectangle inside the crop rect, then draw
-      // quarter-circle arcs within successive squares (clockwise), like Photoshop
+      // quarter-circle arcs within successive squares (clockwise)
       ctx.save()
       ctx.strokeStyle = "rgba(255,255,255,0.65)"
       ctx.lineWidth = 1

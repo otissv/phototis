@@ -8,6 +8,7 @@ import type {
 } from "@/lib/editor/state"
 import type { Command, CommandMeta } from "@/lib/editor/history"
 import { capitalize } from "@/lib/utils/capitalize"
+import { GPU_SECURITY_CONSTANTS } from "@/lib/security/gpu-security"
 
 export type SerializedCommand =
   | {
@@ -61,6 +62,14 @@ export type SerializedCommand =
         LayerId,
         { flipHorizontal: boolean; flipVertical: boolean }
       >
+    }
+  | {
+      type: "documentDimensions"
+      meta: CommandMeta
+      width: number
+      height: number
+      previousWidth: number
+      previousHeight: number
     }
 
 function deepSize(obj: unknown): number {
@@ -761,6 +770,143 @@ export class DocumentFlipCommand implements Command {
   }
 }
 
+export class DocumentDimensionsCommand implements Command {
+  meta: CommandMeta
+  private readonly width: number
+  private readonly height: number
+  private previous?: { width: number; height: number }
+
+  constructor(width: number, height: number, meta?: Partial<CommandMeta>) {
+    // Validate dimensions before creating the command
+    const validationError = this.validateDimensions(width, height)
+    if (validationError) {
+      throw new Error(`Invalid dimensions: ${validationError}`)
+    }
+
+    this.width = Math.max(1, Math.floor(width))
+    this.height = Math.max(1, Math.floor(height))
+    this.meta = {
+      label: `Dimensions Document ${this.width}×${this.height}`,
+      scope: "document",
+      timestamp: Date.now(),
+      coalescable: false,
+      ...meta,
+    }
+  }
+
+  private validateDimensions(width: number, height: number): string | null {
+    // Basic validation
+    if (width <= 0 || height <= 0) {
+      return "Dimensions must be positive numbers"
+    }
+
+    // Check against GPU security constants - individual dimension limits
+    if (
+      width > GPU_SECURITY_CONSTANTS.MAX_TEXTURE_SIZE ||
+      height > GPU_SECURITY_CONSTANTS.MAX_TEXTURE_SIZE
+    ) {
+      return `Dimensions exceed maximum texture size (${GPU_SECURITY_CONSTANTS.MAX_TEXTURE_SIZE}px)`
+    }
+
+    // Check for reasonable limits to prevent browser crashes
+    if (width > 32768 || height > 32768) {
+      return "Dimensions are too large and may cause browser instability"
+    }
+
+    // Calculate total area and check against reasonable limits
+    const totalArea = width * height
+    const maxArea =
+      GPU_SECURITY_CONSTANTS.MAX_TEXTURE_SIZE *
+      GPU_SECURITY_CONSTANTS.MAX_TEXTURE_SIZE
+
+    // Allow up to 80% of the maximum possible area to leave room for other operations
+    const maxAllowedArea = Math.floor(maxArea * 0.8)
+
+    if (totalArea > maxAllowedArea) {
+      return `Canvas area (${totalArea.toLocaleString()} pixels) exceeds maximum allowed area (${maxAllowedArea.toLocaleString()} pixels)`
+    }
+
+    return null
+  }
+
+  apply(state: CanonicalEditorState): CanonicalEditorState {
+    this.previous = {
+      width: state.document.width,
+      height: state.document.height,
+    }
+    // Return new state with updated dimensions
+    return {
+      ...state,
+      document: {
+        ...state.document,
+        width: this.width,
+        height: this.height,
+      },
+    }
+  }
+
+  invert(): Command {
+    const prevW = this.previous?.width ?? 1
+    const prevH = this.previous?.height ?? 1
+    return new DocumentDimensionsCommand(prevW, prevH, {
+      label: `Undo Dimensions Document to ${prevW}×${prevH}`,
+    })
+  }
+
+  estimateSize(): number {
+    // Rough estimate for width/height numbers
+    return 64
+  }
+
+  serialize(): SerializedCommand {
+    return {
+      type: "documentDimensions",
+      meta: this.meta,
+      width: this.width,
+      height: this.height,
+      previousWidth: this.previous?.width ?? 0,
+      previousHeight: this.previous?.height ?? 0,
+    }
+  }
+
+  static deserialize(
+    data: SerializedCommand & { type: "documentDimensions" }
+  ): DocumentDimensionsCommand {
+    return new DocumentDimensionsCommand(data.width, data.height, data.meta)
+  }
+
+  // Test function to validate dimensions logic
+  static testDimensions(
+    width: number,
+    height: number
+  ): {
+    isValid: boolean
+    error?: string
+    area: number
+    maxAllowedArea: number
+    percentage: number
+  } {
+    // Create a temporary command to access the validation method
+    const tempCommand = new DocumentDimensionsCommand(1, 1)
+    const error = (tempCommand as any).validateDimensions(width, height)
+
+    const totalArea = width * height
+    const maxArea =
+      GPU_SECURITY_CONSTANTS.MAX_TEXTURE_SIZE *
+      GPU_SECURITY_CONSTANTS.MAX_TEXTURE_SIZE
+    const maxAllowedArea = Math.floor(maxArea * 0.8)
+    const percentage = (totalArea / maxAllowedArea) * 100
+
+    return {
+      isValid: !error,
+      error: error || undefined,
+      area: totalArea,
+      maxAllowedArea,
+      percentage,
+    }
+  }
+}
+
 export function deserializeCommand(json: SerializedCommand): Command {
   switch (json.type) {
     case "addLayer":
@@ -795,6 +941,8 @@ export function deserializeCommand(json: SerializedCommand): Command {
       return DocumentRotateCommand.deserialize(json)
     case "documentFlip":
       return DocumentFlipCommand.deserialize(json)
+    case "documentDimensions":
+      return DocumentDimensionsCommand.deserialize(json)
     default:
       throw new Error(`Unknown command type ${(json as any).type}`)
   }

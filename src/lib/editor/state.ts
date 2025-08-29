@@ -13,8 +13,8 @@ import type { BlendMode } from "@/lib/shaders/blend-modes"
 import type {
   ImageEditorToolsState,
   SIDEBAR_TOOLS,
-} from "@/lib/state.image-editor"
-import type { TOOL_VALUES } from "@/lib/tools"
+} from "@/lib/tools/tools-state"
+import type { TOOL_VALUES } from "@/lib/tools/tools"
 
 /**
  * Canonical types
@@ -24,6 +24,8 @@ export type LayerId = string
 
 // New layer type system
 export type LayerType = "image" | "adjustment" | "group" | "solid" | "document"
+
+// Interface for layer dimensions and positioning
 
 // Base layer properties shared by all layer types
 export interface BaseLayer {
@@ -101,19 +103,6 @@ export type EditorLayer =
   | GroupLayer
   | SolidLayer
   | DocumentLayer
-
-// Legacy support - keep the old interface for backward compatibility
-export interface LegacyEditorLayer {
-  id: LayerId
-  name: string
-  visible: boolean
-  locked: boolean
-  filters: ImageEditorToolsState
-  opacity: number
-  isEmpty: boolean
-  image?: File | null
-  blendMode: BlendMode
-}
 
 /**
  * Layers collection uses an order array for deterministic z-order and a map
@@ -198,7 +187,7 @@ export interface EphemeralEditorState {
   preview?: {
     active: boolean
     layerId?: LayerId
-    filters?: Partial<import("@/lib/state.image-editor").ImageEditorToolsState>
+    filters?: Partial<import("@/lib/tools/tools-state").ImageEditorToolsState>
   }
 }
 

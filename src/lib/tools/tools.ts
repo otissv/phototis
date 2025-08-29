@@ -16,9 +16,13 @@ export type ToolValueStringType = {
 export type ToolValueDimensionType = {
   width: number
   height: number
+  x: number
+  y: number
   defaultValue: {
     width: number
     height: number
+    x: number
+    y: number
   }
 }
 export type ToolValueCropType = CropToolsType["crop"] & {
@@ -48,7 +52,7 @@ export type ToolValueKeys =
   | AdjustmentType
   | FilterType
   | RotateType
-  | ResizeType
+  | DimensionsType
   | CropType
   | ScaleType
   | UpscaleType
@@ -236,12 +240,16 @@ export const TOOL_VALUES: Record<ToolValueKeys, ToolValueTypes> = {
   upscale: {
     defaultValue: 0,
   },
-  resize: {
+  dimensions: {
     width: 0,
     height: 0,
+    x: 0,
+    y: 0,
     defaultValue: {
       width: 0,
       height: 0,
+      x: 0,
+      y: 0,
     },
   },
   crop: {
@@ -260,10 +268,12 @@ export const TOOL_VALUES: Record<ToolValueKeys, ToolValueTypes> = {
   },
 }
 
-export type ResizeToolsType = {
-  resize: {
+export type DimensionsToolsType = {
+  dimensions: {
     width: number
     height: number
+    x: number
+    y: number
   }
   zoom: number
 }
@@ -333,7 +343,7 @@ export type FilterToolsType = {
 export type AdjustmentType = keyof AdjustLayersType
 export type FilterType = keyof FilterToolsType
 export type RotateType = keyof RotateToolsType
-export type ResizeType = keyof ResizeToolsType
+export type DimensionsType = keyof DimensionsToolsType
 export type CropType = keyof CropToolsType
 export type ScaleType = keyof ScaleToolsType
 export type UpscaleType = keyof UpscaleToolsType

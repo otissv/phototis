@@ -5,8 +5,8 @@ import { cn } from "@/lib/utils"
 import { motion, useMotionValue, useTransform } from "motion/react"
 import { useDebounce } from "use-debounce"
 
-import type { ImageEditorToolsState } from "@/lib/state.image-editor"
-import { initialState } from "@/lib/state.image-editor"
+import type { ImageEditorToolsState } from "@/lib/tools/tools-state"
+import { initialToolsState } from "@/lib/tools/tools-state"
 import type { EditorLayer } from "@/lib/editor/state"
 import { useEditorContext } from "@/lib/editor/context"
 import { ShaderManager } from "@/lib/shaders"
@@ -20,20 +20,18 @@ import { useCrop } from "./tools/crop.tools"
 // Shader manager instance
 const shaderManager = new ShaderManager()
 
+export interface LayerDimensions {
+  width: number
+  height: number
+  x: number
+  y: number
+}
 export interface ImageEditorCanvasProps
   extends Omit<React.ComponentProps<"canvas">, "onProgress"> {
   onProgress?: (progress: number) => void
   canvasRef?: React.RefObject<HTMLCanvasElement | null>
   onDrawReady?: (draw: () => void) => void
   onImageDrop?: (file: File) => void
-}
-
-// Interface for layer dimensions and positioning
-export interface LayerDimensions {
-  width: number
-  height: number
-  x: number
-  y: number
 }
 
 // Interface for viewport state
@@ -57,6 +55,7 @@ export function ImageEditorCanvas({
     state,
     addImageLayer,
     updateLayer,
+    dimensionsDocument,
   } = useEditorContext()
   const selectedLayerId = getSelectedLayerId() || "layer-1"
   const isDragActive = state.ephemeral.interaction.isDragging
@@ -117,11 +116,32 @@ export function ImageEditorCanvas({
     new Map()
   )
 
-  // Canvas dimensions state
+  // Canvas dimensions state - mirror canonical.document
   const [canvasDimensions, setCanvasDimensions] = React.useState({
-    width: 800,
-    height: 600,
+    width: state.canonical.document.width,
+    height: state.canonical.document.height,
   })
+
+  // Keep canvas in sync with canonical.document changes
+  React.useEffect(() => {
+    const width = state.canonical.document.width
+    const height = state.canonical.document.height
+
+    if (
+      width !== canvasDimensions.width ||
+      height !== canvasDimensions.height
+    ) {
+      setCanvasDimensions({ width, height })
+      // Trigger redraw when canvas dimensions change since layers are now updated
+      // through the standard layer mechanism
+      setTimeout(() => drawRef.current?.(), 0)
+    }
+  }, [
+    state.canonical.document.width,
+    state.canonical.document.height,
+    canvasDimensions.width,
+    canvasDimensions.height,
+  ])
 
   // Track canvases we've already initialized to avoid duplicate init
   const initializedCanvasesRef = React.useRef<WeakSet<HTMLCanvasElement>>(
@@ -205,13 +225,13 @@ export function ImageEditorCanvas({
 
   // Get the effective filters for the selected layer (including adjustment layers above it)
   const effectiveFilters = React.useMemo(() => {
-    if (!selectedLayerId) return initialState
+    if (!selectedLayerId) return initialToolsState
 
     const selectedLayer = state.canonical.layers.byId[selectedLayerId]
-    if (!selectedLayer) return initialState
+    if (!selectedLayer) return initialToolsState
 
     // Start with the selected layer's own filters
-    let effects: ImageEditorToolsState = { ...initialState }
+    let effects: ImageEditorToolsState = { ...initialToolsState }
 
     if (selectedLayer.type === "image") {
       const imageLayer = selectedLayer as any
@@ -626,25 +646,40 @@ export function ImageEditorCanvas({
 
             // Center non-background layers
             if (layer.id !== "layer-1") {
-              layerX =
-                imageData.width > currentCanvasWidth
-                  ? (currentCanvasWidth - imageData.width) / 2
-                  : Math.max(0, (currentCanvasWidth - imageData.width) / 2)
-              layerY =
-                imageData.height > currentCanvasHeight
-                  ? (currentCanvasHeight - imageData.height) / 2
-                  : Math.max(0, (currentCanvasHeight - imageData.height) / 2)
+              // Calculate center position, ensuring layers stay within canvas bounds
+              const maxX = Math.max(0, currentCanvasWidth - imageData.width)
+              const maxY = Math.max(0, currentCanvasHeight - imageData.height)
+
+              // Center the layer, but clamp to canvas bounds
+              layerX = Math.max(
+                0,
+                Math.min(maxX, (currentCanvasWidth - imageData.width) / 2)
+              )
+              layerY = Math.max(
+                0,
+                Math.min(maxY, (currentCanvasHeight - imageData.height) / 2)
+              )
+
+              // Ensure layers are always visible by keeping them within canvas bounds
+              if (imageData.width > currentCanvasWidth) {
+                // If layer is larger than canvas, center it
+                layerX = (currentCanvasWidth - imageData.width) / 2
+                layerY = (currentCanvasHeight - imageData.height) / 2
+              }
             } else {
               // For background, set canvas size if not yet initialized
-              if (
-                canvasDimensions.width === 800 &&
-                canvasDimensions.height === 600
-              ) {
-                setCanvasDimensions({
-                  width: imageData.width,
-                  height: imageData.height,
-                })
-              }
+              // When image is first loaded, update document size to image dimensions
+              try {
+                if (
+                  state.canonical.document.width === 800 &&
+                  state.canonical.document.height === 600
+                ) {
+                  dimensionsDocument?.({
+                    width: imageData.width,
+                    height: imageData.height,
+                  })
+                }
+              } catch {}
             }
 
             const dimensions: LayerDimensions = {
@@ -653,6 +688,7 @@ export function ImageEditorCanvas({
               x: layerX,
               y: layerY,
             }
+
             layerDimensionsRef.current.set(layer.id, dimensions)
           }
         }
@@ -689,7 +725,7 @@ export function ImageEditorCanvas({
     setViewport((prev) => ({ ...prev, scale: zoom }))
   }, [effectiveFilters.zoom, viewportScale])
 
-  // Center viewport when canvas dimensions change
+  // Center viewport when canvas dimensions change (default)
   React.useEffect(() => {
     if (!containerRef.current) return
 
@@ -717,6 +753,106 @@ export function ImageEditorCanvas({
     viewportX,
     viewportY,
   ])
+
+  // Document dimensions are now handled directly in the dimensions-canvas.tools.tsx
+  // No need for custom event listeners - layer positions are updated through the
+  // standard layer update mechanism when dimensions change
+
+  // Previous canvas size tracking removed - no longer needed with direct layer updates
+
+  // Create a ref to access current canonical state to avoid dependency issues
+  const canonicalStateRef = React.useRef(state.canonical)
+  React.useEffect(() => {
+    canonicalStateRef.current = state.canonical
+  }, [state.canonical])
+
+  // Function to recalculate layer positions when canvas dimensions change
+  const recalculateLayerPositions = React.useCallback(() => {
+    if (!layerDimensionsRef.current) return
+
+    const currentCanvasWidth = canvasDimensions.width
+    const currentCanvasHeight = canvasDimensions.height
+
+    console.log(
+      `Recalculating layer positions for canvas: ${currentCanvasWidth}×${currentCanvasHeight}`
+    )
+
+    // Update positions for all existing layers
+    for (const [layerId, dimensions] of layerDimensionsRef.current.entries()) {
+      const imageData = imageDataCacheRef.current.get(layerId)
+      if (!imageData) continue
+
+      // Recalculate position to keep layer visible
+      const maxX = Math.max(0, currentCanvasWidth - imageData.width)
+      const maxY = Math.max(0, currentCanvasHeight - imageData.height)
+
+      let newX = Math.max(
+        0,
+        Math.min(maxX, (currentCanvasWidth - imageData.width) / 2)
+      )
+      let newY = Math.max(
+        0,
+        Math.min(maxY, (currentCanvasHeight - imageData.height) / 2)
+      )
+
+      // If layer is larger than canvas, center it
+      if (imageData.width > currentCanvasWidth) {
+        newX = (currentCanvasWidth - imageData.width) / 2
+        newY = (currentCanvasHeight - imageData.height) / 2
+      }
+
+      console.log(
+        `Layer ${layerId}: ${dimensions.width}×${dimensions.height} → position (${newX}, ${newY})`
+      )
+
+      // Update local ref for immediate rendering
+      layerDimensionsRef.current.set(layerId, {
+        ...dimensions,
+        x: newX,
+        y: newY,
+      })
+
+      // Update canonical state to persist the new positions
+      // Get the current layer to preserve existing filter values
+      const currentLayer = canonicalStateRef.current.layers.byId[layerId]
+      if (currentLayer) {
+        const currentFilters = (currentLayer as any)?.filters || {}
+        const currentDimensions = currentFilters.dimensions || {}
+
+        // Only update x,y coordinates, preserve existing width/height and other filter values
+        updateLayer(layerId, {
+          filters: {
+            ...currentFilters,
+            dimensions: {
+              ...currentDimensions,
+              x: newX,
+              y: newY,
+              width: currentDimensions.width || dimensions.width, // Preserve existing width
+              height: currentDimensions.height || dimensions.height, // Preserve existing height
+            },
+          },
+        } as any)
+
+        console.log(`Updated canonical state for layer ${layerId}`)
+      } else {
+        console.warn(`Layer ${layerId} not found in canonical state`)
+      }
+    }
+
+    console.log("Layer position recalculation complete")
+
+    // Trigger a redraw to show updated positions
+    // Use a callback approach to avoid drawRef dependency issues
+    setTimeout(() => {
+      // The draw function will be called when the component re-renders
+      // due to the state updates from updateLayer calls
+    }, 0)
+  }, [canvasDimensions.width, canvasDimensions.height, updateLayer])
+
+  // Recalculate layer positions when canvas dimensions change
+  React.useEffect(() => {
+    recalculateLayerPositions()
+  }, [recalculateLayerPositions])
 
   const handleWheel = React.useCallback(
     (e: React.WheelEvent) => {
@@ -1023,11 +1159,11 @@ export function ImageEditorCanvas({
 
         // Queue render task with worker
         try {
-          // Derive per-render dimensions applying resize only to active layer
+          // Derive per-render dimensions applying dimensions only to active layer
           let dimsForRender = layerDimensionsRef.current
           try {
             const selectedDims = layerDimensionsRef.current.get(selectedLayerId)
-            const rz: any = (selectedFiltersRef.current as any)?.resize
+            const rz: any = (selectedFiltersRef.current as any)?.dimensions
             if (
               selectedDims &&
               rz &&
@@ -1170,11 +1306,11 @@ export function ImageEditorCanvas({
         layerTextures.size > 0
       ) {
         try {
-          // Apply resize to active layer in hybrid path too
+          // Apply dimensions to active layer in hybrid path too
           let dimsForRender = layerDimensionsRef.current
           try {
             const selectedDims = layerDimensionsRef.current.get(selectedLayerId)
-            const rz: any = (selectedFiltersRef.current as any)?.resize
+            const rz: any = (selectedFiltersRef.current as any)?.dimensions
             if (
               selectedDims &&
               rz &&
@@ -1591,12 +1727,12 @@ export function ImageEditorCanvas({
                         : cropRect.height / 2 - 4,
                     cursor:
                       h === "n" || h === "s"
-                        ? "ns-resize"
+                        ? "ns-dimensions"
                         : h === "e" || h === "w"
-                          ? "ew-resize"
+                          ? "ew-dimensions"
                           : h === "ne" || h === "sw"
-                            ? "nesw-resize"
-                            : "nwse-resize",
+                            ? "nesw-dimensions"
+                            : "nwse-dimensions",
                   }}
                 />
               )

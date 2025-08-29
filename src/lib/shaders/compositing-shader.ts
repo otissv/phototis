@@ -192,6 +192,12 @@ export const LAYER_RENDER_FRAGMENT_SHADER = `
     // Map to layer-local space (origin at layer top-left)
     vec2 layerCoord = canvasCoord - vec2(u_layerX, u_layerY);
 
+    // Early discard if layer is completely outside canvas bounds
+    if (layerCoord.x < -u_layerWidth || layerCoord.x > u_resolution.x ||
+        layerCoord.y < -u_layerHeight || layerCoord.y > u_resolution.y) {
+      discard;
+    }
+
     // Normalize to [0,1] in layer space before transforms
     vec2 uv = layerCoord / vec2(u_layerWidth, u_layerHeight);
 

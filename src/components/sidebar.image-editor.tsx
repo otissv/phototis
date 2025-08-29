@@ -1,9 +1,8 @@
 "use client"
 
 import {
-  Blend,
   Crop,
-  Funnel,
+  Image,
   ImageUpscale,
   RotateCwSquare,
   SlidersHorizontal,
@@ -12,19 +11,18 @@ import {
 
 import { Button, type ButtonProps } from "@/ui/button"
 import { cn } from "@/lib/utils"
-import type { TOOL_VALUES } from "@/lib/tools"
+import type { TOOL_VALUES } from "@/lib/tools/tools"
 import type { EditorLayer } from "@/lib/editor/state"
 import {
   SIDEBAR_TOOLS,
   type ImageEditorToolsActions,
-} from "@/lib/state.image-editor"
+} from "@/lib/tools/tools-state"
 
 export interface ImageEditorSidebarProps
   extends Omit<React.ComponentProps<"ul">, "onChange"> {
   progress?: number
   selectedLayer: EditorLayer
   selectedSidebar: keyof typeof SIDEBAR_TOOLS
-  dispatch: React.Dispatch<ImageEditorToolsActions>
   onChange: (selected: keyof typeof SIDEBAR_TOOLS) => void
   onSelectedToolChange: (tool: keyof typeof TOOL_VALUES) => void
 }
@@ -32,7 +30,6 @@ export function ImageEditorSidebar({
   className,
   onChange,
   onSelectedToolChange,
-  dispatch,
   progress,
   selectedLayer,
   selectedSidebar,
@@ -42,6 +39,20 @@ export function ImageEditorSidebar({
 
   return (
     <ul className={cn("flex flex-col gap-2 p-2", className)} {...props}>
+      <li className={cn({ hidden: !isDocumentLayer })}>
+        <SidebarButton
+          title='Canvas dimensions'
+          footerType='dimensionsCanvas'
+          disabled={progress || !isDocumentLayer}
+          selectedSidebar={selectedSidebar}
+          onChange={onChange}
+          onSelectedToolChange={onSelectedToolChange}
+          isDocumentLayer={isDocumentLayer}
+        >
+          <Image />
+          Canvas
+        </SidebarButton>
+      </li>
       <li>
         <SidebarButton
           title='Rotate Layer'
@@ -56,11 +67,10 @@ export function ImageEditorSidebar({
           Rotate
         </SidebarButton>
       </li>
-
       <li>
         <SidebarButton
           title='Resize'
-          footerType='resize'
+          footerType='dimensions'
           disabled={progress}
           selectedSidebar={selectedSidebar}
           onChange={onChange}
@@ -71,7 +81,6 @@ export function ImageEditorSidebar({
           Resize
         </SidebarButton>
       </li>
-
       <li>
         <SidebarButton
           title='Scale'
@@ -86,7 +95,6 @@ export function ImageEditorSidebar({
           Scale
         </SidebarButton>
       </li>
-
       <li>
         <SidebarButton
           title='Upscale'
@@ -101,7 +109,6 @@ export function ImageEditorSidebar({
           Upscale
         </SidebarButton>
       </li>
-
       <li>
         <SidebarButton
           title='Crop'
@@ -116,7 +123,6 @@ export function ImageEditorSidebar({
           Crop
         </SidebarButton>
       </li>
-
       <li>
         <SidebarButton
           title='Filters'

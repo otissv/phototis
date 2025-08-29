@@ -2,7 +2,7 @@
 // This worker handles all GPU-intensive operations to prevent main thread blocking
 
 import type { ImageLayer } from "@/lib/editor/state"
-import type { ImageEditorToolsState } from "@/lib/state.image-editor"
+import type { ImageEditorToolsState } from "@/lib/tools/tools-state"
 import type { PipelineStage } from "@/lib/shaders/asynchronous-pipeline"
 import { AsynchronousPipeline } from "@/lib/shaders/asynchronous-pipeline"
 import { HybridRenderer } from "@/lib/shaders/hybrid-renderer"
@@ -15,7 +15,7 @@ import {
 // Security constants for GPU memory protection
 const MAX_TEXTURE_SIZE = 16384 // Maximum WebGL texture size
 const MAX_BLUR_KERNEL_SIZE = 256 // Maximum blur kernel size to prevent GPU memory issues
-const MAX_CANVAS_DIMENSION = 8192 // Maximum canvas dimension for safety
+const MAX_CANVAS_DIMENSION = 16384 // Maximum canvas dimension for safety
 
 // Worker message types
 interface WorkerMessage {

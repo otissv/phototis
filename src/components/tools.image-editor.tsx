@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import type { SIDEBAR_TOOLS } from "@/lib/state.image-editor"
+import type { SIDEBAR_TOOLS } from "@/lib/tools/tools-state"
 
 import { ImageEditorButton } from "./button.image-editor"
 import {
@@ -24,12 +24,9 @@ import type {
   ImageEditorFooterProps,
 } from "@/components/tools/utils.tools"
 import { RotationControls } from "@/components/tools/rotation.tools"
-import { ScaleButton, ScaleControls } from "@/components/tools/scale.tools"
-import { ResizeButton, ResizeControls } from "@/components/tools/resize.tools"
-import {
-  UpscaleButton,
-  UpscaleControls,
-} from "@/components/tools/upscale.tools"
+import { ScaleControls } from "@/components/tools/scale.tools"
+import { DimensionsControls } from "@/components/tools/dimensions.tools"
+import { UpscaleControls } from "@/components/tools/upscale.tools"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -46,13 +43,14 @@ import {
 } from "@/components/tools/sharpen.tools"
 
 import { NoiseButton, NoiseControls } from "@/components/tools/noise.tools"
-import { CropButton, CropControls } from "@/components/tools/crop.tools"
+import { CropControls } from "@/components/tools/crop.tools"
 import type {
   ToolValueCropType,
   ToolValueDimensionType,
   ToolValueNumberType,
-} from "@/lib/tools"
+} from "@/lib/tools/tools"
 import { cn } from "@/lib/utils"
+import { DimensionsCanvasControls } from "./tools/dimensions-canvas.tools"
 
 export function ImageEditorFooter({
   selectedSidebar,
@@ -61,12 +59,14 @@ export function ImageEditorFooter({
   selectedSidebar: keyof typeof SIDEBAR_TOOLS
 }) {
   switch (selectedSidebar) {
+    case "dimensionsCanvas":
+      return <DimensionsCanvasFooter {...props} />
     case "effects":
       return <EffectsFooter {...props} />
     case "rotate":
       return <RotateFooter {...props} />
-    case "resize":
-      return <ResizeFooter {...props} />
+    case "dimensions":
+      return <DimensionsFooter {...props} />
     case "scale":
       return <ScaleFooter {...props} />
     case "upscale":
@@ -303,7 +303,6 @@ export function RotateFooter({
   const handleRotateLeft = () => {
     if (isDocumentLayer) {
       // Document rotation - rotate all layers
-      console.log("Rotating document left by 90°")
       rotateDocument(-90)
     } else {
       // Individual layer rotation
@@ -318,7 +317,6 @@ export function RotateFooter({
   const handleRotateRight = () => {
     if (isDocumentLayer) {
       // Document rotation - rotate all layers
-      console.log("Rotating document right by 90°")
       rotateDocument(90)
     } else {
       // Individual layer rotation
@@ -638,14 +636,14 @@ export function ScaleFooter({
       <ScaleControls
         operator='%'
         isDecimal={true}
-        value={value as ToolValueNumberType["defaultValue"]}
         {...controlProps}
+        value={value as ToolValueNumberType["defaultValue"]}
       />
     </div>
   )
 }
 
-export function ResizeFooter({
+export function DimensionsFooter({
   progress,
   selectedTool,
   toolsValues,
@@ -680,9 +678,9 @@ export function ResizeFooter({
 
   return (
     <div className={cn("flex justify-center", className)} {...props}>
-      <ResizeControls
-        value={value as ToolValueDimensionType["defaultValue"]}
+      <DimensionsControls
         {...controlProps}
+        value={value as ToolValueDimensionType["defaultValue"]}
       />
     </div>
   )
@@ -766,6 +764,46 @@ export function CropFooter({
         {...controlProps}
         value={value as ToolValueCropType["defaultValue"]}
       />
+    </div>
+  )
+}
+
+export function DimensionsCanvasFooter({
+  progress,
+  selectedTool,
+  toolsValues,
+  value,
+  dispatch,
+  onSelectedToolChange,
+  canvasRef,
+  drawFnRef,
+  selectedLayer,
+  onProgress,
+  className,
+  ...props
+}: Omit<ImageEditorFooterProps, "onChange">) {
+  const handleOnChange = React.useCallback(
+    (value: number) => {
+      dispatch({ type: selectedTool as any, payload: value } as any)
+    },
+    [dispatch, selectedTool]
+  )
+
+  const controlProps = {
+    progress,
+    selectedTool,
+    toolsValues,
+    dispatch,
+    canvasRef,
+    drawFnRef,
+    selectedLayer,
+    onProgress,
+    onChange: handleOnChange,
+  }
+
+  return (
+    <div className={cn("flex justify-center", className)} {...props}>
+      <DimensionsCanvasControls {...controlProps} value={value as number} />
     </div>
   )
 }

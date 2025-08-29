@@ -1040,39 +1040,32 @@ export class HybridRenderer {
 
     // Provide safe defaults for tool values to avoid undefined access
     const DEFAULT_TOOLS: Partial<ImageEditorToolsState> = {
-      // adjustments
-      // Numbers chosen to represent neutral/no-op values
+      blur: 0,
+      blurCenter: 0.5,
+      blurDirection: 0,
+      blurType: 0,
       brightness: 100,
       contrast: 100,
-      saturation: 100,
+      crop: { x: 0, y: 0, width: 0, height: 0 },
       exposure: 0,
-      gamma: 1,
-      hue: 0,
-      temperature: 0,
-      vibrance: 0,
-      grayscale: 0,
-      invert: 0,
-      sepia: 0,
-      // effects
-      blur: 0,
-      blurType: 0,
-      blurDirection: 0,
-      blurCenter: 0.5,
-      sharpen: 0,
-      noise: 0,
-      grain: 0,
-      // orientation and zoom
-      rotate: 0,
-      scale: 1,
       flipHorizontal: false,
       flipVertical: false,
-      zoom: 100,
-      // placeholders for required fields in state type (will be ignored here)
-      history: [],
-      historyPosition: 0,
+      gamma: 1,
+      grain: 0,
+      grayscale: 0,
+      hue: 0,
+      invert: 0,
+      noise: 0,
+      dimensions: { width: 0, height: 0 },
+      rotate: 0,
+      saturation: 100,
+      scale: 1,
+      sepia: 0,
+      sharpen: 0,
+      temperature: 0,
       upscale: 0,
-      resize: { width: 0, height: 0 },
-      crop: { x: 0, y: 0, width: 0, height: 0 },
+      vibrance: 0,
+      zoom: 100,
     } as Partial<ImageEditorToolsState>
 
     const withDefaults = (

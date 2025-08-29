@@ -5,16 +5,16 @@ import { PlusIcon, MinusIcon, Menu } from "lucide-react"
 
 import { Button } from "@/ui/button"
 import { cn } from "@/lib/utils"
-import type { SIDEBAR_TOOLS } from "@/lib/state.image-editor"
+import type { SIDEBAR_TOOLS } from "@/lib/tools/tools-state"
 import { ImageEditorCanvas } from "@/components/canvas.image-editor"
 import { ImageEditorSidebar } from "@/components/sidebar.image-editor"
 import { ImageEditorFooter } from "@/components/tools.image-editor"
-import type { TOOL_VALUES } from "@/lib/tools"
+import type { TOOL_VALUES } from "@/lib/tools/tools"
 import {
   imageEditorToolsReducer,
-  initialState,
+  initialToolsState,
   type ImageEditorToolsActions,
-} from "@/lib/state.image-editor"
+} from "@/lib/tools/tools-state"
 import { SetActiveToolCommand } from "@/lib/editor/commands"
 
 import { EditorProvider, useEditorContext } from "@/lib/editor/context"
@@ -70,14 +70,14 @@ function ImageEditorInner({
   const toolsValues = React.useMemo(() => {
     // If document layer is selected, use document filters
     if (selectedLayer?.id === "document" && selectedLayer.type === "document") {
-      return (selectedLayer as any).filters || initialState
+      return (selectedLayer as any).filters || initialToolsState
     }
     // For image layers, use their filters
     if (selectedLayer?.type === "image") {
-      return (selectedLayer as any).filters || initialState
+      return (selectedLayer as any).filters || initialToolsState
     }
     // For other layer types, return initial state
-    return initialState
+    return initialToolsState
   }, [selectedLayer])
 
   const dispatch = React.useCallback(
@@ -90,7 +90,7 @@ function ImageEditorInner({
       // Only allow filter updates for image and document layers
       if (current.type !== "image" && current.type !== "document") return
 
-      const currentFilters = (current as any).filters || initialState
+      const currentFilters = (current as any).filters || initialToolsState
       const newFilters = Array.isArray(action)
         ? action.reduce((acc, curr) => {
             return imageEditorToolsReducer(acc, curr)
@@ -311,7 +311,7 @@ function ImageEditorInner({
         return
       }
 
-      // Duplicate layer (Photoshop-style: Cmd/Ctrl+J)
+      // Duplicate layer: Cmd/Ctrl+J)
       if (meta && key.toLowerCase() === "j") {
         e.preventDefault()
         const id = getSelectedLayerId()
@@ -380,7 +380,6 @@ function ImageEditorInner({
               <ImageEditorSidebar
                 onSelectedToolChange={handleSelectedToolChange}
                 onChange={handleSelectedSidebarChange}
-                dispatch={dispatch}
                 progress={progress}
                 selectedLayer={selectedLayer || ({} as EditorLayer)}
                 selectedSidebar={selectedSidebar}
@@ -393,7 +392,6 @@ function ImageEditorInner({
           <ImageEditorSidebar
             onSelectedToolChange={handleSelectedToolChange}
             onChange={handleSelectedSidebarChange}
-            dispatch={dispatch}
             progress={progress}
             selectedLayer={selectedLayer || ({} as EditorLayer)}
             selectedSidebar={selectedSidebar}

@@ -2,7 +2,7 @@
 // Integrates with existing HybridRenderer to provide multi-stage processing
 
 import type { Layer } from "@/layer-system/layer-system"
-import type { ImageEditorToolsState } from "@/lib/state.image-editor"
+import type { ImageEditorToolsState } from "@/lib/tools/tools-state"
 import { HybridRenderer, type HybridRendererOptions } from "./hybrid-renderer"
 import {
   validateImageDimensions,

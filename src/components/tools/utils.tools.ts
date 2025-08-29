@@ -1,6 +1,6 @@
-import type { ImageEditorToolsState } from "@/lib/state.image-editor"
-import type { TOOL_VALUES } from "@/lib/tools"
-import type { ImageEditorToolsActions } from "@/lib/state.image-editor"
+import type { ImageEditorToolsState } from "@/lib/tools/tools-state"
+import type { TOOL_VALUES } from "@/lib/tools/tools"
+import type { ImageEditorToolsActions } from "@/lib/tools/tools-state"
 import type { EditorLayer } from "@/lib/editor/state"
 
 export interface ImageEditorHeaderProps

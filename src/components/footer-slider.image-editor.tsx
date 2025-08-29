@@ -1,4 +1,4 @@
-import { TOOL_VALUES } from "@/lib/tools"
+import { TOOL_VALUES } from "@/lib/tools/tools"
 import { onToolControlValueChange } from "@/lib/utils"
 import SlidingTrack from "@/components/sliding-track"
 

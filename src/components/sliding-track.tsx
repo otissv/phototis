@@ -93,14 +93,14 @@ export default function SlidingTrack({
       `[data-id="${containerId}"]`
     ) as HTMLElement
 
-    const handleResize = () => {
+    const handleDimensions = () => {
       if (slider) {
         setSliderWidth(slider.offsetWidth)
       }
     }
 
-    window.addEventListener("resize", handleResize)
-    return () => window.removeEventListener("resize", handleResize)
+    window.addEventListener("resize", handleDimensions)
+    return () => window.removeEventListener("resize", handleDimensions)
   })
 
   React.useEffect(() => {

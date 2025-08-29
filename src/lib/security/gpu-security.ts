@@ -9,7 +9,7 @@
 export const GPU_SECURITY_CONSTANTS = {
   // Maximum texture dimensions
   MAX_TEXTURE_SIZE: 16384,
-  MAX_CANVAS_DIMENSION: 8192,
+  MAX_CANVAS_DIMENSION: 16384,
 
   // Maximum blur kernel size to prevent GPU memory exhaustion
   MAX_BLUR_KERNEL_SIZE: 256,
@@ -158,6 +158,8 @@ export function validateImageDimensions(
       }
     }
   }
+
+  console.log({ isValid: true })
 
   return { isValid: true }
 }
