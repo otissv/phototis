@@ -12,10 +12,9 @@ import {
   validateFilterParameters,
 } from "@/lib/security/gpu-security"
 
-// Security constants for GPU memory protection
-const MAX_TEXTURE_SIZE = 16384 // Maximum WebGL texture size
-const MAX_BLUR_KERNEL_SIZE = 256 // Maximum blur kernel size to prevent GPU memory issues
-const MAX_CANVAS_DIMENSION = 16384 // Maximum canvas dimension for safety
+import { GPU_SECURITY_CONSTANTS } from "@/lib/security/gpu-security"
+
+const { MAX_BLUR_KERNEL_SIZE } = GPU_SECURITY_CONSTANTS
 
 // Worker message types
 interface WorkerMessage {
@@ -463,6 +462,7 @@ function initializeWebGL(
   try {
     // Validate dimensions
     const dimValidation = validateImageDimensions(width, height)
+
     if (!dimValidation.isValid) {
       throw new Error(
         dimValidation.error || `Invalid canvas dimensions: ${width}x${height}`
@@ -655,6 +655,7 @@ async function renderLayers(
 
     // Validate canvas dimensions
     const canvasDim = validateImageDimensions(canvasWidth, canvasHeight)
+
     if (!canvasDim.isValid) {
       throw new Error(
         canvasDim.error ||
@@ -1158,9 +1159,14 @@ async function loadLayerTexture(
     }
 
     // Validate dimensions
-    if (!validateImageDimensions(imageBitmap.width, imageBitmap.height)) {
+    const dimValidation = validateImageDimensions(
+      imageBitmap.width,
+      imageBitmap.height
+    )
+    if (!dimValidation.isValid) {
       throw new Error(
-        `Invalid image dimensions: ${imageBitmap.width}x${imageBitmap.height}`
+        dimValidation.error ||
+          `Invalid image dimensions: ${imageBitmap.width}x${imageBitmap.height}`
       )
     }
 

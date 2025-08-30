@@ -12,6 +12,7 @@ import type {
   ActiveToolModel,
   EphemeralEditorState,
   DocumentLayer,
+  CanvasPosition,
 } from "@/lib/editor/state"
 import {
   normalizeLayers,
@@ -76,6 +77,11 @@ export type EditorContextValue = {
   clearRedo?: () => void
   deleteStepsAfterIndex?: (idx: number) => void
   deleteStepsBeforeIndex?: (idx: number) => void
+  dimensionsDocument?: (size: {
+    width: number
+    height: number
+    canvasPosition: CanvasPosition
+  }) => void
   duplicateLayer: (layerId: LayerId) => void
   exportDocumentAtIndex?: (idx: number) => any
   flipDocument: (opts: { horizontal?: boolean; vertical?: boolean }) => void
@@ -83,7 +89,6 @@ export type EditorContextValue = {
   getOrderedLayers: () => EditorLayer[]
   getSelectedLayer: () => EditorLayer | null
   getSelectedLayerId: () => LayerId | null
-  dimensionsDocument?: (size: { width: number; height: number }) => void
   isTransactionActive?: () => boolean
   jumpToCheckpoint?: (id: string) => void
   pushLayerUpdate: (
@@ -99,6 +104,7 @@ export type EditorContextValue = {
   setCanonical: (
     updater: (s: CanonicalEditorState) => CanonicalEditorState
   ) => void
+
   setEphemeral: (
     updater: (s: EphemeralEditorState) => EphemeralEditorState
   ) => void
@@ -505,12 +511,24 @@ export function EditorProvider({
   )
 
   const dimensionsDocument = React.useCallback(
-    (size: { width: number; height: number }) => {
+    (size: {
+      width: number
+      height: number
+      canvasPosition: CanvasPosition
+    }) => {
       try {
         const h = historyRef.current
         if (!h) return
-        h.beginTransaction(`Dimensions Document ${size.width}×${size.height}`)
-        h.push(new DocumentDimensionsCommand(size.width, size.height))
+        h.beginTransaction(
+          `Dimensions Document ${size.width}×${size.height} (${size.canvasPosition})`
+        )
+        h.push(
+          new DocumentDimensionsCommand(
+            size.width,
+            size.height,
+            size.canvasPosition
+          )
+        )
         h.endTransaction(true)
       } catch (error) {
         // Log the error for debugging
@@ -585,6 +603,7 @@ export function EditorProvider({
       setActiveTool,
       setBlendMode,
       setCanonical,
+
       setEphemeral,
       setLayerName,
       setOpacity,
@@ -614,6 +633,7 @@ export function EditorProvider({
       setActiveTool,
       setBlendMode,
       setCanonical,
+
       setEphemeral,
       setLayerName,
       setOpacity,

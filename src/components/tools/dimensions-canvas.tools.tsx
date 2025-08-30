@@ -13,7 +13,6 @@ import {
   ImageEditorButton,
   type ImageEditorButtonProps,
 } from "@/components/button.image-editor"
-import type { ImageLayer } from "@/lib/editor/state"
 import { GPU_SECURITY_CONSTANTS } from "@/lib/security/gpu-security"
 
 function DimensionsCanvasButton({
@@ -49,9 +48,6 @@ type CanvasPosition =
 
 function DimensionsCanvasControls({
   onChange,
-  selectedLayer,
-  dispatch,
-  toolsValues,
 }: Omit<ImageEditorFooterProps, "onSelectedToolChange">) {
   const { state, dimensionsDocument } = useEditorContext()
   const [width, setWidth] = React.useState<number>(
@@ -68,10 +64,8 @@ function DimensionsCanvasControls({
     null
   )
 
-  const [canvasPosition, setCanvasPosition] =
-    React.useState<CanvasPosition>("centerCenter")
-
-  const image = (selectedLayer as ImageLayer).image
+  const [canvasPositionState, setCanvasPositionState] =
+    React.useState<CanvasPosition | null>(null)
 
   // Initialize from canonical.document
   React.useEffect(() => {
@@ -84,6 +78,11 @@ function DimensionsCanvasControls({
       setValidationError(null) // Clear any previous errors
     }
   }, [state.canonical.document.width, state.canonical.document.height])
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: initialize canvas position state
+  React.useEffect(() => {
+    setCanvasPositionState(state.canonical.document.canvasPosition)
+  }, [])
 
   // Validate dimensions before applying changes
   const validateDimensions = (
@@ -109,10 +108,15 @@ function DimensionsCanvasControls({
       GPU_SECURITY_CONSTANTS.MAX_TEXTURE_SIZE *
       GPU_SECURITY_CONSTANTS.MAX_TEXTURE_SIZE
 
-    // Allow up to 80% of the maximum possible area to leave room for other operations
-    const maxAllowedArea = Math.floor(maxArea * 0.8)
+    // Allow up to 90% of the maximum possible area to leave room for other operations
+    const maxAllowedArea = Math.floor(maxArea * 0.9)
 
     if (totalArea > maxAllowedArea) {
+      console.error("Area validation FAILED:", {
+        totalArea,
+        maxAllowedArea,
+        difference: totalArea - maxAllowedArea,
+      })
       return `Canvas area (${totalArea.toLocaleString()} pixels) exceeds maximum allowed area (${maxAllowedArea.toLocaleString()} pixels)`
     }
 
@@ -152,37 +156,40 @@ function DimensionsCanvasControls({
         return
       }
 
-      // Clear any previous validation errors
       setValidationError(null)
 
       setWidth(newWidth)
       setHeight(newHeight)
-
-      // Fire local onChange label handler if provided
-      onChange?.(0 as any)
-
-      // Update document dimensions - this will automatically trigger:
-      // 1. Canvas size update
-      // 2. Layer repositioning through the existing rendering system
-      // 3. Redraw with new dimensions
-      try {
-        dimensionsDocument?.({ width: newWidth, height: newHeight })
-      } catch (error) {
-        // If the command fails, show the error and revert the local state
-        const errorMessage =
-          error instanceof Error ? error.message : "Failed to update dimensions"
-        setValidationError(errorMessage)
-
-        // Revert to the previous valid dimensions
-        setWidth(state.canonical.document.width)
-        setHeight(state.canonical.document.height)
-      }
     }
 
   const handleCanvasPositionChange = (position: CanvasPosition) => {
-    setCanvasPosition(position)
-    // No need to dispatch custom events anymore - position changes are handled
-    // directly in handleOnChange when dimensions actually change
+    setCanvasPositionState(position)
+  }
+
+  const handleOnKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      handleOnSave()
+    }
+  }
+
+  const handleOnSave = () => {
+    try {
+      dimensionsDocument?.({
+        width,
+        height,
+        canvasPosition: canvasPositionState as CanvasPosition,
+      })
+    } catch (error) {
+      // If the command fails, show the error and revert the local state
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to update dimensions"
+      setValidationError(errorMessage)
+
+      // Revert to the previous valid dimensions
+      setWidth(state.canonical.document.width)
+      setHeight(state.canonical.document.height)
+      // onChange?.({ width, height })
+    }
   }
 
   return (
@@ -205,7 +212,7 @@ function DimensionsCanvasControls({
           )}
           onClick={() => handleCanvasPositionChange("topLeft")}
         >
-          {canvasPosition === "topLeft" && (
+          {canvasPositionState === "topLeft" && (
             <motion.div
               layoutId='canvasIndicator'
               className='absolute inset-0 bg-accent'
@@ -221,7 +228,7 @@ function DimensionsCanvasControls({
           )}
           onClick={() => handleCanvasPositionChange("topCenter")}
         >
-          {canvasPosition === "topCenter" && (
+          {canvasPositionState === "topCenter" && (
             <motion.div
               layoutId='canvasIndicator'
               className='absolute inset-0 bg-accent'
@@ -238,7 +245,7 @@ function DimensionsCanvasControls({
           onClick={() => handleCanvasPositionChange("topRight")}
         >
           <div className='h-8 w-8 ' />
-          {canvasPosition === "topRight" && (
+          {canvasPositionState === "topRight" && (
             <motion.div
               layoutId='canvasIndicator'
               className='absolute inset-0 bg-accent'
@@ -255,7 +262,7 @@ function DimensionsCanvasControls({
           )}
           onClick={() => handleCanvasPositionChange("centerLeft")}
         >
-          {canvasPosition === "centerLeft" && (
+          {canvasPositionState === "centerLeft" && (
             <motion.div
               layoutId='canvasIndicator'
               className='absolute inset-0 bg-accent'
@@ -271,7 +278,7 @@ function DimensionsCanvasControls({
           )}
           onClick={() => handleCanvasPositionChange("centerCenter")}
         >
-          {canvasPosition === "centerCenter" && (
+          {canvasPositionState === "centerCenter" && (
             <motion.div
               layoutId='canvasIndicator'
               className='absolute inset-0 bg-accent'
@@ -288,7 +295,7 @@ function DimensionsCanvasControls({
           onClick={() => handleCanvasPositionChange("centerRight")}
         >
           <div className='h-8 w-8 ' />
-          {canvasPosition === "centerRight" && (
+          {canvasPositionState === "centerRight" && (
             <motion.div
               layoutId='canvasIndicator'
               className='absolute inset-0 bg-accent'
@@ -305,7 +312,7 @@ function DimensionsCanvasControls({
           )}
           onClick={() => handleCanvasPositionChange("bottomLeft")}
         >
-          {canvasPosition === "bottomLeft" && (
+          {canvasPositionState === "bottomLeft" && (
             <motion.div
               layoutId='canvasIndicator'
               className='absolute inset-0 bg-accent'
@@ -321,7 +328,7 @@ function DimensionsCanvasControls({
           )}
           onClick={() => handleCanvasPositionChange("bottomCenter")}
         >
-          {canvasPosition === "bottomCenter" && (
+          {canvasPositionState === "bottomCenter" && (
             <motion.div
               layoutId='canvasIndicator'
               className='absolute inset-0 bg-accent'
@@ -337,7 +344,7 @@ function DimensionsCanvasControls({
           )}
           onClick={() => handleCanvasPositionChange("bottomRight")}
         >
-          {canvasPosition === "bottomRight" && (
+          {canvasPositionState === "bottomRight" && (
             <motion.div
               layoutId='canvasIndicator'
               className='absolute inset-0 bg-accent'
@@ -363,6 +370,7 @@ function DimensionsCanvasControls({
             className='col-start-1 row-start-2 w-20 rounded-none border-t-0 border-l-0 border-r-0 p-0 h-8'
             value={width}
             onChange={handleOnChange("width")}
+            onKeyDown={handleOnKeyDown}
           />
         </div>
 
@@ -395,22 +403,13 @@ function DimensionsCanvasControls({
             className='col-start-3 row-start-2 w-20 rounded-none border-t-0 border-l-0 border-r-0'
             value={height}
             onChange={handleOnChange("height")}
+            onKeyDown={handleOnKeyDown}
           />
-        </div>
-      </div>
 
-      {/* Dimension Limits Info */}
-      <div className='text-xs text-muted-foreground text-center'>
-        Max dimensions: {GPU_SECURITY_CONSTANTS.MAX_TEXTURE_SIZE}×
-        {GPU_SECURITY_CONSTANTS.MAX_TEXTURE_SIZE}px
-        <br />
-        Max area:{" "}
-        {Math.floor(
-          GPU_SECURITY_CONSTANTS.MAX_TEXTURE_SIZE *
-            GPU_SECURITY_CONSTANTS.MAX_TEXTURE_SIZE *
-            0.8
-        ).toLocaleString()}{" "}
-        pixels
+          <Button className='rounded-sm h-8' onClick={handleOnSave}>
+            Save
+          </Button>
+        </div>
       </div>
     </div>
   )

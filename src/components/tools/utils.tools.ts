@@ -31,6 +31,6 @@ export interface ImageEditorFooterProps
   label?: (value: number, operator: string) => React.ReactNode
   dispatch: (value: ImageEditorToolsActions | ImageEditorToolsActions[]) => void
   onSelectedToolChange: (tool: keyof typeof TOOL_VALUES) => void
-  onChange?: (value: number) => void
+  onChange?: (value: number | { width: number; height: number }) => void
   onProgress?: (progress: number) => void
 }

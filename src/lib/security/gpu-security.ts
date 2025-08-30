@@ -7,9 +7,10 @@
 
 // Security constants
 export const GPU_SECURITY_CONSTANTS = {
+  MAX_CANVAS_DIMENSION: 16384,
+
   // Maximum texture dimensions
   MAX_TEXTURE_SIZE: 16384,
-  MAX_CANVAS_DIMENSION: 16384,
 
   // Maximum blur kernel size to prevent GPU memory exhaustion
   MAX_BLUR_KERNEL_SIZE: 256,
@@ -37,8 +38,8 @@ export const GPU_SECURITY_CONSTANTS = {
   MAX_ROTATE: 360,
   MAX_SCALE: 5.0,
 
-  // Memory limits
-  MAX_GPU_MEMORY_USAGE: 0.8, // 80% of available GPU memory
+  // Memory limits - Updated to be less conservative for modern GPUs
+  MAX_GPU_MEMORY_USAGE: 0.9, // Increased from 0.8 to 0.9 (90% of available GPU memory)
   MAX_TEXTURE_COUNT: 1000,
   MAX_FBO_COUNT: 100,
 }
@@ -67,13 +68,14 @@ export interface GPUCapabilities {
   maxDrawBuffers: number
   maxColorAttachments: number
   maxSamples: number
+  estimatedGPUMemory?: number
 }
 
 // Detect GPU capabilities
 export function detectGPUCapabilities(
   gl: WebGL2RenderingContext
 ): GPUCapabilities {
-  return {
+  const capabilities = {
     maxTextureSize: gl.getParameter(gl.MAX_TEXTURE_SIZE),
     maxRenderbufferSize: gl.getParameter(gl.MAX_RENDERBUFFER_SIZE),
     maxViewportDims: gl.getParameter(gl.MAX_VIEWPORT_DIMS),
@@ -89,8 +91,8 @@ export function detectGPUCapabilities(
       gl.MAX_COMBINED_TEXTURE_IMAGE_UNITS
     ),
     // Not present in WebGL2; leave undefined for compatibility
-    maxVertexOutputVectors: undefined,
-    maxFragmentInputVectors: undefined,
+    maxVertexOutputVectors: 0,
+    maxFragmentInputVectors: 0,
     minAliasedLineWidth: gl.getParameter(gl.ALIASED_LINE_WIDTH_RANGE)[0],
     maxAliasedLineWidth: gl.getParameter(gl.ALIASED_LINE_WIDTH_RANGE)[1],
     minAliasedPointSize: gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE)[0],
@@ -100,7 +102,28 @@ export function detectGPUCapabilities(
     maxDrawBuffers: gl.getParameter(gl.MAX_DRAW_BUFFERS),
     maxColorAttachments: gl.getParameter(gl.MAX_COLOR_ATTACHMENTS),
     maxSamples: gl.getParameter(gl.MAX_SAMPLES),
+    estimatedGPUMemory: 0, // Initialize as undefined
   }
+
+  // Estimate GPU memory based on texture size capabilities
+  // This is a rough estimation - modern GPUs typically have 4GB+ memory
+  // but we can make educated guesses based on texture size limits
+  const maxTextureSize = capabilities.maxTextureSize
+  if (maxTextureSize >= 16384) {
+    // 16K+ texture support suggests 8GB+ GPU memory (increased from 4GB)
+    capabilities.estimatedGPUMemory = 8 * 1024 * 1024 * 1024 // 8GB
+  } else if (maxTextureSize >= 8192) {
+    // 8K+ texture support suggests 4GB+ GPU memory (increased from 2GB)
+    capabilities.estimatedGPUMemory = 4 * 1024 * 1024 * 1024 // 4GB
+  } else if (maxTextureSize >= 4096) {
+    // 4K+ texture support suggests 2GB+ GPU memory (increased from 1GB)
+    capabilities.estimatedGPUMemory = 2 * 1024 * 1024 * 1024 // 2GB
+  } else {
+    // Fallback to more generous estimate for older systems
+    capabilities.estimatedGPUMemory = 1 * 1024 * 1024 * 1024 // 1GB (increased from 512MB)
+  }
+
+  return capabilities
 }
 
 // Validate image dimensions
@@ -133,14 +156,65 @@ export function validateImageDimensions(
     }
   }
 
-  if (
-    width * height >
-    GPU_SECURITY_CONSTANTS.MAX_CANVAS_DIMENSION *
-      GPU_SECURITY_CONSTANTS.MAX_CANVAS_DIMENSION
-  ) {
+  // Calculate memory usage and apply memory limit
+  const pixelCount = width * height
+  const bytesPerPixel = 4 // RGBA
+  const estimatedMemoryBytes = pixelCount * bytesPerPixel
+
+  // Use detected GPU memory or fallback to more generous estimates for modern systems
+  let gpuMemory: number
+  if (capabilities?.estimatedGPUMemory) {
+    gpuMemory = capabilities.estimatedGPUMemory
+  } else {
+    // More generous fallback estimates for modern GPUs
+    const maxTextureSize =
+      capabilities?.maxTextureSize || GPU_SECURITY_CONSTANTS.MAX_TEXTURE_SIZE
+    if (maxTextureSize >= 16384) {
+      gpuMemory = 8 * 1024 * 1024 * 1024 // 8GB (increased from 4GB)
+    } else if (maxTextureSize >= 8192) {
+      gpuMemory = 4 * 1024 * 1024 * 1024 // 4GB (increased from 2GB)
+    } else if (maxTextureSize >= 4096) {
+      gpuMemory = 2 * 1024 * 1024 * 1024 // 2GB (increased from 1GB)
+    } else {
+      gpuMemory = 1 * 1024 * 1024 * 1024 // 1GB (increased from 512MB)
+    }
+  }
+
+  const memoryLimit = gpuMemory * GPU_SECURITY_CONSTANTS.MAX_GPU_MEMORY_USAGE
+
+  if (estimatedMemoryBytes > memoryLimit) {
+    // Calculate adjusted dimensions that fit within memory limit
+    const maxPixels = Math.floor(memoryLimit / bytesPerPixel)
+    const aspectRatio = width / height
+
+    let adjustedWidth: number
+    let adjustedHeight: number
+
+    if (aspectRatio >= 1) {
+      // Landscape or square
+      adjustedHeight = Math.floor(Math.sqrt(maxPixels / aspectRatio))
+      adjustedWidth = Math.floor(adjustedHeight * aspectRatio)
+    } else {
+      // Portrait
+      adjustedWidth = Math.floor(Math.sqrt(maxPixels * aspectRatio))
+      adjustedHeight = Math.floor(adjustedWidth / aspectRatio)
+    }
+
+    // Ensure adjusted dimensions don't exceed maximum texture size
+    adjustedWidth = Math.min(
+      adjustedWidth,
+      GPU_SECURITY_CONSTANTS.MAX_TEXTURE_SIZE
+    )
+    adjustedHeight = Math.min(
+      adjustedHeight,
+      GPU_SECURITY_CONSTANTS.MAX_TEXTURE_SIZE
+    )
+
     return {
       isValid: false,
-      error: "Image area exceeds maximum allowed size",
+      error: `Image dimensions exceed GPU memory limit (${(estimatedMemoryBytes / (1024 * 1024)).toFixed(1)}MB > ${(memoryLimit / (1024 * 1024)).toFixed(1)}MB). Consider resizing to ${adjustedWidth}x${adjustedHeight}`,
+      adjustedWidth,
+      adjustedHeight,
     }
   }
 
@@ -158,8 +232,6 @@ export function validateImageDimensions(
       }
     }
   }
-
-  console.log({ isValid: true })
 
   return { isValid: true }
 }
@@ -670,8 +742,8 @@ export function estimateGPUMemoryUsage(
   // Convert to MB for easier reading
   const memoryMB = totalMemory / (1024 * 1024)
 
-  // Assume 2GB GPU memory as baseline (this should be detected)
-  const assumedGPUMemory = 2 * 1024 * 1024 * 1024 // 2GB
+  // Assume 4GB GPU memory as baseline for modern systems (this should be detected)
+  const assumedGPUMemory = 4 * 1024 * 1024 * 1024 // 4GB
   const memoryLimit =
     assumedGPUMemory * GPU_SECURITY_CONSTANTS.MAX_GPU_MEMORY_USAGE
   const memoryLimitMB = memoryLimit / (1024 * 1024)
@@ -681,7 +753,7 @@ export function estimateGPUMemoryUsage(
   let warning: string | undefined
   if (!isWithinLimits) {
     warning = `GPU memory usage (${memoryMB.toFixed(2)}MB) exceeds recommended limit (${memoryLimitMB.toFixed(2)}MB)`
-  } else if (memoryMB > memoryLimitMB * 0.8) {
+  } else if (memoryMB > memoryLimitMB * 0.85) {
     warning = `GPU memory usage (${memoryMB.toFixed(2)}MB) is approaching limit (${memoryLimitMB.toFixed(2)}MB)`
   }
 
@@ -723,4 +795,65 @@ export function sanitizeWorkerData(data: any): any {
 
   // Reject functions and other complex types
   throw new Error("Unsafe data type for worker communication")
+}
+
+// Test function to debug dimension validation
+export function testDimensionValidation(
+  width: number,
+  height: number
+): {
+  area: number
+  maxArea: number
+  maxAllowedArea: number
+  areaPercentage: number
+  gpuValidation: ReturnType<typeof validateImageDimensions>
+  gpuMemory: number
+  memoryLimit: number
+  estimatedMemoryMB: number
+  memoryLimitMB: number
+} {
+  const area = width * height
+  const maxArea =
+    GPU_SECURITY_CONSTANTS.MAX_TEXTURE_SIZE *
+    GPU_SECURITY_CONSTANTS.MAX_TEXTURE_SIZE
+  const maxAllowedArea = Math.floor(maxArea * 0.9)
+  const areaPercentage = (area / maxAllowedArea) * 100
+
+  const gpuValidation = validateImageDimensions(width, height)
+
+  // Calculate memory values manually
+  const bytesPerPixel = 4 // RGBA
+  const estimatedMemoryBytes = area * bytesPerPixel
+
+  // Use the same logic as validateImageDimensions
+  let gpuMemory: number
+  if (gpuValidation.isValid) {
+    // If validation passed, use the same fallback logic
+    const maxTextureSize = GPU_SECURITY_CONSTANTS.MAX_TEXTURE_SIZE
+    if (maxTextureSize >= 16384) {
+      gpuMemory = 8 * 1024 * 1024 * 1024 // 8GB
+    } else if (maxTextureSize >= 8192) {
+      gpuMemory = 4 * 1024 * 1024 * 1024 // 4GB
+    } else if (maxTextureSize >= 4096) {
+      gpuMemory = 2 * 1024 * 1024 * 1024 // 2GB
+    } else {
+      gpuMemory = 1 * 1024 * 1024 * 1024 // 1GB
+    }
+  } else {
+    gpuMemory = 0 // Will be set below
+  }
+
+  const memoryLimit = gpuMemory * GPU_SECURITY_CONSTANTS.MAX_GPU_MEMORY_USAGE
+
+  return {
+    area,
+    maxArea,
+    maxAllowedArea,
+    areaPercentage,
+    gpuValidation,
+    gpuMemory,
+    memoryLimit,
+    estimatedMemoryMB: estimatedMemoryBytes / (1024 * 1024),
+    memoryLimitMB: memoryLimit / (1024 * 1024),
+  }
 }

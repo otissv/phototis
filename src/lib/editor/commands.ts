@@ -5,6 +5,7 @@ import type {
   LayerId,
   ViewportModel,
   ActiveToolModel,
+  CanvasPosition,
 } from "@/lib/editor/state"
 import type { Command, CommandMeta } from "@/lib/editor/history"
 import { capitalize } from "@/lib/utils/capitalize"
@@ -68,8 +69,10 @@ export type SerializedCommand =
       meta: CommandMeta
       width: number
       height: number
+      canvasPosition: CanvasPosition
       previousWidth: number
       previousHeight: number
+      previousCanvasPosition: CanvasPosition
     }
 
 function deepSize(obj: unknown): number {
@@ -774,9 +777,19 @@ export class DocumentDimensionsCommand implements Command {
   meta: CommandMeta
   private readonly width: number
   private readonly height: number
-  private previous?: { width: number; height: number }
+  private readonly canvasPosition: CanvasPosition
+  private previous?: {
+    width: number
+    height: number
+    canvasPosition: CanvasPosition
+  }
 
-  constructor(width: number, height: number, meta?: Partial<CommandMeta>) {
+  constructor(
+    width: number,
+    height: number,
+    canvasPosition: CanvasPosition,
+    meta?: Partial<CommandMeta>
+  ) {
     // Validate dimensions before creating the command
     const validationError = this.validateDimensions(width, height)
     if (validationError) {
@@ -785,8 +798,9 @@ export class DocumentDimensionsCommand implements Command {
 
     this.width = Math.max(1, Math.floor(width))
     this.height = Math.max(1, Math.floor(height))
+    this.canvasPosition = canvasPosition
     this.meta = {
-      label: `Dimensions Document ${this.width}×${this.height}`,
+      label: `Dimensions Document ${this.width}×${this.height} (${canvasPosition})`,
       scope: "document",
       timestamp: Date.now(),
       coalescable: false,
@@ -819,8 +833,8 @@ export class DocumentDimensionsCommand implements Command {
       GPU_SECURITY_CONSTANTS.MAX_TEXTURE_SIZE *
       GPU_SECURITY_CONSTANTS.MAX_TEXTURE_SIZE
 
-    // Allow up to 80% of the maximum possible area to leave room for other operations
-    const maxAllowedArea = Math.floor(maxArea * 0.8)
+    // Allow up to 90% of the maximum possible area to leave room for other operations
+    const maxAllowedArea = Math.floor(maxArea * 0.9)
 
     if (totalArea > maxAllowedArea) {
       return `Canvas area (${totalArea.toLocaleString()} pixels) exceeds maximum allowed area (${maxAllowedArea.toLocaleString()} pixels)`
@@ -833,14 +847,17 @@ export class DocumentDimensionsCommand implements Command {
     this.previous = {
       width: state.document.width,
       height: state.document.height,
+      canvasPosition: state.document.canvasPosition,
     }
-    // Return new state with updated dimensions
+
+    // Return new state with updated dimensions and canvas position
     return {
       ...state,
       document: {
         ...state.document,
         width: this.width,
         height: this.height,
+        canvasPosition: this.canvasPosition,
       },
     }
   }
@@ -848,14 +865,15 @@ export class DocumentDimensionsCommand implements Command {
   invert(): Command {
     const prevW = this.previous?.width ?? 1
     const prevH = this.previous?.height ?? 1
-    return new DocumentDimensionsCommand(prevW, prevH, {
-      label: `Undo Dimensions Document to ${prevW}×${prevH}`,
+    const prevPosition = this.previous?.canvasPosition ?? "centerCenter"
+    return new DocumentDimensionsCommand(prevW, prevH, prevPosition, {
+      label: `Undo Dimensions Document to ${prevW}×${prevH} (${prevPosition})`,
     })
   }
 
   estimateSize(): number {
-    // Rough estimate for width/height numbers
-    return 64
+    // Rough estimate for width/height numbers + canvas position
+    return 96
   }
 
   serialize(): SerializedCommand {
@@ -864,15 +882,22 @@ export class DocumentDimensionsCommand implements Command {
       meta: this.meta,
       width: this.width,
       height: this.height,
+      canvasPosition: this.canvasPosition,
       previousWidth: this.previous?.width ?? 0,
       previousHeight: this.previous?.height ?? 0,
+      previousCanvasPosition: this.previous?.canvasPosition ?? "centerCenter",
     }
   }
 
   static deserialize(
     data: SerializedCommand & { type: "documentDimensions" }
   ): DocumentDimensionsCommand {
-    return new DocumentDimensionsCommand(data.width, data.height, data.meta)
+    return new DocumentDimensionsCommand(
+      data.width,
+      data.height,
+      data.canvasPosition,
+      data.meta
+    )
   }
 
   // Test function to validate dimensions logic
@@ -887,7 +912,7 @@ export class DocumentDimensionsCommand implements Command {
     percentage: number
   } {
     // Create a temporary command to access the validation method
-    const tempCommand = new DocumentDimensionsCommand(1, 1)
+    const tempCommand = new DocumentDimensionsCommand(1, 1, "centerCenter")
     const error = (tempCommand as any).validateDimensions(width, height)
 
     const totalArea = width * height

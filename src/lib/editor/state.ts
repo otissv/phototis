@@ -113,9 +113,21 @@ export interface LayersModel {
   byId: Record<LayerId, EditorLayer>
 }
 
+export type CanvasPosition =
+  | "topLeft"
+  | "topCenter"
+  | "topRight"
+  | "centerLeft"
+  | "centerCenter"
+  | "centerRight"
+  | "bottomLeft"
+  | "bottomCenter"
+  | "bottomRight"
+
 export interface DocumentMetadata {
   width: number
   height: number
+  canvasPosition: CanvasPosition
   /** Background description; transparent or a solid color */
   background:
     | { type: "transparent" }
@@ -225,6 +237,7 @@ export function createDefaultDocument(
   return {
     width,
     height,
+    canvasPosition: "centerCenter",
     background: { type: "transparent" },
     colorProfile: "srgb",
     dpi: 72,
