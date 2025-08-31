@@ -67,7 +67,10 @@ export function ImageEditorCanvas({
   const [processing, setProcessing] = React.useState(0)
   const [isElementDragging, setIsElementDragging] = React.useState(false)
 
-  const canonicalLayers = getOrderedLayers()
+  const canonicalLayers = React.useMemo(
+    () => getOrderedLayers(),
+    [getOrderedLayers]
+  )
 
   // Worker-based rendering system
   // Memoize worker config so hook callbacks remain stable across renders
@@ -83,6 +86,7 @@ export function ImageEditorCanvas({
 
   const {
     isReady: isWorkerReady,
+    isInitializing: isWorkerInitializing,
     isProcessing: isWorkerProcessing,
     progress: workerProgress,
     error: workerError,
@@ -93,10 +97,12 @@ export function ImageEditorCanvas({
     canvasRef: workerCanvasRef,
   } = useWorkerRenderer(workerRendererConfig)
 
-
   // Stable refs for worker state to avoid re-render loops in draw
   const isWorkerReadyRef = React.useRef(false)
   const isWorkerProcessingRef = React.useRef(false)
+  const isWorkerInitializingRef = React.useRef(false)
+
+  console.log("rerender")
 
   React.useEffect(() => {
     isWorkerReadyRef.current = isWorkerReady
@@ -105,6 +111,10 @@ export function ImageEditorCanvas({
   React.useEffect(() => {
     isWorkerProcessingRef.current = isWorkerProcessing
   }, [isWorkerProcessing])
+
+  React.useEffect(() => {
+    isWorkerInitializingRef.current = isWorkerInitializing
+  }, [isWorkerInitializing])
 
   // Direct image data cache for WebGL textures
   const imageDataCacheRef = React.useRef<Map<string, ImageData>>(new Map())
@@ -142,205 +152,12 @@ export function ImageEditorCanvas({
     canvasDimensions.height,
   ])
 
-  // Function to recalculate layer positions when canvas dimensions change
-  const recalculateLayerPositions = React.useCallback(
-    (layers: [string, LayerDimensions][]) => {
-      const currentCanvasWidth = canvasDimensions.width
-      const currentCanvasHeight = canvasDimensions.height
-      const canvasPosition = canonicalStateRef.current.document.canvasPosition
-
-      // state.canonical.layers.byId[id].filters.dimensions
-
-      // Helper function to calculate position based on canvas anchor point
-      const calculatePositionFromAnchor = (
-        layerWidth: number,
-        layerHeight: number,
-        canvasWidth: number,
-        canvasHeight: number,
-        anchor: CanvasPosition
-      ): { x: number; y: number } => {
-        let x: number
-        let y: number
-
-        switch (anchor) {
-          case "topLeft":
-            x = 0
-            y = 0
-            break
-          case "topCenter":
-            x = (canvasWidth - layerWidth) / 2
-            y = 0
-            break
-          case "topRight":
-            x = canvasWidth - layerWidth
-            y = 0
-            break
-          case "centerLeft":
-            x = 0
-            y = (canvasHeight - layerHeight) / 2
-            break
-          case "centerCenter":
-            x = (canvasWidth - layerWidth) / 2
-            y = (canvasHeight - layerHeight) / 2
-            break
-          case "centerRight":
-            x = canvasWidth - layerWidth
-            y = (canvasHeight - layerHeight) / 2
-            break
-          case "bottomLeft":
-            x = 0
-            y = canvasHeight - layerHeight
-            break
-          case "bottomCenter":
-            x = (canvasWidth - layerWidth) / 2
-            y = canvasHeight - layerHeight
-            break
-          case "bottomRight":
-            x = canvasWidth - layerWidth
-            y = canvasHeight - layerHeight
-            break
-          default:
-            // Fallback to center-center
-            x = (canvasWidth - layerWidth) / 2
-            y = (canvasHeight - layerHeight) / 2
-        }
-
-        // For layers larger than canvas, we need to handle them specially
-        // to maintain the intended positioning while keeping them visible
-        if (layerWidth > canvasWidth) {
-          // If layer is wider than canvas, adjust x to keep it visible
-          // but maintain the intended horizontal alignment
-          if (anchor.endsWith("Left")) {
-            x = 0 // Keep left-aligned
-          } else if (anchor.endsWith("Right")) {
-            x = canvasWidth - layerWidth // Keep right-aligned
-          } else {
-            x = (canvasWidth - layerWidth) / 2 // Center horizontally
-          }
-        }
-
-        if (layerHeight > canvasHeight) {
-          // If layer is taller than canvas, adjust y to keep it visible
-          // but maintain the intended vertical alignment
-          if (anchor.startsWith("top")) {
-            y = 0 // Keep top-aligned
-          } else if (anchor.startsWith("bottom")) {
-            y = canvasHeight - layerHeight // Keep bottom-aligned
-          } else {
-            y = (canvasHeight - layerHeight) / 2 // Center vertically
-          }
-        }
-
-        // Only clamp coordinates if the layer would actually go outside bounds
-        // and we're not dealing with a layer larger than the canvas
-        if (layerWidth <= canvasWidth) {
-          x = Math.max(0, Math.min(x, canvasWidth - layerWidth))
-        }
-        if (layerHeight <= canvasHeight) {
-          y = Math.max(0, Math.min(y, canvasHeight - layerHeight))
-        }
-
-        return { x: Math.round(x), y: Math.round(y) }
-      }
-
-      // Update positions for all existing layers
-      for (const [layerId, dimensions] of layers) {
-        const imageData = imageDataCacheRef.current.get(layerId)
-
-        if (!imageData) continue
-
-        // Calculate new position based on canvas anchor point
-        const { x: newX, y: newY } = calculatePositionFromAnchor(
-          imageData.width,
-          imageData.height,
-          currentCanvasWidth,
-          currentCanvasHeight,
-          canvasPosition
-        )
-
-        // Update canonical state to persist the new positions
-        // Get the current layer to preserve existing filter values
-        const currentLayer = canonicalStateRef.current.layers.byId[layerId]
-
-        const currentFilters = (currentLayer as any)?.filters || {}
-        // const currentDimensions = currentFilters.dimensions || {}
-
-        // Update local ref for immediate rendering
-        layerDimensionsRef.current.set(layerId, {
-          ...dimensions,
-          x: newX,
-          y: newY,
-        })
-
-        // Only update x,y coordinates, preserve existing width/height and other filter values
-        updateLayer(layerId, {
-          filters: {
-            ...currentFilters,
-            dimensions: {
-              ...dimensions,
-              x: newX,
-              y: newY,
-              width: dimensions.width,
-              height: dimensions.height,
-            },
-          },
-        } as any)
-      }
-
-      // Trigger a redraw to show updated positions
-      // Use a callback approach to avoid drawRef dependency issues
-      setTimeout(() => {
-        // The draw function will be called when the component re-renders
-        // due to the state updates from updateLayer calls
-      }, 0)
-    },
-    [
-      canvasDimensions.width,
-      canvasDimensions.height,
-      JSON.stringify(state.canonical.layers),
-      updateLayer,
-    ]
-  )
-
-  // Actually resize the canvas element when dimensions change
-  React.useEffect(() => {
-    const canvas = canvasRef?.current
-    if (!canvas) return
-
-    // Update the actual canvas element dimensions
-    canvas.width = canvasDimensions.width
-    canvas.height = canvasDimensions.height
-
-    // Clear WebGL caches to force reinitialization with new dimensions
-    const gl = glRef.current
-    if (gl) {
-      // Clear texture cache
-      for (const [key, tex] of Array.from(textureCacheRef.current.entries())) {
-        gl.deleteTexture(tex)
-      }
-      textureCacheRef.current.clear()
-
-      // Don't clear imageDataCacheRef - this contains the actual image data
-      // that layers need for rendering. The canvas resize doesn't change image content.
-
-      const stateLayerDimensions = Array.from(layerDimensionsRef.current)
-
-      console.log(stateLayerDimensions)
-      layerDimensionsRef.current.clear()
-      recalculateLayerPositions(stateLayerDimensions)
-
-      // Reset WebGL viewport to new dimensions
-      gl.viewport(0, 0, canvasDimensions.width, canvasDimensions.height)
-    }
-  }, [
-    canvasDimensions.width,
-    canvasDimensions.height,
-    recalculateLayerPositions,
-    canvasRef,
-  ])
-
   // Track canvases we've already initialized to avoid duplicate init
   const initializedCanvasesRef = React.useRef<WeakSet<HTMLCanvasElement>>(
+    new WeakSet()
+  )
+  // Track in-progress initialization to avoid overlapping attempts
+  const initializingCanvasesRef = React.useRef<WeakSet<HTMLCanvasElement>>(
     new WeakSet()
   )
 
@@ -351,24 +168,43 @@ export function ImageEditorCanvas({
     // Skip if already initialized or worker is ready
     if (
       initializedCanvasesRef.current.has(canvas) ||
+      initializingCanvasesRef.current.has(canvas) ||
       isWorkerReady ||
-   
+      isWorkerInitializing
     ) {
       return
     }
     const canvasStateManager = CanvasStateManager.getInstance()
     if (!canvasStateManager.canTransferToOffscreen(canvas)) {
+      console.log(
+        "🎨 [Renderer] Canvas cannot be transferred to OffscreenCanvas, will use hybrid renderer"
+      )
       return
     }
+    console.log(
+      `🎨 [WORKER] Initializing worker-based renderer at ${Date.now()}`
+    )
+    initializingCanvasesRef.current.add(canvas)
     void initializeWorker(canvas).then((success) => {
       if (success) {
+        console.log(
+          `🎨 [WORKER] Worker-based renderer initialized successfully at ${Date.now()}`
+        )
+
         initializedCanvasesRef.current.add(canvas)
- 
       } else {
-        console.error("Failed to initialize worker renderer")
+        console.error("🎨 [WORKER] Failed to initialize worker renderer")
       }
+      initializingCanvasesRef.current.delete(canvas)
     })
-  }, [isWorkerReady, canvasRef?.current,  initializeWorker])
+
+    console.log("here")
+  }, [
+    isWorkerReady,
+    isWorkerInitializing,
+    canvasRef?.current,
+    initializeWorker,
+  ])
 
   // Initialize hybrid renderer (fallback)
   React.useEffect(() => {
@@ -382,7 +218,7 @@ export function ImageEditorCanvas({
     if (!canvasStateManager.canUseForWebGL(canvas)) {
       const error = canvasStateManager.getErrorMessage(canvas)
       console.warn(
-        "Canvas cannot be used for hybrid renderer:",
+        "🎨 [Renderer] Canvas cannot be used for hybrid renderer:",
         error || "Canvas has been transferred to OffscreenCanvas"
       )
       return
@@ -393,9 +229,16 @@ export function ImageEditorCanvas({
     const height = canvasDimensions.height
 
     if (!hybridRendererRef.current) {
+      console.log("🎨 [Renderer] Creating new hybrid renderer instance")
       hybridRendererRef.current = new HybridRenderer()
     }
 
+    console.log(
+      "🎨 [Renderer] Initializing hybrid renderer with dimensions:",
+      width,
+      "x",
+      height
+    )
     const success = hybridRendererRef.current.initialize({
       gl,
       width,
@@ -403,10 +246,11 @@ export function ImageEditorCanvas({
     })
 
     if (!success) {
-      console.error("Failed to initialize hybrid renderer")
+      console.error("🎨 [Renderer] Failed to initialize hybrid renderer")
+    } else {
+      console.log("🎨 [Renderer] Hybrid renderer initialized successfully")
     }
   }, [canvasRef?.current, canvasDimensions.width, canvasDimensions.height])
-
 
   // Motion values for smooth viewport handling
   const viewportX = useMotionValue(0)
@@ -1014,6 +858,19 @@ export function ImageEditorCanvas({
     const canvas = canvasRef.current
     const canvasStateManager = CanvasStateManager.getInstance()
 
+    // If the worker is initializing or the canvas can still be transferred,
+    // defer creating a WebGL context to avoid blocking OffscreenCanvas transfer.
+    if (
+      !isWorkerReady &&
+      (isWorkerInitializing ||
+        canvasStateManager.canTransferToOffscreen(canvas))
+    ) {
+      console.log(
+        "🎨 [Renderer] Deferring WebGL context creation while worker initializes/transfer is possible"
+      )
+      return
+    }
+
     // Check if canvas can be used for WebGL operations
     if (!canvasStateManager.canUseForWebGL(canvas)) {
       const error = canvasStateManager.getErrorMessage(canvas)
@@ -1102,7 +959,7 @@ export function ImageEditorCanvas({
         glRef.current = null
       }
     }
-  }, [canvasRef?.current])
+  }, [canvasRef?.current, isWorkerReady, isWorkerInitializing])
 
   // Helper function to create WebGL texture from ImageData
   const createTextureFromImageData = React.useCallback(
@@ -1204,6 +1061,12 @@ export function ImageEditorCanvas({
     // Prevent overlapping draws; allow during drags for live preview
     if (isDrawingRef.current) return
 
+    // If worker is initializing, skip fallback/hybrid to avoid noisy warnings and retries
+    if (!isWorkerReadyRef.current && isWorkerInitializingRef.current) {
+      isDrawingRef.current = false
+      return
+    }
+
     // Set drawing flag to prevent overlapping draws
     isDrawingRef.current = true
 
@@ -1232,6 +1095,12 @@ export function ImageEditorCanvas({
     try {
       // Use worker-based rendering if available (always queue; manager cancels in-flight)
       if (isWorkerReadyRef.current) {
+        // Avoid spamming the worker: if a task is already processing, skip
+        if (isWorkerProcessingRef.current) {
+          isDrawingRef.current = false
+          return
+        }
+        console.log("🎨 [Renderer] Using WORKER-BASED renderer")
         const canvas = canvasRef?.current
         if (!canvas) {
           console.warn("No canvas available for worker rendering")
@@ -1316,6 +1185,10 @@ export function ImageEditorCanvas({
 
           if (taskId) {
             // Worker is handling the rendering
+            console.log(
+              "🎨 [Renderer] Worker task queued successfully:",
+              taskId
+            )
             isDrawingRef.current = false
             return
           }
@@ -1325,10 +1198,12 @@ export function ImageEditorCanvas({
       }
 
       // Fallback to hybrid renderer if worker is not available
+      console.log("🎨 [Renderer] Using HYBRID renderer (fallback)")
       const gl = glRef.current
       const canvas = canvasRef?.current
 
       if (!gl || !canvas) {
+        console.warn("🎨 [Renderer] No WebGL context or canvas available")
         isDrawingRef.current = false
         return
       }
@@ -1339,7 +1214,7 @@ export function ImageEditorCanvas({
       if (!canvasStateManager.canUseForWebGL(canvas)) {
         const error = canvasStateManager.getErrorMessage(canvas)
         console.warn(
-          "Canvas cannot be used for hybrid renderer:",
+          "🎨 [Renderer] Canvas cannot be used for hybrid renderer:",
           error || "Canvas has been transferred to OffscreenCanvas"
         )
         isDrawingRef.current = false
@@ -1347,6 +1222,7 @@ export function ImageEditorCanvas({
       }
 
       if (!hybridRendererRef.current) {
+        console.warn("🎨 [Renderer] Hybrid renderer not initialized")
         isDrawingRef.current = false
         return
       }
@@ -1418,6 +1294,11 @@ export function ImageEditorCanvas({
         layerTextures.size > 0
       ) {
         try {
+          console.log(
+            "🎨 [Renderer] Hybrid renderer executing with",
+            allLayersToRender.length,
+            "layers"
+          )
           // Apply dimensions to active layer in hybrid path too
           let dimsForRender = layerDimensionsRef.current
           try {
@@ -1463,8 +1344,10 @@ export function ImageEditorCanvas({
 
           // Render the final result to canvas
           hybridRendererRef.current.renderToCanvas(canvas)
+          console.log("🎨 [Renderer] Hybrid renderer completed successfully")
         } catch (error) {
-          console.error("Error in hybrid renderer:", error)
+          console.error("🎨 [Renderer] Error in hybrid renderer:", error)
+          console.log("🎨 [Renderer] Falling back to simple WebGL rendering")
           // Fallback: Use simple WebGL rendering for the new layer system
           await renderLayersFallback(
             allLayersToRender,
@@ -1475,6 +1358,7 @@ export function ImageEditorCanvas({
         }
       } else {
         // Fallback: Use simple WebGL rendering for the new layer system
+        console.log("🎨 [Renderer] Using simple WebGL fallback renderer")
         await renderLayersFallback(
           allLayersToRender,
           layerTextures,
@@ -1498,6 +1382,12 @@ export function ImageEditorCanvas({
     ) => {
       const gl = glRef.current
       if (!gl) return
+
+      console.log(
+        "🎨 [Renderer] Simple WebGL fallback executing with",
+        layers.length,
+        "layers"
+      )
 
       // Clear the canvas
       gl.clearColor(0, 0, 0, 0)
@@ -1532,6 +1422,8 @@ export function ImageEditorCanvas({
           }
         }
       }
+
+      console.log("🎨 [Renderer] Simple WebGL fallback completed")
     },
     []
   )
@@ -1559,9 +1451,9 @@ export function ImageEditorCanvas({
       !!textureRef.current
 
     if (isWorkerReadyRef.current || hasWebGLReady) {
-      draw()
+      drawRef.current?.()
     }
-  }, [isWorkerReadyRef.current])
+  }, [isWorkerReady])
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: draw cause infinite loop
   React.useEffect(() => {

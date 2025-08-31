@@ -1,7 +1,7 @@
 // Worker Manager for coordinating Web Workers with OffscreenCanvas
 // Manages communication between main thread and render workers
 
-import type { ImageLayer } from "@/lib/editor/state"
+import type { EditorLayer } from "@/lib/editor/state"
 import type { ImageEditorToolsState } from "@/lib/tools/tools-state"
 import { CanvasStateManager } from "@/lib/canvas-state-manager"
 
@@ -59,8 +59,10 @@ export interface WorkerManagerConfig {
 }
 
 export class WorkerManager {
+  private static sharedInstance: WorkerManager | null = null
   private workers: Worker[] = []
   private filterWorker: Worker | null = null
+  private renderWorker: Worker | null = null
   private taskQueue: RenderTask[] = []
   private activeTasks: Map<string, RenderTask> = new Map()
   private messageHandlers: Map<string, (message: any) => void> = new Map()
@@ -77,6 +79,64 @@ export class WorkerManager {
       enableProgressiveRendering: true,
       progressiveLevels: [0.25, 0.5, 1.0], // 25%, 50%, 100%
       ...config,
+    }
+  }
+
+  static getShared(config: Partial<WorkerManagerConfig> = {}): WorkerManager {
+    if (!WorkerManager.sharedInstance) {
+      WorkerManager.sharedInstance = new WorkerManager(config)
+    }
+    return WorkerManager.sharedInstance
+  }
+
+  // Emit debug timeline events to the window for instrumentation
+  private emitDebug(stage: string, extra?: any): void {
+    try {
+      window.dispatchEvent(
+        new CustomEvent("worker-debug", {
+          detail: { stage, t: Date.now(), ...(extra || {}) },
+        })
+      )
+    } catch {}
+  }
+
+  // Pre-create workers to warm the module/code-split chunks without requiring a canvas
+  async prepare(): Promise<void> {
+    this.emitDebug("manager:prepare:start")
+    // Coalesce across instances
+    if (__globalPrepared) {
+      this.emitDebug("manager:prepare:skip-global")
+      return
+    }
+    if (__globalPrepareInProgress && __globalPreparePromise) {
+      await __globalPreparePromise
+      this.emitDebug("manager:prepare:awaited")
+      return
+    }
+
+    __globalPrepareInProgress = true
+    __globalPreparePromise = (async () => {
+      // Create and initialize render worker shell
+      if (!this.renderWorker) {
+        const worker = new Worker(
+          new URL("./render-worker.ts", import.meta.url),
+          { type: "module" }
+        )
+        worker.onmessage = this.handleWorkerMessage.bind(this)
+        worker.onerror = this.handleWorkerError.bind(this)
+        this.renderWorker = worker
+        this.workers.push(worker)
+        this.emitDebug("manager:prepare:render-worker-created")
+      }
+      // Do not create filter worker during prepare; defer until first use to minimize startup
+      __globalPrepared = true
+      this.emitDebug("manager:prepare:done")
+    })()
+
+    try {
+      await __globalPreparePromise
+    } finally {
+      __globalPrepareInProgress = false
     }
   }
 
@@ -107,35 +167,29 @@ export class WorkerManager {
       this.canvas = canvas
 
       // Transfer canvas control to OffscreenCanvas
+      this.emitDebug("manager:transfer:start")
       this.offscreenCanvas = canvas.transferControlToOffscreen()
+      this.emitDebug("manager:transfer:done")
 
       // Mark canvas as transferred
       canvasStateManager.markAsTransferred(canvas)
 
-      // Create and initialize render worker
-      const worker = new Worker(
-        new URL("./render-worker.ts", import.meta.url),
-        {
-          type: "module",
-        }
-      )
+      // Ensure we have a render worker (may be prewarmed)
+      if (!this.renderWorker) {
+        this.emitDebug("manager:prepare:call")
+        const t0 = Date.now()
+        await this.prepare()
+        this.emitDebug("manager:prepare:returned", { dt: Date.now() - t0 })
+      }
+      const worker = this.renderWorker as Worker
 
-      // Set up message handler
-      worker.onmessage = this.handleWorkerMessage.bind(this)
-      worker.onerror = this.handleWorkerError.bind(this)
+      // Defer filter worker creation; reuse later when a filter task is queued
+      if (this.filterWorker) {
+        this.emitDebug("manager:filter:reuse")
+      }
 
-      this.workers.push(worker)
-
-      // Create and initialize filter worker
-      try {
-        this.filterWorker = new Worker(
-          new URL("./filter-worker.ts", import.meta.url),
-          { type: "module" }
-        )
-        // Best effort init; no offscreen needed
-        await this.sendMessage(this.filterWorker, { type: "initialize" })
-      } catch {}
-
+      this.emitDebug("manager:initialize:postMessage")
+      const t1 = Date.now()
       const initSuccess = await this.sendMessage(worker, {
         type: "initialize",
         data: {
@@ -143,6 +197,10 @@ export class WorkerManager {
           width: canvas.width,
           height: canvas.height,
         },
+      })
+      this.emitDebug("manager:initialize:result", {
+        ok: initSuccess,
+        dt: Date.now() - t1,
       })
 
       // After transfer, the OffscreenCanvas is no longer available in main thread
@@ -156,6 +214,18 @@ export class WorkerManager {
       this.isInitialized = true
       return true
     } catch (error) {
+      try {
+        const canvasStateManager = CanvasStateManager.getInstance()
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Unknown initialization error"
+        if (this.canvas) {
+          canvasStateManager.markAsError(this.canvas, message)
+        } else {
+          canvasStateManager.markAsError(canvas, message)
+        }
+      } catch {}
       return false
     }
   }
@@ -210,6 +280,21 @@ export class WorkerManager {
   // Handle messages from workers
   private handleWorkerMessage(event: MessageEvent): void {
     const message = event.data
+    // Debug timeline relay
+    if (message.type === "debug") {
+      try {
+        window.dispatchEvent(
+          new CustomEvent("worker-debug", {
+            detail: {
+              stage: message.stage,
+              t: message.t || Date.now(),
+              extra: message.extra || null,
+            },
+          })
+        )
+      } catch {}
+      return
+    }
 
     // Check for registered handlers
     const handler = this.messageHandlers.get(message.id)
@@ -302,7 +387,7 @@ export class WorkerManager {
 
   // Queue a render task
   async queueRenderTask(
-    layers: ImageLayer[],
+    layers: EditorLayer[],
     toolsValues: ImageEditorToolsState,
     selectedLayerId: string,
     canvasWidth: number,
@@ -320,8 +405,9 @@ export class WorkerManager {
     // Do not convert to ImageBitmap on the main thread; let the worker handle it.
     // Attach a stable signature for caching/invalidation in the worker.
     const processedLayers = layers.map((layer) => {
-      if (layer.image instanceof File) {
-        const file = layer.image
+      const img: any = (layer as any).image
+      if (img instanceof File) {
+        const file = img as File
         const imageSignature = `${file.name}:${file.size}:${file.lastModified}`
         return {
           ...layer,
@@ -376,7 +462,25 @@ export class WorkerManager {
       retryCount: 0,
       maxRetries: this.config.maxRetries,
     }
-    this.queueTask(task)
+    // Ensure filter worker exists before queuing
+    void (async () => {
+      if (!this.filterWorker) {
+        this.emitDebug("manager:filter:init:start")
+        try {
+          this.filterWorker = new Worker(
+            new URL("./filter-worker.ts", import.meta.url),
+            { type: "module" }
+          )
+          await this.sendMessage(this.filterWorker, { type: "initialize" })
+          this.emitDebug("manager:filter:init:done")
+        } catch (e) {
+          this.emitDebug("manager:filter:init:error", {
+            err: e instanceof Error ? e.message : String(e),
+          })
+        }
+      }
+      this.queueTask(task)
+    })()
     return taskId
   }
 
@@ -550,3 +654,8 @@ export class WorkerManager {
     return this.isInitialized
   }
 }
+
+// Global prewarm state to coalesce concurrent prepare() calls across instances
+let __globalPreparePromise: Promise<void> | null = null
+let __globalPrepareInProgress = false
+let __globalPrepared = false

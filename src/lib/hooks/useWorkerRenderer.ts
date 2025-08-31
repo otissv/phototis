@@ -3,12 +3,13 @@
 
 import React from "react"
 import { WorkerManager, TaskPriority } from "@/lib/workers/worker-manager"
-import type { Layer } from "@/layer-system/layer-system"
+import type { EditorLayer } from "@/lib/editor/state"
 import type { ImageEditorToolsState } from "@/lib/tools/tools-state"
 
 // Worker renderer state
 interface WorkerRendererState {
   isReady: boolean
+  isInitializing: boolean
   isProcessing: boolean
   currentTaskId: string | null
   progress: number
@@ -31,6 +32,7 @@ interface WorkerRendererConfig {
 export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
   const [state, setState] = React.useState<WorkerRendererState>({
     isReady: false,
+    isInitializing: false,
     isProcessing: false,
     currentTaskId: null,
     progress: 0,
@@ -59,16 +61,18 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
           return true
         }
 
-        setState((prev) => ({ ...prev, error: null }))
+        setState((prev) => ({ ...prev, error: null, isInitializing: true }))
 
         // Create worker manager
-        const manager = new WorkerManager({
+        const manager = WorkerManager.getShared({
           maxWorkers: 1,
           maxRetries: config.maxRetries || 3,
           taskTimeout: config.taskTimeout || 30000,
           enableProgressiveRendering: config.enableProgressiveRendering ?? true,
           progressiveLevels: config.progressiveLevels || [0.25, 0.5, 1.0],
         })
+        // Prewarm workers before OffscreenCanvas transfer
+        await manager.prepare()
 
         // Initialize with canvas
         const success = await manager.initialize(canvas)
@@ -86,6 +90,7 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
         setState((prev) => ({
           ...prev,
           isReady: true,
+          isInitializing: false,
           queueStats: manager.getQueueStats(),
         }))
 
@@ -97,6 +102,7 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
           ...prev,
           error: errorMessage,
           isReady: false,
+          isInitializing: false,
         }))
         return false
       }
@@ -108,6 +114,18 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
       config.progressiveLevels,
     ]
   )
+
+  // Prewarm workers on mount to shorten initialize latency
+  React.useEffect(() => {
+    const run = async () => {
+      try {
+        const m = WorkerManager.getShared()
+        await m.prepare()
+        workerManagerRef.current = m
+      } catch {}
+    }
+    void run()
+  }, [])
 
   // Set up event listeners for worker communication
   const setupEventListeners = React.useCallback(() => {
@@ -174,7 +192,7 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
 
   const renderLayers = React.useCallback(
     async (
-      layers: Layer[],
+      layers: EditorLayer[],
       toolsValues: ImageEditorToolsState,
       selectedLayerId: string,
       canvasWidth: number,
@@ -363,6 +381,7 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
       // Reset state to prevent memory leaks
       setState({
         isReady: false,
+        isInitializing: false,
         isProcessing: false,
         currentTaskId: null,
         progress: 0,
@@ -377,11 +396,14 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
     const updateQueueStats = () => {
       const manager = workerManagerRef.current
       if (!manager) return
-
-      setState((prev) => ({
-        ...prev,
-        queueStats: manager.getQueueStats(),
-      }))
+      const next = manager.getQueueStats()
+      setState((prev) => {
+        const same =
+          prev.queueStats.queued === next.queued &&
+          prev.queueStats.active === next.active &&
+          prev.queueStats.total === next.total
+        return same ? prev : { ...prev, queueStats: next }
+      })
     }
 
     const interval = setInterval(updateQueueStats, 1000)
@@ -391,6 +413,7 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
   return {
     // State
     isReady: state.isReady,
+    isInitializing: state.isInitializing,
     isProcessing: state.isProcessing,
     currentTaskId: state.currentTaskId,
     progress: state.progress,

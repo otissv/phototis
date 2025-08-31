@@ -4,9 +4,9 @@
 import type { ImageLayer } from "@/lib/editor/state"
 import type { ImageEditorToolsState } from "@/lib/tools/tools-state"
 import type { PipelineStage } from "@/lib/shaders/asynchronous-pipeline"
-import { AsynchronousPipeline } from "@/lib/shaders/asynchronous-pipeline"
-import { HybridRenderer } from "@/lib/shaders/hybrid-renderer"
-import { ShaderManager } from "@/lib/shaders"
+import type { AsynchronousPipeline } from "@/lib/shaders/asynchronous-pipeline"
+import type { HybridRenderer } from "@/lib/shaders/hybrid-renderer"
+import type { ShaderManager } from "@/lib/shaders"
 import {
   validateImageDimensions,
   validateFilterParameters,
@@ -145,6 +145,15 @@ const MAX_FBO_POOL = 8
 let layerVAO: WebGLVertexArrayObject | null = null
 let layerPositionBuffer: WebGLBuffer | null = null
 let layerTexCoordBuffer: WebGLBuffer | null = null
+// Debug helper
+function dbg(stage: string, extra?: any) {
+  try {
+    ;(self as any).postMessage({ type: "debug", stage, t: Date.now(), extra })
+  } catch {}
+}
+// Heavy init flags
+let heavyInitStarted = false
+let heavyInitDone = false
 
 function createCompTarget(width: number, height: number): CompTarget {
   const glCtx = gl as WebGL2RenderingContext
@@ -460,6 +469,7 @@ function initializeWebGL(
   height: number
 ): boolean {
   try {
+    dbg("initialize:received")
     // Validate dimensions
     const dimValidation = validateImageDimensions(width, height)
 
@@ -491,133 +501,150 @@ function initializeWebGL(
     // Configure WebGL
     gl.viewport(0, 0, width, height)
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true)
+    dbg("gl:configured")
 
-    // Initialize blit and compositing resources
-    initBlitResources(gl)
-    initCompositingResources(gl)
-
-    // Initialize shared shader manager for layer filters
-    shaderManager = new ShaderManager()
-    shaderManager.initialize(gl)
-    // Build VAO for layer rendering
-    layerVAO = gl.createVertexArray()
-    if (!layerVAO) throw new Error("Failed to create layer VAO")
-    gl.bindVertexArray(layerVAO)
-    // Position buffer
-    layerPositionBuffer = gl.createBuffer()
-    if (!layerPositionBuffer)
-      throw new Error("Failed to create layer position buffer")
-    gl.bindBuffer(gl.ARRAY_BUFFER, layerPositionBuffer)
-    gl.bufferData(
-      gl.ARRAY_BUFFER,
-      new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]),
-      gl.STATIC_DRAW
-    )
-    // Texcoord buffer
-    layerTexCoordBuffer = gl.createBuffer()
-    if (!layerTexCoordBuffer)
-      throw new Error("Failed to create layer texcoord buffer")
-    gl.bindBuffer(gl.ARRAY_BUFFER, layerTexCoordBuffer)
-    gl.bufferData(
-      gl.ARRAY_BUFFER,
-      new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]),
-      gl.STATIC_DRAW
-    )
-    gl.bindVertexArray(null)
-
-    // Initialize HybridRenderer instance for fallback path
-    hybridRendererInstance = new HybridRenderer()
-    hybridRendererInstance.initialize({ gl, width, height })
-
-    // Initialize asynchronous pipeline
-    asynchronousPipeline = new AsynchronousPipeline({
-      enableProgressiveRendering: true,
-      maxConcurrentStages: 2,
-      enableMemoryMonitoring: true,
-      frameTimeTargetMs: 16.7,
-    })
-    // Bridge events to main thread with the current worker message ID
-    asynchronousPipeline.setEventEmitter({
-      onProgress: (
-        taskId: string,
-        progress: number,
-        stage: PipelineStage,
-        data?: any
-      ) => {
-        const original = data?.originalTaskId as string | undefined
-        // Drop stale: if this task family predates the latest token, ignore
-        if (original) {
-          const famVer = familyToTokenVersion.get(original) ?? 0
-          if (famVer < latestTokenVersion) return
-        }
-        const workerId =
-          (original && pipelineTaskToWorkerId.get(original)) ||
-          pipelineTaskToWorkerId.get(taskId) ||
-          currentRenderMessageId
-        if (workerId) {
-          postMessage({
-            type: "progress",
-            id: workerId,
-            progress,
-          } as ProgressMessage)
-        }
-      },
-      onSuccess: async (taskId: string, result: any) => {
-        const original = result?.originalTaskId as string | undefined
-        if (original) {
-          const famVer = familyToTokenVersion.get(original) ?? 0
-          if (famVer < latestTokenVersion) return
-        }
-        const workerId =
-          pipelineTaskToWorkerId.get(taskId) || currentRenderMessageId
-        try {
-          if (result?.finalTexture && canvas) {
-            await renderToCanvas(
-              result.finalTexture,
-              canvas.width,
-              canvas.height
-            )
-          }
-        } finally {
-          if (workerId) {
-            postMessage({ type: "success", id: workerId } as SuccessMessage)
-          }
-          // Clean mapping entries that point to this worker task id
-          try {
-            for (const [k, v] of Array.from(pipelineTaskToWorkerId.entries())) {
-              if (v === workerId) pipelineTaskToWorkerId.delete(k)
-            }
-          } catch {}
-        }
-      },
-      onError: (taskId: string, error: string) => {
-        // Allow errors only for current family
-        const famVer = latestTokenVersion
-        const workerId =
-          pipelineTaskToWorkerId.get(taskId) || currentRenderMessageId
-        if (workerId) {
-          postMessage({ type: "error", id: workerId, error } as ErrorMessage)
-        }
-        // Clean mapping for this task/worker association
-        try {
-          if (workerId) {
-            for (const [k, v] of Array.from(pipelineTaskToWorkerId.entries())) {
-              if (v === workerId || k === taskId)
-                pipelineTaskToWorkerId.delete(k)
-            }
-          } else {
-            pipelineTaskToWorkerId.delete(taskId)
-          }
-        } catch {}
-      },
-    })
-    asynchronousPipeline.initialize({ gl, width, height })
-
+    dbg("initialize:complete")
     return true
   } catch (error) {
     console.error("Failed to initialize WebGL in worker:", error)
     return false
   }
+}
+
+async function ensureHeavyInit(width: number, height: number): Promise<void> {
+  if (heavyInitDone) return
+  if (!gl) throw new Error("WebGL context not initialized")
+  if (heavyInitStarted) return
+  heavyInitStarted = true
+  const glCtx = gl as WebGL2RenderingContext
+  // Lazy-load heavy modules at first render to avoid blocking initialize
+  dbg("heavy:init:start")
+  const t0 = Date.now()
+  const [shadersMod, hybridMod, pipelineMod] = await Promise.all([
+    import("@/lib/shaders"),
+    import("@/lib/shaders/hybrid-renderer"),
+    import("@/lib/shaders/asynchronous-pipeline"),
+  ])
+  dbg("heavy:imports:end", { dt: Date.now() - t0 })
+  // Initialize blit and compositing resources
+  initBlitResources(glCtx)
+  initCompositingResources(glCtx)
+
+  // Initialize shared shader manager for layer filters
+  const ShaderManagerCtor = shadersMod.ShaderManager
+  shaderManager = new ShaderManagerCtor()
+  shaderManager.initialize(glCtx)
+  // Build VAO for layer rendering
+  layerVAO = glCtx.createVertexArray()
+  if (!layerVAO) throw new Error("Failed to create layer VAO")
+  glCtx.bindVertexArray(layerVAO)
+  // Position buffer
+  layerPositionBuffer = glCtx.createBuffer()
+  if (!layerPositionBuffer)
+    throw new Error("Failed to create layer position buffer")
+  glCtx.bindBuffer(glCtx.ARRAY_BUFFER, layerPositionBuffer)
+  glCtx.bufferData(
+    glCtx.ARRAY_BUFFER,
+    new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]),
+    glCtx.STATIC_DRAW
+  )
+  // Texcoord buffer
+  layerTexCoordBuffer = glCtx.createBuffer()
+  if (!layerTexCoordBuffer)
+    throw new Error("Failed to create layer texcoord buffer")
+  glCtx.bindBuffer(glCtx.ARRAY_BUFFER, layerTexCoordBuffer)
+  glCtx.bufferData(
+    glCtx.ARRAY_BUFFER,
+    new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]),
+    glCtx.STATIC_DRAW
+  )
+  glCtx.bindVertexArray(null)
+
+  // Initialize HybridRenderer instance for fallback path
+  const HybridRendererCtor = hybridMod.HybridRenderer
+  hybridRendererInstance = new HybridRendererCtor()
+  hybridRendererInstance.initialize({ gl: glCtx, width, height })
+
+  // Initialize asynchronous pipeline
+  const AsynchronousPipelineCtor = pipelineMod.AsynchronousPipeline
+  asynchronousPipeline = new AsynchronousPipelineCtor({
+    enableProgressiveRendering: true,
+    maxConcurrentStages: 2,
+    enableMemoryMonitoring: true,
+    frameTimeTargetMs: 16.7,
+  })
+  // Bridge events to main thread with the current worker message ID
+  asynchronousPipeline.setEventEmitter({
+    onProgress: (
+      taskId: string,
+      progress: number,
+      stage: PipelineStage,
+      data?: any
+    ) => {
+      const original = data?.originalTaskId as string | undefined
+      if (original) {
+        const famVer = familyToTokenVersion.get(original) ?? 0
+        if (famVer < latestTokenVersion) return
+      }
+      const workerId =
+        (original && pipelineTaskToWorkerId.get(original)) ||
+        pipelineTaskToWorkerId.get(taskId) ||
+        currentRenderMessageId
+      if (workerId) {
+        postMessage({
+          type: "progress",
+          id: workerId,
+          progress,
+        } as ProgressMessage)
+      }
+    },
+    onSuccess: async (taskId: string, result: any) => {
+      const original = result?.originalTaskId as string | undefined
+      if (original) {
+        const famVer = familyToTokenVersion.get(original) ?? 0
+        if (famVer < latestTokenVersion) return
+      }
+      const workerId =
+        pipelineTaskToWorkerId.get(taskId) || currentRenderMessageId
+      try {
+        if (result?.finalTexture && canvas) {
+          await renderToCanvas(
+            result.finalTexture,
+            (canvas as OffscreenCanvas).width,
+            (canvas as OffscreenCanvas).height
+          )
+        }
+      } finally {
+        if (workerId) {
+          postMessage({ type: "success", id: workerId } as SuccessMessage)
+        }
+        try {
+          for (const [k, v] of Array.from(pipelineTaskToWorkerId.entries())) {
+            if (v === workerId) pipelineTaskToWorkerId.delete(k)
+          }
+        } catch {}
+      }
+    },
+    onError: (taskId: string, error: string) => {
+      const workerId =
+        pipelineTaskToWorkerId.get(taskId) || currentRenderMessageId
+      if (workerId) {
+        postMessage({ type: "error", id: workerId, error } as ErrorMessage)
+      }
+      try {
+        if (workerId) {
+          for (const [k, v] of Array.from(pipelineTaskToWorkerId.entries())) {
+            if (v === workerId || k === taskId) pipelineTaskToWorkerId.delete(k)
+          }
+        } else {
+          pipelineTaskToWorkerId.delete(taskId)
+        }
+      } catch {}
+    },
+  })
+  asynchronousPipeline.initialize({ gl: glCtx, width, height })
+  dbg("heavy:init:done")
+  heavyInitDone = true
 }
 
 // Render layers with progressive quality
@@ -634,6 +661,8 @@ async function renderLayers(
   messageId: string
 ): Promise<void> {
   try {
+    // Ensure heavy GPU resources are prepared lazily
+    await ensureHeavyInit(canvasWidth, canvasHeight)
     // Remove cached textures for layers that no longer exist to avoid leaking GPU memory
     const aliveIds = new Set(layers.map((l) => l.id))
     for (const [key, tex] of Array.from(textureCache.entries())) {

@@ -22,6 +22,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover"
 import { ImageEditorPanels } from "@/components/panels"
 import type { EditorLayer } from "@/lib/editor/state"
 import { EffectsFooter } from "@/components/tools.image-editor"
+import { WorkerPrewarm } from "./worker-prewarm"
 
 export interface ImageEditorProps extends React.ComponentProps<"div"> {
   image: File | null
@@ -532,6 +533,7 @@ export function ImageEditor({
 }: ImageEditorProps) {
   return (
     <EditorProvider initialImage={image}>
+      <WorkerPrewarm />
       <ImageEditorInner
         image={image}
         onImageDrop={onImageDrop}

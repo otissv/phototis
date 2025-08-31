@@ -62,15 +62,7 @@ export class CanvasStateManager {
       return existing
     }
 
-    // Check if canvas has already been transferred by trying to access transferControlToOffscreen
-    // If the method doesn't exist, the canvas has been transferred
-    if (!canvas.transferControlToOffscreen) {
-      return {
-        state: CanvasState.TRANSFERRED,
-      }
-    }
-
-    // Check if OffscreenCanvas is supported
+    // Check if OffscreenCanvas is supported (if not, expose as error state)
     if (typeof OffscreenCanvas === "undefined") {
       return {
         state: CanvasState.ERROR,
