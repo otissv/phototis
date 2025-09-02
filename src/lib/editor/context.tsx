@@ -36,6 +36,7 @@ import {
   DocumentDimensionsCommand,
 } from "@/lib/editor/commands"
 import { loadDocument } from "@/lib/editor/persistence"
+import { getImageDimensions } from "../utils/get-image-dimensions"
 
 export type EditorContextValue = {
   state: EditorRuntimeState
@@ -147,18 +148,30 @@ export function EditorProvider({
       activeTool: { sidebar: "rotate", tool: "rotate" } as ActiveToolModel,
     })
 
+    // const { width, height } = await getImageDimensions(initialImage)
+
     const baseLayer: ImageLayer = {
       id: "layer-1",
       name: "Layer 1",
       visible: true,
       locked: false,
       type: "image",
-      filters: { ...defaultFilters },
+      filters: {
+        ...defaultFilters,
+        dimensions: {
+          width: initialImage?.width,
+          height: initialImage?.height,
+          x: 0,
+          y: 0,
+        },
+      },
       opacity: 100,
       isEmpty: !initialImage,
       blendMode: "normal",
       image: initialImage ?? undefined,
     }
+
+    console.log("baseLayer*************", baseLayer)
 
     const documentLayer: DocumentLayer = {
       id: "document",

@@ -12,26 +12,7 @@ import {
   type ImageEditorButtonProps,
 } from "@/components/button.image-editor"
 import type { ImageLayer } from "@/lib/editor/state"
-
-function getImageDimensions(
-  file: File
-): Promise<{ width: number; height: number }> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-
-    reader.onload = (e) => {
-      const img = new Image()
-      img.onload = () => {
-        resolve({ width: img.width, height: img.height })
-      }
-      img.onerror = reject
-      img.src = e.target?.result as string
-    }
-
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
-}
+import { getImageDimensions } from "@/lib/utils/get-image-dimensions"
 
 function DimensionsButton({
   onSelectedToolChange,

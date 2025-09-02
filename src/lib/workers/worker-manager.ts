@@ -92,11 +92,17 @@ export class WorkerManager {
   // Emit debug timeline events to the window for instrumentation
   private emitDebug(stage: string, extra?: any): void {
     try {
+      const detail = { stage, t: Date.now(), ...(extra || {}) }
+      // Relay as a browser event
       window.dispatchEvent(
         new CustomEvent("worker-debug", {
-          detail: { stage, t: Date.now(), ...(extra || {}) },
+          detail,
         })
       )
+      // Also log to console for easier debugging without listeners
+      if (typeof console !== "undefined" && console.debug) {
+        console.debug("worker-debug", detail)
+      }
     } catch {}
   }
 
@@ -201,6 +207,11 @@ export class WorkerManager {
       this.emitDebug("manager:initialize:result", {
         ok: initSuccess,
         dt: Date.now() - t1,
+        data: {
+          canvas: this.offscreenCanvas,
+          width: canvas.width,
+          height: canvas.height,
+        },
       })
 
       // After transfer, the OffscreenCanvas is no longer available in main thread
@@ -226,6 +237,20 @@ export class WorkerManager {
           canvasStateManager.markAsError(canvas, message)
         }
       } catch {}
+      return false
+    }
+  }
+
+  // Resize the OffscreenCanvas owned by the render worker
+  async resize(width: number, height: number): Promise<boolean> {
+    try {
+      if (!this.isInitialized || !this.renderWorker) return false
+      const ok = await this.sendMessage(this.renderWorker, {
+        type: "resize",
+        data: { width, height },
+      })
+      return ok
+    } catch {
       return false
     }
   }
@@ -283,15 +308,20 @@ export class WorkerManager {
     // Debug timeline relay
     if (message.type === "debug") {
       try {
+        const detail = {
+          stage: message.stage,
+          t: message.t || Date.now(),
+          extra: message.extra || null,
+        }
         window.dispatchEvent(
           new CustomEvent("worker-debug", {
-            detail: {
-              stage: message.stage,
-              t: message.t || Date.now(),
-              extra: message.extra || null,
-            },
+            detail,
           })
         )
+        // Also log to console for visibility without listeners
+        if (typeof console !== "undefined" && console.debug) {
+          console.debug("worker-debug", detail)
+        }
       } catch {}
       return
     }
@@ -382,7 +412,7 @@ export class WorkerManager {
   private retryTask(task: RenderTask): void {
     // Add back to queue with higher priority
     task.priority = Math.max(0, task.priority - 1)
-    this.queueTask(task)
+    this.queueTask(task, "retry")
   }
 
   // Queue a render task
@@ -440,7 +470,7 @@ export class WorkerManager {
       maxRetries: this.config.maxRetries,
     }
 
-    this.queueTask(task)
+    this.queueTask(task, "render")
     return taskId
   }
 
@@ -479,13 +509,16 @@ export class WorkerManager {
           })
         }
       }
-      this.queueTask(task)
+      this.queueTask(task, "filter")
     })()
     return taskId
   }
 
   // Add task to queue
-  private queueTask(task: RenderTask): void {
+  private queueTask(
+    task: RenderTask,
+    type: "render" | "filter" | "retry"
+  ): void {
     // Insert task based on priority (lower number = higher priority)
     let insertIndex = 0
     for (let i = 0; i < this.taskQueue.length; i++) {
@@ -495,6 +528,8 @@ export class WorkerManager {
         break
       }
     }
+
+    this.emitDebug("manager:queue:task", { type, task })
 
     this.taskQueue.splice(insertIndex, 0, task)
 

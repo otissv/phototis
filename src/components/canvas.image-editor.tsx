@@ -32,6 +32,7 @@ export interface ImageEditorCanvasProps
   canvasRef?: React.RefObject<HTMLCanvasElement | null>
   onDrawReady?: (draw: () => void) => void
   onImageDrop?: (file: File) => void
+  renderType?: "worker" | "hybrid" | "default"
 }
 
 export interface ViewportState {
@@ -45,6 +46,7 @@ export function ImageEditorCanvas({
   canvasRef,
   onDrawReady,
   onImageDrop,
+  renderType,
   ...props
 }: ImageEditorCanvasProps) {
   const { history } = useEditorContext()
@@ -57,7 +59,6 @@ export function ImageEditorCanvas({
   } = useEditorContext()
   const selectedLayerId = getSelectedLayerId() || "layer-1"
   const isDragActive = state.ephemeral.interaction.isDragging
-  // const canonicalLayers = getOrderedLayers()
   const glRef = React.useRef<WebGL2RenderingContext | null>(null)
   const programRef = React.useRef<WebGLProgram | null>(null)
   const textureRef = React.useRef<WebGLTexture | null>(null)
@@ -92,6 +93,8 @@ export function ImageEditorCanvas({
     error: workerError,
     queueStats,
     initialize: initializeWorker,
+    ensureCanvasSize,
+    resize: resizeWorker,
     renderLayers: renderLayersWithWorker,
     cancelCurrentTask,
     canvasRef: workerCanvasRef,
@@ -101,8 +104,6 @@ export function ImageEditorCanvas({
   const isWorkerReadyRef = React.useRef(false)
   const isWorkerProcessingRef = React.useRef(false)
   const isWorkerInitializingRef = React.useRef(false)
-
-  console.log("rerender")
 
   React.useEffect(() => {
     isWorkerReadyRef.current = isWorkerReady
@@ -141,6 +142,11 @@ export function ImageEditorCanvas({
       height !== canvasDimensions.height
     ) {
       setCanvasDimensions({ width, height })
+
+      // If worker owns the canvas, propagate resize so its framebuffer matches
+      if (isWorkerReadyRef.current) {
+        void resizeWorker(width, height)
+      }
       // Trigger redraw when canvas dimensions change since layers are now updated
       // through the standard layer mechanism
       setTimeout(() => drawRef.current?.(), 0)
@@ -150,6 +156,20 @@ export function ImageEditorCanvas({
     state.canonical.document.height,
     canvasDimensions.width,
     canvasDimensions.height,
+    resizeWorker,
+  ])
+
+  // Ensure worker canvas is resized once the worker becomes ready
+  React.useEffect(() => {
+    if (!isWorkerReady) return
+    const width = canvasDimensions.width
+    const height = canvasDimensions.height
+    void resizeWorker(width, height)
+  }, [
+    isWorkerReady,
+    canvasDimensions.width,
+    canvasDimensions.height,
+    resizeWorker,
   ])
 
   // Track canvases we've already initialized to avoid duplicate init
@@ -172,6 +192,10 @@ export function ImageEditorCanvas({
       isWorkerReady ||
       isWorkerInitializing
     ) {
+      return
+    }
+    // If forcing hybrid renderer, skip worker init
+    if (renderType === "hybrid") {
       return
     }
     const canvasStateManager = CanvasStateManager.getInstance()
@@ -197,17 +221,17 @@ export function ImageEditorCanvas({
       }
       initializingCanvasesRef.current.delete(canvas)
     })
-
-    console.log("here")
   }, [
     isWorkerReady,
     isWorkerInitializing,
     canvasRef?.current,
     initializeWorker,
+    renderType,
   ])
 
   // Initialize hybrid renderer (fallback)
   React.useEffect(() => {
+    return
     if (!canvasRef?.current || !glRef.current) return
 
     const canvas = canvasRef.current
@@ -650,6 +674,7 @@ export function ImageEditorCanvas({
     if (isDragActive) return
 
     const loadLayerImages = async () => {
+      console.log("loadLayerImages*************", canonicalLayers)
       // Clean up old data
       const currentLayerIds = new Set(
         canonicalLayers.map((layer: EditorLayer) => layer.id)
@@ -861,6 +886,7 @@ export function ImageEditorCanvas({
     // If the worker is initializing or the canvas can still be transferred,
     // defer creating a WebGL context to avoid blocking OffscreenCanvas transfer.
     if (
+      renderType !== "hybrid" &&
       !isWorkerReady &&
       (isWorkerInitializing ||
         canvasStateManager.canTransferToOffscreen(canvas))
@@ -868,6 +894,11 @@ export function ImageEditorCanvas({
       console.log(
         "🎨 [Renderer] Deferring WebGL context creation while worker initializes/transfer is possible"
       )
+      return
+    }
+
+    // If forcing worker-only mode and worker isn't ready yet, do not create WebGL
+    if (renderType === "worker" && !isWorkerReady) {
       return
     }
 
@@ -959,7 +990,7 @@ export function ImageEditorCanvas({
         glRef.current = null
       }
     }
-  }, [canvasRef?.current, isWorkerReady, isWorkerInitializing])
+  }, [canvasRef?.current, isWorkerReady, isWorkerInitializing, renderType])
 
   // Helper function to create WebGL texture from ImageData
   const createTextureFromImageData = React.useCallback(
@@ -1094,7 +1125,8 @@ export function ImageEditorCanvas({
 
     try {
       // Use worker-based rendering if available (always queue; manager cancels in-flight)
-      if (isWorkerReadyRef.current) {
+
+      if (renderType !== "hybrid" && isWorkerReadyRef.current) {
         // Avoid spamming the worker: if a task is already processing, skip
         if (isWorkerProcessingRef.current) {
           isDrawingRef.current = false
@@ -1102,6 +1134,7 @@ export function ImageEditorCanvas({
         }
         console.log("🎨 [Renderer] Using WORKER-BASED renderer")
         const canvas = canvasRef?.current
+
         if (!canvas) {
           console.warn("No canvas available for worker rendering")
           isDrawingRef.current = false
@@ -1109,8 +1142,8 @@ export function ImageEditorCanvas({
         }
 
         // Get canvas dimensions
-        const canvasWidth = canvas.width
-        const canvasHeight = canvas.height
+        const canvasWidth = canvasDimensions.width
+        const canvasHeight = canvasDimensions.height
 
         // Use throttled values for immediate feedback during dragging
         const activeToolsValues = isDragActive
@@ -1136,6 +1169,9 @@ export function ImageEditorCanvas({
         const priority = isDragActive
           ? TaskPriority.CRITICAL
           : TaskPriority.HIGH
+
+        // Ensure worker canvas matches current canvas size before first render
+        await ensureCanvasSize(canvasWidth, canvasHeight)
 
         // Queue render task with worker
         try {
@@ -1197,6 +1233,12 @@ export function ImageEditorCanvas({
         }
       }
 
+      // If worker-only mode is forced, do not fallback to hybrid
+      if (renderType === "worker") {
+        isDrawingRef.current = false
+        return
+      }
+
       // Fallback to hybrid renderer if worker is not available
       console.log("🎨 [Renderer] Using HYBRID renderer (fallback)")
       const gl = glRef.current
@@ -1204,6 +1246,7 @@ export function ImageEditorCanvas({
 
       if (!gl || !canvas) {
         console.warn("🎨 [Renderer] No WebGL context or canvas available")
+
         isDrawingRef.current = false
         return
       }
@@ -1439,6 +1482,7 @@ export function ImageEditorCanvas({
     isDragActive,
     canvasDimensions.width,
     canvasDimensions.height,
+    renderType,
   ])
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: draw cause infinite loop

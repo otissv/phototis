@@ -16,36 +16,31 @@ export class VertexShaderPlugin extends BaseShaderPlugin {
     uniform vec2 u_layerPosition;
     
     void main() {
-      // Calculate normalized position within the layer
-      vec2 layerPos = a_position * u_layerSize;
-      
-      // Apply rotation around layer center
+      // Start in layer-local space centered at (0,0), units = pixels
+      // a_position is [0,1] across the quad; shift by 0.5 to center
+      vec2 p = (a_position - vec2(0.5)) * u_layerSize;
+
+      // Flips (about the center)
+      if (u_flipHorizontal) p.x = -p.x;
+      if (u_flipVertical) p.y = -p.y;
+
+      // Scale then rotate around the center
+      p *= u_scale;
       float angle = u_rotate * 3.14159 / 180.0;
-      float cosA = cos(angle);
-      float sinA = sin(angle);
-      vec2 rotatedPos = vec2(
-        layerPos.x * cosA - layerPos.y * sinA,
-        layerPos.x * sinA + layerPos.y * cosA
+      float cs = cos(angle);
+      float sn = sin(angle);
+      p = vec2(p.x * cs - p.y * sn, p.x * sn + p.y * cs);
+
+      // Translate to the layer's center position in canvas pixels
+      vec2 pixel = p + u_layerPosition;
+
+      // Convert to NDC; Y axis in pixels is downward, so invert
+      vec2 ndcPos = vec2(
+        (pixel.x / u_canvasSize.x) * 2.0 - 1.0,
+        1.0 - (pixel.y / u_canvasSize.y) * 2.0
       );
-      
-      // Apply scale
-      rotatedPos *= u_scale;
-      
-      // Apply flips
-      if (u_flipHorizontal) {
-        rotatedPos.x = -rotatedPos.x;
-      }
-      if (u_flipVertical) {
-        rotatedPos.y = -rotatedPos.y;
-      }
-      
-      // Add layer position offset
-      rotatedPos += u_layerPosition;
-      
-      // Convert to normalized device coordinates [-1, 1]
-      vec2 ndcPos = (rotatedPos / u_canvasSize) * 2.0 - 1.0;
-      
-      gl_Position = vec4(ndcPos, 0, 1);
+
+      gl_Position = vec4(ndcPos, 0.0, 1.0);
       v_texCoord = a_texCoord;
     }
   `

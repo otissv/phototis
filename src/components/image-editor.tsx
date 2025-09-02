@@ -43,6 +43,23 @@ function ImageEditorInner({
 
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(false)
   const [isPanelsOpen, setIsPanelsOpen] = React.useState(false)
+  const [renderType, setRenderType] = React.useState<
+    "default" | "worker" | "hybrid"
+  >(() => {
+    try {
+      if (typeof window !== "undefined") {
+        const stored = window.localStorage.getItem("phototis:renderType")
+        if (
+          stored === "worker" ||
+          stored === "hybrid" ||
+          stored === "default"
+        ) {
+          return stored
+        }
+      }
+    } catch {}
+    return "default"
+  })
 
   const [selectedSidebar, setSelectedSidebar] =
     React.useState<keyof typeof SIDEBAR_TOOLS>("rotate")
@@ -219,6 +236,14 @@ function ImageEditorInner({
     },
     [onImageDrop]
   )
+
+  React.useEffect(() => {
+    try {
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("phototis:renderType", renderType)
+      }
+    } catch {}
+  }, [renderType])
 
   React.useEffect(() => {
     if (!getSelectedLayerId()) {
@@ -440,6 +465,7 @@ function ImageEditorInner({
             id='image-editor-canvas'
             canvasRef={canvasRef}
             onDrawReady={handleDrawReady}
+            renderType={renderType}
           />
         </div>
       </div>
@@ -470,6 +496,23 @@ function ImageEditorInner({
       />
 
       <div className='hidden lg:block lg:col-start-3'>
+        {process.env.NODE_ENV === "development" && (
+          <div>
+            <span className='px-2 py-1 rounded bg-black/60 text-white'>
+              Renderer
+            </span>
+            <select
+              value={renderType}
+              onChange={(e) => setRenderType(e.target.value as any)}
+              className='px-2 py-1 rounded border bg-white/90 text-black'
+              aria-label='Renderer type'
+            >
+              <option value='default'>Default (auto with fallback)</option>
+              <option value='worker'>Worker (Offscreen) preferred</option>
+              <option value='hybrid'>Hybrid (main thread)</option>
+            </select>
+          </div>
+        )}
         <ImageEditorPanels
           className='lg:row-span-3 w-full'
           defaultValue='layers'

@@ -49,6 +49,14 @@ interface RenderMessage extends WorkerMessage {
   }
 }
 
+interface ResizeMessage extends WorkerMessage {
+  type: "resize"
+  data: {
+    width: number
+    height: number
+  }
+}
+
 interface FilterMessage extends WorkerMessage {
   type: "applyFilter"
   data: {
@@ -84,7 +92,9 @@ let asynchronousPipeline: AsynchronousPipeline | null = null
 let shaderManager: ShaderManager | null = null
 let hybridRendererInstance: HybridRenderer | null = null
 // Enable pipeline path; progressive rendering will render when final texture ready
-const USE_PIPELINE = true
+// Temporarily disable pipeline and hybrid renderer paths to debug first-frame strip issue
+const USE_PIPELINE = false
+const USE_HYBRID_RENDERER = false
 let currentRenderMessageId: string | null = null
 const pipelineTaskToWorkerId = new Map<string, string>()
 const familyToTokenVersion = new Map<string, number>()
@@ -134,6 +144,10 @@ type CompTarget = {
   width: number
   height: number
 }
+// Debug ID maps for textures and FBOs
+const __texIds = new WeakMap<WebGLTexture, number>()
+const __fbIds = new WeakMap<WebGLFramebuffer, number>()
+let __idCounter = 1
 let compPingTarget: CompTarget | null = null
 let compPongTarget: CompTarget | null = null
 // FBO pool for reuse (LRU)
@@ -150,6 +164,78 @@ function dbg(stage: string, extra?: any) {
   try {
     ;(self as any).postMessage({ type: "debug", stage, t: Date.now(), extra })
   } catch {}
+  try {
+    // Also log directly from the worker so it's visible even if forwarding fails
+    ;(self as any).console?.debug?.("worker-dbg", {
+      stage,
+      t: Date.now(),
+      extra,
+    })
+  } catch {}
+}
+// Ensure no texture unit is bound to the destination texture (prevents feedback)
+function unbindTextureFromAllUnits(
+  glCtx: WebGL2RenderingContext,
+  texture: WebGLTexture | null
+): void {
+  if (!texture) return
+  let maxUnits = 8
+  try {
+    maxUnits = glCtx.getParameter(glCtx.MAX_TEXTURE_IMAGE_UNITS) as number
+  } catch {}
+  for (let i = 0; i < maxUnits; i++) {
+    glCtx.activeTexture(glCtx.TEXTURE0 + i)
+    try {
+      const bound = glCtx.getParameter(
+        glCtx.TEXTURE_BINDING_2D
+      ) as WebGLTexture | null
+      if (bound === texture) {
+        glCtx.bindTexture(glCtx.TEXTURE_2D, null)
+      }
+    } catch {}
+  }
+}
+// Helper: blit a texture directly to a framebuffer using WebGL2 blitFramebuffer
+function blitTextureToFramebuffer(
+  glCtx: WebGL2RenderingContext,
+  srcTexture: WebGLTexture,
+  dstFramebuffer: WebGLFramebuffer,
+  width: number,
+  height: number
+): void {
+  // Create transient FBO to attach the source texture for READ_FRAMEBUFFER
+  const srcFbo = glCtx.createFramebuffer()
+  if (!srcFbo) throw new Error("Failed to create temp framebuffer for blit")
+  glCtx.bindFramebuffer(glCtx.READ_FRAMEBUFFER, srcFbo)
+  glCtx.framebufferTexture2D(
+    glCtx.READ_FRAMEBUFFER,
+    glCtx.COLOR_ATTACHMENT0,
+    glCtx.TEXTURE_2D,
+    srcTexture,
+    0
+  )
+
+  // Bind the destination framebuffer for DRAW_FRAMEBUFFER
+  glCtx.bindFramebuffer(glCtx.DRAW_FRAMEBUFFER, dstFramebuffer)
+
+  // Perform the blit copy (no shader sampling, avoids feedback hazards)
+  glCtx.blitFramebuffer(
+    0,
+    0,
+    width,
+    height,
+    0,
+    0,
+    width,
+    height,
+    glCtx.COLOR_BUFFER_BIT,
+    glCtx.NEAREST
+  )
+
+  // Cleanup: unbind and delete temp FBO, restore bindings
+  glCtx.bindFramebuffer(glCtx.READ_FRAMEBUFFER, null)
+  glCtx.bindFramebuffer(glCtx.DRAW_FRAMEBUFFER, null)
+  glCtx.deleteFramebuffer(srcFbo)
 }
 // Heavy init flags
 let heavyInitStarted = false
@@ -159,6 +245,7 @@ function createCompTarget(width: number, height: number): CompTarget {
   const glCtx = gl as WebGL2RenderingContext
   const tex = glCtx.createTexture()
   if (!tex) throw new Error("Failed to create comp texture")
+  __texIds.set(tex, __idCounter++)
   glCtx.bindTexture(glCtx.TEXTURE_2D, tex)
   glCtx.texParameteri(
     glCtx.TEXTURE_2D,
@@ -186,6 +273,7 @@ function createCompTarget(width: number, height: number): CompTarget {
   const fb = glCtx.createFramebuffer()
   if (!fb) throw new Error("Failed to create comp framebuffer")
   glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, fb)
+  __fbIds.set(fb, __idCounter++)
   glCtx.framebufferTexture2D(
     glCtx.FRAMEBUFFER,
     glCtx.COLOR_ATTACHMENT0,
@@ -359,7 +447,8 @@ void main(){\n
   glCtx.bindBuffer(glCtx.ARRAY_BUFFER, compTexCoordBuffer)
   glCtx.bufferData(
     glCtx.ARRAY_BUFFER,
-    new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]),
+    // Use flipped V texcoords because we do NOT flip on unpack in worker
+    new Float32Array([0, 1, 1, 1, 0, 0, 1, 0]),
     glCtx.STATIC_DRAW
   )
   const aTexLoc = glCtx.getAttribLocation(compProgram, "a_texCoord")
@@ -406,6 +495,7 @@ in vec2 a_texCoord;\n
 out vec2 v_texCoord;\n
 void main() {\n
   v_texCoord = a_texCoord;\n
+  // a_position is already in clip space for this full-canvas blit
   gl_Position = vec4(a_position, 0.0, 1.0);\n
 }`
   const fs = `#version 300 es\n
@@ -431,7 +521,7 @@ void main() {\n
   if (!blitVAO) throw new Error("Failed to create VAO")
   glCtx.bindVertexArray(blitVAO)
 
-  // Fullscreen quad positions (triangle strip)
+  // Fullscreen quad positions (triangle strip) in clip-space
   const positions = new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1])
   blitPositionBuffer = glCtx.createBuffer()
   if (!blitPositionBuffer) throw new Error("Failed to create position buffer")
@@ -442,8 +532,8 @@ void main() {\n
   glCtx.enableVertexAttribArray(aPosLoc)
   glCtx.vertexAttribPointer(aPosLoc, 2, glCtx.FLOAT, false, 0, 0)
 
-  // Texture coordinates
-  const texCoords = new Float32Array([0, 0, 1, 0, 0, 1, 1, 1])
+  // Texture coordinates (flip V because we do not UNPACK_FLIP)
+  const texCoords = new Float32Array([0, 1, 1, 1, 0, 0, 1, 0])
   blitTexCoordBuffer = glCtx.createBuffer()
   if (!blitTexCoordBuffer) throw new Error("Failed to create texcoord buffer")
   glCtx.bindBuffer(glCtx.ARRAY_BUFFER, blitTexCoordBuffer)
@@ -469,7 +559,7 @@ function initializeWebGL(
   height: number
 ): boolean {
   try {
-    dbg("initialize:received")
+    dbg("initialize:received", { width, height })
     // Validate dimensions
     const dimValidation = validateImageDimensions(width, height)
 
@@ -500,8 +590,19 @@ function initializeWebGL(
 
     // Configure WebGL
     gl.viewport(0, 0, width, height)
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true)
+    // Do not flip on unpack; we flip V in all our texcoord buffers for consistency
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false)
     dbg("gl:configured")
+
+    // Debug: confirm OffscreenCanvas size vs requested
+    try {
+      dbg("initialize:size", {
+        requestedWidth: width,
+        requestedHeight: height,
+        canvasWidth: canvas.width,
+        canvasHeight: canvas.height,
+      })
+    } catch {}
 
     dbg("initialize:complete")
     return true
@@ -545,7 +646,8 @@ async function ensureHeavyInit(width: number, height: number): Promise<void> {
   glCtx.bindBuffer(glCtx.ARRAY_BUFFER, layerPositionBuffer)
   glCtx.bufferData(
     glCtx.ARRAY_BUFFER,
-    new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]),
+    // Vertex shader expects 0..1 layer-local quad, not clip-space
+    new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]),
     glCtx.STATIC_DRAW
   )
   // Texcoord buffer
@@ -555,7 +657,7 @@ async function ensureHeavyInit(width: number, height: number): Promise<void> {
   glCtx.bindBuffer(glCtx.ARRAY_BUFFER, layerTexCoordBuffer)
   glCtx.bufferData(
     glCtx.ARRAY_BUFFER,
-    new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]),
+    new Float32Array([0, 1, 1, 1, 0, 0, 1, 0]),
     glCtx.STATIC_DRAW
   )
   glCtx.bindVertexArray(null)
@@ -645,6 +747,31 @@ async function ensureHeavyInit(width: number, height: number): Promise<void> {
   asynchronousPipeline.initialize({ gl: glCtx, width, height })
   dbg("heavy:init:done")
   heavyInitDone = true
+}
+
+// Helper to safely get layer dimensions from tuple array
+function getLayerDims(
+  list: [string, { width: number; height: number; x: number; y: number }][],
+  id: string
+): { x: number; y: number; width: number; height: number } | null {
+  try {
+    for (let i = 0; i < list.length; i++) {
+      const entry = list[i]
+      if (Array.isArray(entry) && entry.length === 2) {
+        const key = entry[0]
+        const val = entry[1] as any
+        if (key === id && val && typeof val.width === "number") {
+          return {
+            x: Number(val.x) || 0,
+            y: Number(val.y) || 0,
+            width: Math.max(0, Number(val.width) || 0),
+            height: Math.max(0, Number(val.height) || 0),
+          }
+        }
+      }
+    }
+  } catch {}
+  return null
 }
 
 // Render layers with progressive quality
@@ -754,7 +881,11 @@ async function renderLayers(
     } as ProgressMessage)
 
     // Prefer HybridRenderer path for correct transforms and clipping (prevents edge bleed)
-    if (hybridRendererInstance && layerTextures.size > 0) {
+    if (
+      USE_HYBRID_RENDERER &&
+      hybridRendererInstance &&
+      layerTextures.size > 0
+    ) {
       try {
         const texMap = new Map<string, WebGLTexture>()
         for (const [id, tex] of layerTextures) texMap.set(id, tex)
@@ -816,6 +947,10 @@ async function renderLayers(
       }
     }
 
+    try {
+      dbg("layers:rendered", { count: renderedLayers.size })
+    } catch {}
+
     postMessage({
       type: "progress",
       id: messageId,
@@ -826,6 +961,9 @@ async function renderLayers(
     let finalTexture: WebGLTexture | null = null
     let drewAnyLayer = false
     if (renderedLayers.size > 0) {
+      try {
+        dbg("composite:start", { canvasWidth, canvasHeight })
+      } catch {}
       // Ensure persistent ping/pong comp targets sized to current canvas
       compPingTarget = ensureCompTarget(
         compPingTarget,
@@ -849,7 +987,7 @@ async function renderLayers(
           !compUTopLocation
         ) {
           // If custom compositing resources fail, attempt HybridRenderer path
-          if (hybridRendererInstance) {
+          if (USE_HYBRID_RENDERER && hybridRendererInstance) {
             // Build textures map for hybrid renderer
             const layerTexMap = new Map<string, WebGLTexture>()
             for (const [id, tex] of renderedLayers) layerTexMap.set(id, tex)
@@ -904,26 +1042,93 @@ async function renderLayers(
               // Skip non-image (e.g., adjustment) layers until we have a base
               continue
             }
-            // First visible image layer: blit to writeTarget
+            try {
+              dbg("composite:base", { layerId: layer.id })
+            } catch {}
+            // First visible image layer: copy via scratch then blit to destination (avoid any feedback)
             if (!blitProgram || !blitVAO || !blitUTexLocation) {
               throw new Error("Blit resources not initialized")
             }
             const glCtx = gl as WebGL2RenderingContext
-            glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, writeTarget.fb)
-            glCtx.useProgram(blitProgram)
-            glCtx.bindVertexArray(blitVAO)
-            glCtx.activeTexture(glCtx.TEXTURE0)
-            glCtx.bindTexture(glCtx.TEXTURE_2D, tex)
-            glCtx.uniform1i(blitUTexLocation as WebGLUniformLocation, 0)
-            if (blitUOpacityLocation) {
-              glCtx.uniform1f(
-                blitUOpacityLocation,
-                Math.max(0, Math.min(1, layer.opacity / 100))
+            // Copy source texture to an intermediate scratch FBO via framebuffer blit
+            const scratchBase = checkoutCompTarget(canvasWidth, canvasHeight)
+            try {
+              blitTextureToFramebuffer(
+                glCtx,
+                tex as WebGLTexture,
+                scratchBase.fb,
+                canvasWidth,
+                canvasHeight
               )
+              dbg("draw:copy->scratch", {
+                fb: __fbIds.get(scratchBase.fb),
+                tex0: __texIds.get(tex as WebGLTexture),
+                via: "blitFramebuffer",
+              })
+            } catch (e) {
+              console.warn(
+                "copy->scratch blit failed, fallback to shader copy",
+                e
+              )
+              glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, scratchBase.fb)
+              glCtx.viewport(0, 0, canvasWidth, canvasHeight)
+              glCtx.clearColor(0, 0, 0, 0)
+              glCtx.clear(glCtx.COLOR_BUFFER_BIT)
+              glCtx.useProgram(blitProgram)
+              glCtx.bindVertexArray(blitVAO)
+              glCtx.activeTexture(glCtx.TEXTURE0)
+              glCtx.bindTexture(glCtx.TEXTURE_2D, tex as WebGLTexture)
+              glCtx.uniform1i(blitUTexLocation as WebGLUniformLocation, 0)
+              if (blitUOpacityLocation)
+                glCtx.uniform1f(blitUOpacityLocation, 1.0)
+              glCtx.drawArrays(glCtx.TRIANGLE_STRIP, 0, 4)
+              glCtx.bindVertexArray(null)
+              glCtx.useProgram(null)
             }
-            glCtx.drawArrays(glCtx.TRIANGLE_STRIP, 0, 4)
-            glCtx.bindVertexArray(null)
-            glCtx.useProgram(null)
+
+            // Now blit from scratch into the writeTarget
+            glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, writeTarget.fb)
+            glCtx.viewport(0, 0, canvasWidth, canvasHeight)
+            glCtx.clearColor(0, 0, 0, 0)
+            glCtx.clear(glCtx.COLOR_BUFFER_BIT)
+            // Ensure no texture units are bound to the destination texture to avoid feedback
+            try {
+              unbindTextureFromAllUnits(glCtx, writeTarget.tex)
+            } catch {}
+            // Use framebuffer-to-framebuffer blit to avoid shader sampling feedback
+            try {
+              blitTextureToFramebuffer(
+                glCtx,
+                scratchBase.tex,
+                writeTarget.fb,
+                canvasWidth,
+                canvasHeight
+              )
+              dbg("draw:base->write", {
+                fb: __fbIds.get(writeTarget.fb),
+                srcTex: __texIds.get(scratchBase.tex),
+                via: "blitFramebuffer",
+              })
+            } catch (e) {
+              console.warn("blitFramebuffer failed, fallback to shader blit", e)
+              glCtx.useProgram(blitProgram)
+              glCtx.bindVertexArray(blitVAO)
+              glCtx.activeTexture(glCtx.TEXTURE0)
+              glCtx.bindTexture(glCtx.TEXTURE_2D, scratchBase.tex)
+              glCtx.uniform1i(blitUTexLocation as WebGLUniformLocation, 0)
+              if (blitUOpacityLocation) {
+                glCtx.uniform1f(
+                  blitUOpacityLocation,
+                  Math.max(0, Math.min(1, layer.opacity / 100))
+                )
+              }
+              glCtx.drawArrays(glCtx.TRIANGLE_STRIP, 0, 4)
+              glCtx.bindVertexArray(null)
+              glCtx.useProgram(null)
+            }
+            try {
+              returnCompTarget(scratchBase)
+            } catch {}
             readTexture = writeTarget.tex
             drewAnyLayer = true
             continue
@@ -945,8 +1150,41 @@ async function renderLayers(
             continue
           }
 
+          try {
+            dbg("composite:over", { layerId: layer.id })
+          } catch {}
           // Composite current layer over accumulated result into the opposite target
           const output: CompTarget = writeTarget === ping ? pong : ping
+          // Guard against read-write feedback: if read texture equals output target tex, copy to scratch first
+          let readSource: WebGLTexture | null = readTexture
+          let scratch: CompTarget | null = null
+          if (readSource && readSource === output.tex) {
+            try {
+              scratch = checkoutCompTarget(canvasWidth, canvasHeight)
+              const glCtx = gl as WebGL2RenderingContext
+              glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, scratch.fb)
+              glCtx.viewport(0, 0, canvasWidth, canvasHeight)
+              glCtx.clearColor(0, 0, 0, 0)
+              glCtx.clear(glCtx.COLOR_BUFFER_BIT)
+
+              if (!blitProgram || !blitVAO || !blitUTexLocation) {
+                throw new Error("Blit resources not initialized")
+              }
+              glCtx.useProgram(blitProgram)
+              glCtx.bindVertexArray(blitVAO)
+              glCtx.activeTexture(glCtx.TEXTURE0)
+              glCtx.bindTexture(glCtx.TEXTURE_2D, readSource)
+              glCtx.uniform1i(blitUTexLocation as WebGLUniformLocation, 0)
+              if (blitUOpacityLocation)
+                glCtx.uniform1f(blitUOpacityLocation, 1.0)
+              glCtx.drawArrays(glCtx.TRIANGLE_STRIP, 0, 4)
+              glCtx.bindVertexArray(null)
+              glCtx.useProgram(null)
+              readSource = scratch.tex
+            } catch (e) {
+              console.warn("Feedback guard copy failed:", e)
+            }
+          }
           {
             const glCtx = gl as WebGL2RenderingContext
             glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, output.fb)
@@ -957,12 +1195,100 @@ async function renderLayers(
             glCtx.useProgram(compProgram)
             glCtx.bindVertexArray(compVAO)
 
+            // Ensure no texture units are bound to the destination texture to avoid feedback
+            try {
+              unbindTextureFromAllUnits(glCtx, output.tex)
+            } catch {}
+
+            // Strong guard: ensure texture units do not point to destination texture
             glCtx.activeTexture(glCtx.TEXTURE0)
-            glCtx.bindTexture(glCtx.TEXTURE_2D, readTexture)
+            if (readSource === output.tex) {
+              try {
+                const scratch2 = checkoutCompTarget(canvasWidth, canvasHeight)
+                glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, scratch2.fb)
+                glCtx.viewport(0, 0, canvasWidth, canvasHeight)
+                glCtx.clearColor(0, 0, 0, 0)
+                glCtx.clear(glCtx.COLOR_BUFFER_BIT)
+                if (!blitProgram || !blitVAO || !blitUTexLocation) {
+                  throw new Error("Blit resources not initialized")
+                }
+                glCtx.useProgram(blitProgram)
+                glCtx.bindVertexArray(blitVAO)
+                glCtx.activeTexture(glCtx.TEXTURE0)
+                glCtx.bindTexture(glCtx.TEXTURE_2D, readSource)
+                glCtx.uniform1i(blitUTexLocation as WebGLUniformLocation, 0)
+                if (blitUOpacityLocation)
+                  glCtx.uniform1f(blitUOpacityLocation, 1.0)
+                glCtx.drawArrays(glCtx.TRIANGLE_STRIP, 0, 4)
+                glCtx.bindVertexArray(null)
+                glCtx.useProgram(null)
+                readSource = scratch2.tex
+                // Restore output framebuffer
+                glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, output.fb)
+                returnCompTarget(scratch2)
+              } catch {}
+            }
+            glCtx.activeTexture(glCtx.TEXTURE1)
+            // Ensure unit 1 is not accidentally bound to destination before binding top
+            if (topTexture === output.tex) {
+              glCtx.bindTexture(glCtx.TEXTURE_2D, null)
+            }
+
+            glCtx.activeTexture(glCtx.TEXTURE0)
+            glCtx.bindTexture(glCtx.TEXTURE_2D, readSource)
+            try {
+              dbg("draw:compose:bind-base", {
+                fb: __fbIds.get(output.fb),
+                baseTex: __texIds.get(readSource as WebGLTexture),
+                outTex: __texIds.get(output.tex),
+                hazard: readSource === output.tex,
+              })
+            } catch {}
             glCtx.uniform1i(compUBaseLocation as WebGLUniformLocation, 0)
 
+            // Guard against feedback for top texture too
+            let topSource: WebGLTexture | null = topTexture
+            if (topSource && topSource === output.tex) {
+              try {
+                const scratchTop = checkoutCompTarget(canvasWidth, canvasHeight)
+                glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, scratchTop.fb)
+                glCtx.viewport(0, 0, canvasWidth, canvasHeight)
+                glCtx.clearColor(0, 0, 0, 0)
+                glCtx.clear(glCtx.COLOR_BUFFER_BIT)
+                if (!blitProgram || !blitVAO || !blitUTexLocation) {
+                  throw new Error("Blit resources not initialized")
+                }
+                glCtx.useProgram(blitProgram)
+                glCtx.bindVertexArray(blitVAO)
+                glCtx.activeTexture(glCtx.TEXTURE0)
+                glCtx.bindTexture(glCtx.TEXTURE_2D, topSource)
+                glCtx.uniform1i(blitUTexLocation as WebGLUniformLocation, 0)
+                if (blitUOpacityLocation)
+                  glCtx.uniform1f(blitUOpacityLocation, 1.0)
+                glCtx.drawArrays(glCtx.TRIANGLE_STRIP, 0, 4)
+                glCtx.bindVertexArray(null)
+                glCtx.useProgram(null)
+                topSource = scratchTop.tex
+                // Restore output framebuffer
+                glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, output.fb)
+                // Return scratch to pool
+                returnCompTarget(scratchTop)
+              } catch (e) {
+                console.warn("Feedback guard (top) failed:", e)
+                glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, output.fb)
+              }
+            }
+
             glCtx.activeTexture(glCtx.TEXTURE1)
-            glCtx.bindTexture(glCtx.TEXTURE_2D, topTexture)
+            glCtx.bindTexture(glCtx.TEXTURE_2D, topSource)
+            try {
+              dbg("draw:compose:bind-top", {
+                fb: __fbIds.get(output.fb),
+                topTex: __texIds.get(topSource as WebGLTexture),
+                outTex: __texIds.get(output.tex),
+                hazard: topSource === output.tex,
+              })
+            } catch {}
             glCtx.uniform1i(compUTopLocation as WebGLUniformLocation, 1)
 
             if (compUOpacityLocation)
@@ -979,6 +1305,10 @@ async function renderLayers(
               glCtx.uniform1i(compUBlendModeLocation, mode)
 
             glCtx.drawArrays(glCtx.TRIANGLE_STRIP, 0, 4)
+            try {
+              const err = glCtx.getError()
+              if (err) dbg("gl:error", { where: "compose:after-draw", err })
+            } catch {}
             glCtx.bindVertexArray(null)
             glCtx.useProgram(null)
           }
@@ -986,6 +1316,14 @@ async function renderLayers(
           // Swap
           writeTarget = output
           readTexture = writeTarget.tex
+
+          // Return scratch to pool if used
+          if (scratch) {
+            try {
+              returnCompTarget(scratch)
+            } catch {}
+            scratch = null
+          }
         }
 
         finalTexture = readTexture
@@ -1001,6 +1339,10 @@ async function renderLayers(
         gl.bindFramebuffer(gl.FRAMEBUFFER, null)
       }
     }
+
+    try {
+      dbg("composite:end", { drewAnyLayer })
+    } catch {}
 
     postMessage({
       type: "progress",
@@ -1176,12 +1518,26 @@ async function loadLayerTexture(
       (imgAny as ImageBitmap).height
     ) {
       imageBitmap = imgAny as ImageBitmap
+      try {
+        dbg("bitmap:existing", {
+          width: (imageBitmap as any).width,
+          height: (imageBitmap as any).height,
+        })
+      } catch {}
     } else if (isBlobLike) {
       // Convert Blob/File to ImageBitmap respecting EXIF orientation
       imageBitmap = await createImageBitmap(imgAny as Blob, {
         imageOrientation: "from-image",
       })
       dbgBitmapsCreated++
+      try {
+        dbg("bitmap:created", {
+          width: (imageBitmap as any).width,
+          height: (imageBitmap as any).height,
+          type: (imgAny as Blob).type,
+          size: (imgAny as Blob).size,
+        })
+      } catch {}
     } else {
       console.warn("Unsupported image type for layer:", layer.id)
       return null
@@ -1209,6 +1565,16 @@ async function loadLayerTexture(
       imageBitmap
     )
     dbgTexUploads++
+    try {
+      __texIds.set(texture, __idCounter++)
+    } catch {}
+    try {
+      dbg("texture:upload", {
+        texWidth: (imageBitmap as any).width,
+        texHeight: (imageBitmap as any).height,
+        cacheKey,
+      })
+    } catch {}
 
     // Once uploaded to GPU, the bitmap can be closed to free memory
     if (typeof (imageBitmap as any).close === "function") {
@@ -1235,10 +1601,9 @@ async function renderLayerWithFilters(
   toolsValues: ImageEditorToolsState,
   canvasWidth: number,
   canvasHeight: number,
-  layerDimensions: [
-    string,
-    { width: number; height: number; x: number; y: number },
-  ][]
+  layerDimensions: Array<
+    [string, { width: number; height: number; x: number; y: number }]
+  >
 ): Promise<WebGLTexture | null> {
   if (!gl || !shaderManager) return null
 
@@ -1268,13 +1633,46 @@ async function renderLayerWithFilters(
     if (uSampler) glCtx.uniform1i(uSampler, 0)
 
     const { validatedParameters } = validateFilterParameters(toolsValues)
-    shaderManager.updateUniforms(validatedParameters)
+
+    // Resolve per-layer bounds from state-provided dimensions
+    let lx = 0
+    let ly = 0
+    let lw = canvasWidth
+    let lh = canvasHeight
+    const dim = getLayerDims(layerDimensions as any, (layer as any).id)
+    if (dim && dim.width > 0 && dim.height > 0) {
+      lx = dim.x
+      ly = dim.y
+      lw = dim.width
+      lh = dim.height
+    }
+
+    // Provide geometry uniforms so the shader can position correctly
+    shaderManager.updateUniforms({
+      ...validatedParameters,
+      layerSize: [lw, lh],
+      canvasSize: [canvasWidth, canvasHeight],
+      // Vertex shader expects center position in pixels
+      layerPosition: [lx + lw / 2, ly + lh / 2],
+      opacity: (layer as any).opacity ?? 100,
+    })
+    // Debug: log resolved layer geometry
+    try {
+      dbg("layer:uniforms", {
+        layerId: (layer as any).id,
+        layerX: lx,
+        layerY: ly,
+        layerW: lw,
+        layerH: lh,
+        canvasW: canvasWidth,
+        canvasH: canvasHeight,
+      })
+    } catch {}
     shaderManager.setUniforms(glCtx, program)
 
-    // Draw to a comp target to avoid feedback
-    const ping = ensureCompTarget(compPingTarget, canvasWidth, canvasHeight)
-    compPingTarget = ping
-    glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, ping.fb)
+    // Draw to a temporary target to avoid feedback with compositing ping/pong
+    const tempTarget = checkoutCompTarget(canvasWidth, canvasHeight)
+    glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, tempTarget.fb)
     glCtx.viewport(0, 0, canvasWidth, canvasHeight)
     glCtx.clearColor(0, 0, 0, 0)
     glCtx.clear(glCtx.COLOR_BUFFER_BIT)
@@ -1285,7 +1683,7 @@ async function renderLayerWithFilters(
     glCtx.useProgram(null)
     glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, null)
 
-    return ping.tex
+    return tempTarget.tex
   } catch (error) {
     console.error("Failed to render layer with filters:", error)
     return null
@@ -1323,6 +1721,7 @@ async function renderAdjustmentFromBase(
     glCtx.enableVertexAttribArray(aTexLoc)
     glCtx.vertexAttribPointer(aTexLoc, 2, glCtx.FLOAT, false, 0, 0)
 
+    // Guard: do not sample from a texture attached to the active draw framebuffer
     glCtx.activeTexture(glCtx.TEXTURE0)
     glCtx.bindTexture(glCtx.TEXTURE_2D, baseTexture)
     const uSampler = glCtx.getUniformLocation(program, "u_image")
@@ -1335,7 +1734,7 @@ async function renderAdjustmentFromBase(
     })
     shaderManager.setUniforms(glCtx, program)
 
-    // Draw into a pooled comp target
+    // Draw into a pooled comp target (distinct from the texture being sampled)
     const target = checkoutCompTarget(canvasWidth, canvasHeight)
     glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, target.fb)
     glCtx.viewport(0, 0, canvasWidth, canvasHeight)
@@ -1384,36 +1783,71 @@ async function renderToCanvas(
   if (!gl) return
 
   try {
-    // Bind default framebuffer
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null)
-    gl.viewport(0, 0, canvasWidth, canvasHeight)
+    // Prefer WebGL2 framebuffer blit to avoid any sampling feedback/invalid op
+    const gl2 = gl as WebGL2RenderingContext
+    // Create temp FBO to attach the final texture as READ_FRAMEBUFFER
+    const srcFbo = gl2.createFramebuffer()
+    if (!srcFbo)
+      throw new Error("Failed to create temp framebuffer for final blit")
+    gl2.bindFramebuffer(gl2.READ_FRAMEBUFFER, srcFbo)
+    gl2.framebufferTexture2D(
+      gl2.READ_FRAMEBUFFER,
+      gl2.COLOR_ATTACHMENT0,
+      gl2.TEXTURE_2D,
+      finalTexture,
+      0
+    )
+    // Default framebuffer as draw target
+    gl2.bindFramebuffer(gl2.DRAW_FRAMEBUFFER, null)
+    gl2.viewport(0, 0, canvasWidth, canvasHeight)
+    gl2.clearColor(0, 0, 0, 0)
+    gl2.clear(gl2.COLOR_BUFFER_BIT)
+    // Blit copy
+    gl2.blitFramebuffer(
+      0,
+      0,
+      canvasWidth,
+      canvasHeight,
+      0,
+      0,
+      canvasWidth,
+      canvasHeight,
+      gl2.COLOR_BUFFER_BIT,
+      gl2.NEAREST
+    )
+    // Check for GL errors that indicate blit failed (e.g., multisampled default framebuffer)
+    const blitError = gl2.getError()
+    // Cleanup FBO bindings before potential fallback
+    gl2.bindFramebuffer(gl2.READ_FRAMEBUFFER, null)
+    gl2.bindFramebuffer(gl2.DRAW_FRAMEBUFFER, null)
+    gl2.deleteFramebuffer(srcFbo)
 
-    // Clear canvas
-    gl.clearColor(0, 0, 0, 0)
-    gl.clear(gl.COLOR_BUFFER_BIT)
+    if (blitError !== gl2.NO_ERROR) {
+      // Fallback: draw a fullscreen quad using the blit shader
+      try {
+        // Bind default framebuffer explicitly
+        gl2.bindFramebuffer(gl2.FRAMEBUFFER, null)
+        gl2.viewport(0, 0, canvasWidth, canvasHeight)
+        gl2.clearColor(0, 0, 0, 0)
+        gl2.clear(gl2.COLOR_BUFFER_BIT)
 
-    // Use blit program to draw the texture to the canvas
-    if (!blitProgram || !blitVAO || !blitUTexLocation) {
-      throw new Error("Blit resources not initialized")
+        if (!blitProgram || !blitVAO || !blitUTexLocation) {
+          throw new Error("Blit resources not initialized for final draw")
+        }
+
+        gl2.useProgram(blitProgram)
+        gl2.bindVertexArray(blitVAO)
+        gl2.activeTexture(gl2.TEXTURE0)
+        gl2.bindTexture(gl2.TEXTURE_2D, finalTexture)
+        gl2.uniform1i(blitUTexLocation as WebGLUniformLocation, 0)
+        if (blitUOpacityLocation) gl2.uniform1f(blitUOpacityLocation, 1.0)
+        gl2.drawArrays(gl2.TRIANGLE_STRIP, 0, 4)
+        gl2.bindVertexArray(null)
+        gl2.useProgram(null)
+      } catch (fallbackError) {
+        console.error("Final draw fallback failed:", fallbackError)
+      }
     }
-
-    gl.useProgram(blitProgram)
-    gl.bindVertexArray(blitVAO)
-
-    gl.activeTexture(gl.TEXTURE0)
-    gl.bindTexture(gl.TEXTURE_2D, finalTexture)
-    gl.uniform1i(blitUTexLocation, 0)
-
-    // Ensure full opacity for visibility
-    if (blitUOpacityLocation) {
-      gl.uniform1f(blitUOpacityLocation, 1.0)
-    }
-
-    gl.disable(gl.BLEND)
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
-
-    gl.bindVertexArray(null)
-    gl.useProgram(null)
   } catch (error) {
     console.error("Failed to render to canvas:", error)
   }
@@ -1478,6 +1912,67 @@ self.onmessage = async (event: MessageEvent) => {
           renderMessage.data.layerDimensions,
           message.id
         )
+        break
+      }
+
+      case "resize": {
+        const { width, height } = (message as ResizeMessage).data
+        if (!gl || !canvas) {
+          postMessage({
+            type: "error",
+            id: message.id,
+            error: "WebGL context not initialized",
+          } as ErrorMessage)
+          break
+        }
+        try {
+          // Resize canvas and viewport
+          canvas.width = width
+          canvas.height = height
+          gl.viewport(0, 0, width, height)
+
+          // Reset persistent targets so they'll be recreated at the new size
+          compPingTarget = null
+          compPongTarget = null
+
+          // Reinitialize heavy helpers that depend on dimensions
+          if (hybridRendererInstance) {
+            try {
+              hybridRendererInstance.initialize({
+                gl: gl as WebGL2RenderingContext,
+                width,
+                height,
+              })
+            } catch {}
+          }
+          if (asynchronousPipeline) {
+            try {
+              asynchronousPipeline.initialize({
+                gl: gl as WebGL2RenderingContext,
+                width,
+                height,
+              })
+            } catch {}
+          }
+
+          // Debug: confirm new size
+          try {
+            dbg("resize:size", {
+              requestedWidth: width,
+              requestedHeight: height,
+              canvasWidth: (canvas as OffscreenCanvas).width,
+              canvasHeight: (canvas as OffscreenCanvas).height,
+            })
+          } catch {}
+
+          postMessage({ type: "success", id: message.id } as SuccessMessage)
+        } catch (e) {
+          postMessage({
+            type: "error",
+            id: message.id,
+            error: e instanceof Error ? e.message : "Resize failed",
+          } as ErrorMessage)
+        }
         break
       }
 

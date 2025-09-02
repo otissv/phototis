@@ -43,6 +43,11 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
   const workerManagerRef = React.useRef<WorkerManager | null>(null)
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null)
   const eventListenersRef = React.useRef<Map<string, EventListener>>(new Map())
+  // Track last known worker canvas size to avoid rendering before resize
+  const workerCanvasSizeRef = React.useRef<{
+    width: number
+    height: number
+  } | null>(null)
   // Coalescing of rapid render requests
   const coalesceTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
     null
@@ -83,6 +88,13 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
 
         workerManagerRef.current = manager
         canvasRef.current = canvas
+        // After initialize, record initial size so draws won't race
+        workerCanvasSizeRef.current = {
+          width: canvas.width,
+          height: canvas.height,
+        }
+
+        console.log("workerCanvasSizeRef 1:", workerCanvasSizeRef.current)
 
         // Set up event listeners
         setupEventListeners()
@@ -114,14 +126,42 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
       config.progressiveLevels,
     ]
   )
+  // Resize worker canvas
+  const resize = React.useCallback(async (width: number, height: number) => {
+    const manager = workerManagerRef.current
+    if (!manager || !manager.isReady()) return false
+    try {
+      const ok = await manager.resize(width, height)
+      if (ok) {
+        workerCanvasSizeRef.current = { width, height }
+        console.log("workerCanvasSizeRef 2:", workerCanvasSizeRef.current)
+      }
+      return ok
+    } catch {
+      return false
+    }
+  }, [])
+
+  // Ensure worker canvas matches desired size before rendering
+  const ensureCanvasSize = React.useCallback(
+    async (width: number, height: number) => {
+      console.log("workerCanvasSizeRef 3:", workerCanvasSizeRef.current)
+
+      const current = workerCanvasSizeRef.current
+      if (!current || current.width !== width || current.height !== height) {
+        await resize(width, height)
+      }
+    },
+    [resize]
+  )
 
   // Prewarm workers on mount to shorten initialize latency
   React.useEffect(() => {
     const run = async () => {
       try {
-        const m = WorkerManager.getShared()
-        await m.prepare()
-        workerManagerRef.current = m
+        const manager = WorkerManager.getShared()
+        await manager.prepare()
+        workerManagerRef.current = manager
       } catch {}
     }
     void run()
@@ -422,6 +462,8 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
 
     // Actions
     initialize,
+    ensureCanvasSize,
+    resize,
     renderLayers,
     applyFilter,
     cancelCurrentTask,
