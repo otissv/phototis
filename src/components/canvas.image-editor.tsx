@@ -788,7 +788,6 @@ export function ImageEditorCanvas({
 
   const handleWheel = React.useCallback(
     (e: React.WheelEvent) => {
-      e.preventDefault()
       const delta = e.deltaY > 0 ? 0.9 : 1.1
       const currentScale = viewportScale.get()
       const newScale = Math.max(0.1, Math.min(5, currentScale * delta))
@@ -1731,12 +1730,12 @@ export function ImageEditorCanvas({
                         : cropRect.height / 2 - 4,
                     cursor:
                       h === "n" || h === "s"
-                        ? "ns-dimensions"
+                        ? "ns-resize"
                         : h === "e" || h === "w"
-                          ? "ew-dimensions"
+                          ? "ew-resize"
                           : h === "ne" || h === "sw"
-                            ? "nesw-dimensions"
-                            : "nwse-dimensions",
+                            ? "nesw-resize"
+                            : "nwse-resize",
                   }}
                 />
               )

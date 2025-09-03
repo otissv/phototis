@@ -20,6 +20,7 @@ import type { CropToolsType, ToolValueCropType } from "@/lib/tools/tools"
 import { Input } from "@/ui/input"
 import type { EditorContextValue } from "@/lib/editor/context"
 import type { LayerDimensions } from "../canvas.image-editor"
+import type { CropFooterProps } from "../tools.image-editor"
 
 function CropButton({
   onSelectedToolChange,
@@ -42,21 +43,18 @@ function CropButton({
 CropButton.displayName = "CropButton"
 
 function CropControls({
-  selectedLayer,
   value,
   dispatch,
-}: Omit<ImageEditorFooterProps, "onSelectedToolChange">) {
-  const hostValue = value as ToolValueCropType["defaultValue"]
-
-  const [overlay, setOverlay] = React.useState(hostValue.overlay)
-  const [width, setWidth] = React.useState(hostValue.width)
-  const [height, setHeight] = React.useState(hostValue.height)
+}: Omit<CropFooterProps, "onSelectedToolChange">) {
+  const [overlay, setOverlay] = React.useState(value.overlay)
+  const [width, setWidth] = React.useState(value.width)
+  const [height, setHeight] = React.useState(value.height)
 
   React.useEffect(() => {
-    setOverlay(hostValue.overlay)
-    setWidth(hostValue.width)
-    setHeight(hostValue.height)
-  }, [hostValue.overlay, hostValue.width, hostValue.height])
+    setOverlay(value.overlay)
+    setWidth(value.width)
+    setHeight(value.height)
+  }, [value.overlay, value.width, value.height])
 
   const handleOverlayGridChange = (next: string) => {
     const overlay = next as CropToolsType["crop"]["overlay"]

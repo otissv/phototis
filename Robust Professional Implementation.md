@@ -15,6 +15,12 @@ Security Considerations
 All points should be integrated.
 
 1. Web Workers with OffscreenCanvas Architecture
+2. Asynchronous Rendering Pipeline
+3. Progressive Rendering Strategy
+4. Intelligent Task Scheduling and Prioritization
+5. Memory Management and Resource Pooling
+
+1. Web Workers with OffscreenCanvas Architecture
 The foundation of your non-blocking strategy should be built on Web Workers with OffscreenCanvas. This approach moves all GPU-intensive operations to background threads while maintaining the same WebGL capabilities.
 Worker Thread Structure:
 Main Thread: Handles UI interactions, state management, and user input
@@ -96,3 +102,9 @@ Progressive pipeline is present but disabled (USE_PIPELINE = false); it needs fi
 No dedicated compositing/filters workers; currently a single render worker handles all stages.
 Texture/FBO pooling and adaptive quality are partially implemented on the hybrid path; worker path needs parity.
 Caching/invalidations and more advanced scheduling are minimal. -->
+
+
+Fully implement robust solution for worker compositing blend modes
+
+- Worker compositing does not implement blend modes
+- Texture/FBO pooling and adaptive quality are partially implemented on the hybrid path; worker path needs parity

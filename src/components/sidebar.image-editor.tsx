@@ -50,7 +50,22 @@ export function ImageEditorSidebar({
           isDocumentLayer={isDocumentLayer}
         >
           <Image />
-          Canvas
+          Resize
+        </SidebarButton>
+      </li>
+      <li>
+        <SidebarButton
+          title='Resize'
+          footerType='dimensions'
+          disabled={progress || isDocumentLayer}
+          selectedSidebar={selectedSidebar}
+          onChange={onChange}
+          onSelectedToolChange={onSelectedToolChange}
+          isDocumentLayer={isDocumentLayer}
+          className={isDocumentLayer ? "hidden" : ""}
+        >
+          <ImageUpscale />
+          Resize
         </SidebarButton>
       </li>
       <li>
@@ -67,20 +82,7 @@ export function ImageEditorSidebar({
           Rotate
         </SidebarButton>
       </li>
-      <li>
-        <SidebarButton
-          title='Resize'
-          footerType='dimensions'
-          disabled={progress}
-          selectedSidebar={selectedSidebar}
-          onChange={onChange}
-          onSelectedToolChange={onSelectedToolChange}
-          isDocumentLayer={isDocumentLayer}
-        >
-          <ImageUpscale />
-          Resize
-        </SidebarButton>
-      </li>
+
       <li>
         <SidebarButton
           title='Scale'

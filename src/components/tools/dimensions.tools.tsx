@@ -1,6 +1,6 @@
 "use client"
 
-import React from "react"
+import React, { useId } from "react"
 import { Expand, Link2 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -13,6 +13,7 @@ import {
 } from "@/components/button.image-editor"
 import type { ImageLayer } from "@/lib/editor/state"
 import { getImageDimensions } from "@/lib/utils/get-image-dimensions"
+import type { DimensionsFooterProps } from "../tools.image-editor"
 
 function DimensionsButton({
   onSelectedToolChange,
@@ -35,11 +36,10 @@ function DimensionsButton({
 DimensionsButton.displayName = "DimensionsButton"
 
 function DimensionsControls({
-  onChange,
   selectedLayer,
   dispatch,
   toolsValues,
-}: Omit<ImageEditorFooterProps, "onSelectedToolChange">) {
+}: Omit<DimensionsFooterProps, "onSelectedToolChange">) {
   const [width, setWidth] = React.useState<number>(0)
   const [height, setHeight] = React.useState<number>(0)
   const [originalAspectRatio, setOriginalAspectRatio] =
@@ -105,8 +105,6 @@ function DimensionsControls({
       setWidth(newWidth)
       setHeight(newHeight)
 
-      // Fire local onChange label handler if provided
-      onChange?.(0 as any)
       // Persist to selected layer filters via reducer
       dispatch?.({
         type: "dimensions",
@@ -123,7 +121,7 @@ function DimensionsControls({
         Width px
       </label>
       <Input
-        id='width'
+        id={useId()}
         type='number'
         className='col-start-1 row-start-2 w-20 rounded-full'
         value={width}
@@ -151,7 +149,7 @@ function DimensionsControls({
         Height px
       </label>
       <Input
-        id='height'
+        id={useId()}
         type='number'
         className='col-start-3 row-start-2 w-20 rounded-full'
         value={height}

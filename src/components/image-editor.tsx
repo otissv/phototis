@@ -65,7 +65,7 @@ function ImageEditorInner({
   const [selectedSidebar, setSelectedSidebar] =
     React.useState<keyof typeof SIDEBAR_TOOLS>("rotate")
   const [selectedTool, setSelectedTool] =
-    React.useState<keyof typeof TOOL_VALUES>("brightness")
+    React.useState<keyof typeof TOOL_VALUES>("rotate")
   const [progress, setProgress] = React.useState(0)
 
   const {

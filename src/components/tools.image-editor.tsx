@@ -45,6 +45,7 @@ import {
 import { NoiseButton, NoiseControls } from "@/components/tools/noise.tools"
 import { CropControls } from "@/components/tools/crop.tools"
 import type {
+  TOOL_VALUES,
   ToolValueCropType,
   ToolValueDimensionType,
   ToolValueNumberType,
@@ -60,42 +61,47 @@ export function ImageEditorFooter({
 }) {
   switch (selectedSidebar) {
     case "dimensionsCanvas":
-      return <DimensionsCanvasFooter {...props} />
+      return (
+        <DimensionsCanvasFooter {...(props as DimensionsCanvasFooterProps)} />
+      )
     case "effects":
-      return <EffectsFooter {...props} />
+      return <EffectsFooter {...(props as EffectsFooterProps)} />
     case "rotate":
-      return <RotateFooter {...props} />
+      return <RotateFooter {...(props as RotateFooterProps)} />
     case "dimensions":
-      return <DimensionsFooter {...props} />
+      return <DimensionsFooter {...(props as DimensionsFooterProps)} />
     case "scale":
-      return <ScaleFooter {...props} />
+      return <ScaleFooter {...(props as ScaleFooterProps)} />
     case "upscale":
-      return <UpscaleFooter {...props} />
+      return <UpscaleFooter {...(props as UpscaleFooterProps)} />
     case "crop":
-      return <CropFooter {...props} />
+      return <CropFooter {...(props as CropFooterProps)} />
 
     default:
       return null
   }
 }
 
-/**
- * Effects
- */
+export interface EffectsFooterProps
+  extends Prettify<
+    Omit<ImageEditorFooterProps, "value"> & {
+      value: ToolValueNumberType["defaultValue"]
+    }
+  > {}
+
 export function EffectsFooter({
-  selectedTool,
-  value,
-  onSelectedToolChange,
-  dispatch,
-  toolsValues,
-  progress,
-  onChange: _onChange,
-  onProgress: _onProgress,
   canvasRef,
   drawFnRef,
+  progress,
   selectedLayer,
+  selectedTool,
+  toolsValues,
+  value,
+  dispatch,
+  onProgress: _onProgress,
+  onSelectedToolChange,
   ...props
-}: ImageEditorFooterProps) {
+}: EffectsFooterProps) {
   const { history } = useEditorContext()
   const handleOnChange = React.useCallback(
     (value: number) => {
@@ -147,35 +153,17 @@ export function EffectsFooter({
     [history, selectedTool, dispatch]
   )
 
-  const Control = React.useMemo(() => {
-    const controlProps = {
-      value,
-      progress,
-      selectedTool,
-      toolsValues,
-      dispatch,
-      canvasRef,
-      drawFnRef,
-      selectedLayer,
-      onChange: handleOnChange,
-    }
-    switch (selectedTool) {
-      case "noise":
-        return <NoiseControls {...controlProps} />
-      case "sharpen":
-        return <SharpenControls {...controlProps} />
-    }
-  }, [
-    selectedTool,
-    value,
-    progress,
-    handleOnChange,
-    selectedLayer,
-    toolsValues,
-    dispatch,
+  const controlProps = {
     canvasRef,
     drawFnRef,
-  ])
+    progress,
+    selectedLayer,
+    selectedTool,
+    toolsValues,
+    value: toolsValues[selectedTool],
+    dispatch,
+    onChange: handleOnChange,
+  }
 
   const renderBlurControls = () => {
     if (selectedTool === "blur") {
@@ -241,7 +229,8 @@ export function EffectsFooter({
     <div {...props}>
       <div className='flex justify-center overflow-x-auto '>
         <div className='max-w-lg w-full flex flex-col items-center justify-center'>
-          {Control}
+          {selectedTool === "noise" && <NoiseControls {...controlProps} />}
+          {selectedTool === "sharpen" && <SharpenControls {...controlProps} />}
         </div>
       </div>
       <ul className='flex gap-6 w-full max-w-lg overflow-x-auto py-2'>
@@ -275,26 +264,33 @@ export function EffectsFooter({
   )
 }
 
+export interface RotateFooterProps
+  extends Prettify<
+    Omit<ImageEditorFooterProps, "value"> & {
+      value: ToolValueNumberType["defaultValue"]
+    }
+  > {}
+
 /**
  * Rotate
  */
 export function RotateFooter({
-  progress,
-  selectedTool,
-  toolsValues,
-  value,
-  dispatch,
-  onSelectedToolChange,
   canvasRef,
   drawFnRef,
+  progress,
   selectedLayer,
+  selectedTool,
+  toolsValues,
+  dispatch,
+  onProgress: _onProgress,
+  onSelectedToolChange: _onSelectedToolChange,
   ...props
-}: Omit<ImageEditorFooterProps, "onChange" | "onProgress">) {
+}: RotateFooterProps) {
   const { rotateDocument, flipDocument } = useEditorContext()
   const isDocumentLayer = selectedLayer?.id === "document"
 
   const safeRotate =
-    typeof (toolsValues as any)?.rotate === "number"
+    typeof (toolsValues as any).rotate === "number"
       ? (toolsValues as any).rotate
       : 0
   const safeFlipH = Boolean((toolsValues as any)?.flipHorizontal)
@@ -369,40 +365,33 @@ export function RotateFooter({
     [dispatch, selectedTool, isDocumentLayer, safeRotate, rotateDocument]
   )
 
-  let operator = ""
-
-  if (selectedTool === "rotate") {
-    operator = "°"
-  } else if (selectedTool === "scale") {
-    operator = "%"
-  }
-
   const Control = React.useMemo(() => {
     const controlProps = {
-      value: safeRotate, // Use the safe rotation value
-      progress,
-      selectedTool,
-      toolsValues,
-      dispatch,
       canvasRef,
       drawFnRef,
+      operator: "°",
+      progress,
       selectedLayer,
+      selectedTool,
+      toolsValues,
+      value: safeRotate, // Use the safe rotation value
+      dispatch,
       onChange: handleOnChange,
     }
     switch (selectedTool) {
       case "rotate":
-        return <RotationControls operator='°' {...controlProps} />
+        return <RotationControls {...controlProps} />
     }
   }, [
-    selectedTool,
-    safeRotate, // Use safeRotate instead of value
-    progress,
-    handleOnChange,
-    selectedLayer,
-    toolsValues,
-    dispatch,
     canvasRef,
+    dispatch,
     drawFnRef,
+    handleOnChange,
+    progress,
+    safeRotate, // Use safeRotate instead of value
+    selectedLayer,
+    selectedTool,
+    toolsValues,
   ])
 
   return (
@@ -598,20 +587,26 @@ export function TransformHeader({
   )
 }
 
+export interface ScaleFooterProps
+  extends Prettify<
+    Omit<ImageEditorFooterProps, "value"> & {
+      value: ToolValueNumberType["defaultValue"]
+    }
+  > {}
+
 export function ScaleFooter({
+  canvasRef,
+  className,
+  drawFnRef,
   progress,
+  selectedLayer,
   selectedTool,
   toolsValues,
-  value,
   dispatch,
-  onSelectedToolChange,
-  canvasRef,
-  drawFnRef,
-  selectedLayer,
   onProgress,
-  className,
+  onSelectedToolChange,
   ...props
-}: Omit<ImageEditorFooterProps, "onChange">) {
+}: ScaleFooterProps) {
   const handleOnChange = React.useCallback(
     (value: number) => {
       dispatch({ type: selectedTool as any, payload: value } as any)
@@ -623,83 +618,82 @@ export function ScaleFooter({
     progress,
     selectedTool,
     toolsValues,
-    dispatch,
     canvasRef,
     drawFnRef,
     selectedLayer,
+    value: toolsValues.scale,
+    dispatch,
     onProgress,
     onChange: handleOnChange,
+    onSelectedToolChange,
   }
 
   return (
     <div className={cn("flex justify-center", className)} {...props}>
-      <ScaleControls
-        operator='%'
-        isDecimal={true}
-        {...controlProps}
-        value={value as ToolValueNumberType["defaultValue"]}
-      />
+      <ScaleControls operator='%' isDecimal={true} {...controlProps} />
     </div>
   )
 }
+
+export interface DimensionsFooterProps
+  extends Prettify<
+    Omit<ImageEditorFooterProps, "value"> & {
+      value: ToolValueDimensionType["defaultValue"]
+    }
+  > {}
 
 export function DimensionsFooter({
+  canvasRef,
+  className,
+  drawFnRef,
   progress,
+  selectedLayer,
   selectedTool,
   toolsValues,
-  value,
   dispatch,
-  onSelectedToolChange,
-  canvasRef,
-  drawFnRef,
-  selectedLayer,
   onProgress,
-  className,
+  onSelectedToolChange: _onSelectedToolChange,
   ...props
-}: Omit<ImageEditorFooterProps, "onChange">) {
-  const handleOnChange = React.useCallback(
-    (value: number) => {
-      dispatch({ type: selectedTool as any, payload: value } as any)
-    },
-    [dispatch, selectedTool]
-  )
-
+}: DimensionsFooterProps) {
   const controlProps = {
-    progress,
-    selectedTool,
-    toolsValues,
-    dispatch,
     canvasRef,
     drawFnRef,
+    progress,
     selectedLayer,
+    selectedTool,
+    toolsValues,
+    value: toolsValues?.dimensions,
+    dispatch,
     onProgress,
-    onChange: handleOnChange,
   }
 
   return (
     <div className={cn("flex justify-center", className)} {...props}>
-      <DimensionsControls
-        {...controlProps}
-        value={value as ToolValueDimensionType["defaultValue"]}
-      />
+      <DimensionsControls {...controlProps} />
     </div>
   )
 }
+
+export interface UpscaleFooterProps
+  extends Prettify<
+    Omit<ImageEditorFooterProps, "value"> & {
+      value: ToolValueNumberType["defaultValue"]
+    }
+  > {}
 
 export function UpscaleFooter({
+  canvasRef,
+  className,
+  drawFnRef,
   progress,
+  selectedLayer,
   selectedTool,
   toolsValues,
-  value,
   dispatch,
-  onSelectedToolChange,
-  canvasRef,
-  drawFnRef,
-  selectedLayer,
   onProgress,
-  className,
+  onSelectedToolChange: _onSelectedToolChange,
   ...props
-}: Omit<ImageEditorFooterProps, "onChange">) {
+}: UpscaleFooterProps) {
   const handleOnChange = React.useCallback(
     (value: number) => {
       dispatch({ type: selectedTool as any, payload: value } as any)
@@ -708,37 +702,44 @@ export function UpscaleFooter({
   )
 
   const controlProps = {
-    progress,
-    selectedTool,
-    toolsValues,
-    dispatch,
     canvasRef,
     drawFnRef,
+    progress,
     selectedLayer,
-    onProgress,
+    selectedTool,
+    toolsValues,
+    value: toolsValues?.upscale,
+    dispatch,
     onChange: handleOnChange,
+    onProgress,
   }
   return (
     <div className={cn("flex justify-center", className)} {...props}>
-      <UpscaleControls {...controlProps} value={value as number} />
+      <UpscaleControls {...controlProps} />
     </div>
   )
 }
+
+export interface CropFooterProps
+  extends Prettify<
+    Omit<ImageEditorFooterProps, "onChange" | "value"> & {
+      value: ToolValueCropType["defaultValue"]
+    }
+  > {}
 
 export function CropFooter({
+  canvasRef,
+  className,
+  drawFnRef,
   progress,
+  selectedLayer,
   selectedTool,
   toolsValues,
-  value,
   dispatch,
-  onSelectedToolChange,
-  canvasRef,
-  drawFnRef,
-  selectedLayer,
   onProgress,
-  className,
+  onSelectedToolChange: _onSelectedToolChange,
   ...props
-}: Omit<ImageEditorFooterProps, "onChange">) {
+}: CropFooterProps) {
   const handleOnChange = React.useCallback(
     (value: number) => {
       dispatch({ type: selectedTool as any, payload: value } as any)
@@ -747,63 +748,48 @@ export function CropFooter({
   )
 
   const controlProps = {
-    progress,
-    selectedTool,
-    toolsValues,
-    dispatch,
     canvasRef,
     drawFnRef,
+    progress,
     selectedLayer,
-    onProgress,
+    selectedTool,
+    toolsValues,
+    value: toolsValues.crop,
+    dispatch,
     onChange: handleOnChange,
+    onProgress,
   }
 
   return (
     <div className={cn("flex justify-center", className)} {...props}>
-      <CropControls
-        {...controlProps}
-        value={value as ToolValueCropType["defaultValue"]}
-      />
+      <CropControls {...controlProps} />
     </div>
   )
 }
 
+export interface DimensionsCanvasFooterProps
+  extends Prettify<
+    Omit<ImageEditorFooterProps, "onChange" | "value"> & {
+      value: ToolValueDimensionType["defaultValue"]
+    }
+  > {}
+
 export function DimensionsCanvasFooter({
-  progress,
-  selectedTool,
-  toolsValues,
-  value,
-  dispatch,
-  onSelectedToolChange,
-  canvasRef,
-  drawFnRef,
-  selectedLayer,
-  onProgress,
   className,
+  progress: _progress,
+  selectedTool: _selectedTool,
+  toolsValues: _toolsValues,
+  canvasRef: _canvasRef,
+  drawFnRef: _drawFnRef,
+  selectedLayer: _selectedLayer,
+  dispatch: _dispatch,
+  onProgress: _onProgress,
+  onSelectedToolChange: _onSelectedToolChange,
   ...props
-}: Omit<ImageEditorFooterProps, "onChange">) {
-  const handleOnChange = React.useCallback(
-    (value: number) => {
-      dispatch({ type: selectedTool as any, payload: value } as any)
-    },
-    [dispatch, selectedTool]
-  )
-
-  const controlProps = {
-    progress,
-    selectedTool,
-    toolsValues,
-    dispatch,
-    canvasRef,
-    drawFnRef,
-    selectedLayer,
-    onProgress,
-    onChange: handleOnChange,
-  }
-
+}: DimensionsCanvasFooterProps) {
   return (
     <div className={cn("flex justify-center", className)} {...props}>
-      <DimensionsCanvasControls {...controlProps} value={value as number} />
+      <DimensionsCanvasControls />
     </div>
   )
 }

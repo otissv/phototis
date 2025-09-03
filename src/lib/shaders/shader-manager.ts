@@ -147,12 +147,12 @@ vec3 rgb2hsv(vec3 c){
   float d=q.x-min(q.w,q.y);
   float e=1.0e-10;
   return vec3(abs(q.z+(q.w-q.y)/(6.0*d+e)),d/(q.x+e),q.x);
-}
+      }
 vec3 hsv2rgb(vec3 c){
   vec4 K=vec4(1.0,2.0/3.0,1.0/3.0,3.0);
   vec3 p=abs(fract(c.xxx+K.xyz)*6.0-K.www);
   return c.z*mix(K.xxx,clamp(p-K.xxx,0.0,1.0),c.y);
-}
+      }
 vec3 rgb2hsl(vec3 c){
   float r=c.r,g=c.g,b=c.b;float maxc=max(max(r,g),b);float minc=min(min(r,g),b);
   float l=(maxc+minc)*0.5;float h=0.0;float s=0.0; if(maxc!=minc){
@@ -160,13 +160,13 @@ vec3 rgb2hsl(vec3 c){
     if(maxc==r){h=(g-b)/d+(g<b?6.0:0.0);} else if(maxc==g){h=(b-r)/d+2.0;} else {h=(r-g)/d+4.0;}
     h/=6.0; }
   return vec3(h,s,l);
-}
+      }
 float hue2rgb(float p,float q,float t){ if(t<0.0) t+=1.0; if(t>1.0) t-=1.0; if(t<1.0/6.0) return p+(q-p)*6.0*t; if(t<1.0/2.0) return q; if(t<2.0/3.0) return p+(q-p)*(2.0/3.0-t)*6.0; return p; }
 vec3 hsl2rgb(vec3 hsl){ float h=hsl.x; float s=hsl.y; float l=hsl.z; float r,g,b; if(s==0.0){ r=g=b=l; } else {
   float q=l<0.5? l*(1.0+s) : l + s - l*s; float p=2.0*l-q;
   r=hue2rgb(p,q,h+1.0/3.0); g=hue2rgb(p,q,h); b=hue2rgb(p,q,h-1.0/3.0); } return vec3(r,g,b); }
 float random(vec2 st){ return fract(sin(dot(st.xy,vec2(12.9898,78.233)))*43758.5453123); }
-`
+    `
 
     // Main
     combined += `
@@ -175,8 +175,8 @@ void main(){
   vec4 color=${isWebGL2 ? "texture(u_image, uv)" : "texture2D(u_image, uv)"};
   if(u_solidEnabled==1){ vec4 solidColor=vec4(u_solidColor,u_solidAlpha); color=solidColor; }
   ${isWebGL2 ? "outColor = color;" : "gl_FragColor = color;"}
-}
-`
+      }
+    `
 
     return combined
   }

@@ -1,11 +1,10 @@
 "use client"
 
-import React from "react"
+import React, { useId } from "react"
 import { Expand, Link2, AlertCircle } from "lucide-react"
 import { motion } from "motion/react"
 
 import { cn } from "@/lib/utils"
-import type { ImageEditorFooterProps } from "@/components/tools/utils.tools"
 import { useEditorContext } from "@/lib/editor/context"
 import { Input } from "@/ui/input"
 import { Button } from "@/ui/button"
@@ -46,9 +45,7 @@ type CanvasPosition =
   | "bottomCenter"
   | "bottomRight"
 
-function DimensionsCanvasControls({
-  onChange,
-}: Omit<ImageEditorFooterProps, "onSelectedToolChange">) {
+function DimensionsCanvasControls() {
   const { state, dimensionsDocument } = useEditorContext()
   const [width, setWidth] = React.useState<number>(
     state.canonical.document.width
@@ -362,7 +359,7 @@ function DimensionsCanvasControls({
             Width
           </label> */}
           <Input
-            id='width'
+            id={useId()}
             aria-label='Width'
             type='number'
             min={1}
@@ -396,7 +393,7 @@ function DimensionsCanvasControls({
             Height px
           </label> */}
           <Input
-            id='height'
+            id={useId()}
             type='number'
             min={1}
             max={GPU_SECURITY_CONSTANTS.MAX_TEXTURE_SIZE}

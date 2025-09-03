@@ -168,14 +168,16 @@ export function EditorProvider({
           x: 0,
           y: 0,
         },
+        crop: {
+          ...defaultFilters.crop,
+          ...dimensions,
+        },
       },
       opacity: 100,
       isEmpty: !initialImage,
       blendMode: "normal",
       image: initialImage ?? undefined,
     }
-
-    console.log("baseLayer*************", baseLayer)
 
     const documentLayer: DocumentLayer = {
       id: "document",

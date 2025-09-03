@@ -11,8 +11,8 @@ import type { ImageLayer } from "@/lib/editor/state"
 import { useEditorContext } from "@/lib/editor/context"
 import { upscaleTool } from "@/components/tools/upscaler"
 import { Progress } from "@/ui/progress"
-import type { ImageEditorFooterProps } from "./utils.tools"
 import { cn } from "@/lib/utils"
+import type { UpscaleFooterProps } from "../tools.image-editor"
 
 function UpscaleButton({
   progress,
@@ -120,7 +120,7 @@ UpscaleButton.displayName = "UpscaleButton"
 
 function UpscaleControls({
   progress = 0,
-}: Omit<ImageEditorFooterProps, "onSelectedToolChange">) {
+}: Omit<UpscaleFooterProps, "onSelectedToolChange">) {
   return (
     <div
       className={cn(
