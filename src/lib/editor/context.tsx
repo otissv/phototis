@@ -36,7 +36,6 @@ import {
   DocumentDimensionsCommand,
 } from "@/lib/editor/commands"
 import { loadDocument } from "@/lib/editor/persistence"
-import { getImageDimensions } from "../utils/get-image-dimensions"
 
 export type EditorContextValue = {
   state: EditorRuntimeState
@@ -139,16 +138,22 @@ export function useEditorContext(): EditorContextValue {
 export function EditorProvider({
   children,
   initialImage,
+  dimensions = {
+    width: 1,
+    height: 1,
+  },
 }: {
   children: React.ReactNode
   initialImage: File | null
+  dimensions: {
+    width: number
+    height: number
+  }
 }): React.JSX.Element {
   const [runtime, setRuntime] = React.useState<EditorRuntimeState>(() => {
     const base = createEditorRuntimeState({
       activeTool: { sidebar: "rotate", tool: "rotate" } as ActiveToolModel,
     })
-
-    // const { width, height } = await getImageDimensions(initialImage)
 
     const baseLayer: ImageLayer = {
       id: "layer-1",
@@ -159,8 +164,7 @@ export function EditorProvider({
       filters: {
         ...defaultFilters,
         dimensions: {
-          width: initialImage?.width,
-          height: initialImage?.height,
+          ...dimensions,
           x: 0,
           y: 0,
         },

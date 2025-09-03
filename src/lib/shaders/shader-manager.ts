@@ -31,17 +31,23 @@ export class ShaderManager {
   private compileProgram(): boolean {
     if (!this.gl) return false
 
+    // Detect WebGL version for GLSL generation
+    const isWebGL2 = !!(this.gl as any).bindVertexArray // simple heuristic
+
     // Combine all vertex shaders (use the first one as base)
     const baseVertexShader = this.plugins[0].vertexShader
 
     // Combine all fragment shaders
     const fragmentShaders = this.plugins.map((plugin) => plugin.fragmentShader)
-    const combinedFragmentShader = this.combineFragmentShaders(fragmentShaders)
+    const combinedFragmentShader = this.combineFragmentShaders(fragmentShaders, isWebGL2)
 
     // Create and compile vertex shader
     const vertexShader = this.gl.createShader(this.gl.VERTEX_SHADER)
     if (!vertexShader) return false
-    this.gl.shaderSource(vertexShader, baseVertexShader)
+    const vertexSource = isWebGL2
+      ? this.upgradeVertexTo300es(baseVertexShader)
+      : baseVertexShader
+    this.gl.shaderSource(vertexShader, vertexSource)
     this.gl.compileShader(vertexShader)
 
     if (!this.gl.getShaderParameter(vertexShader, this.gl.COMPILE_STATUS)) {
@@ -85,29 +91,32 @@ export class ShaderManager {
     return true
   }
 
-  private combineFragmentShaders(shaders: string[]): string {
-    // Start with precision and common uniforms
-    let combined = `
-      precision highp float;
-      uniform sampler2D u_image;
-      uniform vec2 u_resolution;
-      uniform float u_opacity;
-      // Solid fill uniforms
-      uniform int u_solidEnabled;
-      uniform vec3 u_solidColor;
-      uniform float u_solidAlpha;
-      // Recolor color (when recolor provided as color+amount)
-      uniform vec3 u_recolorColor;
-      // Affinity-style recolor uniforms
-      uniform float u_recolorHue;
-      uniform float u_recolorSaturation;
-      uniform float u_recolorLightness;
-      uniform int u_recolorPreserveLum;
-      uniform float u_recolorAmount;
-      varying vec2 v_texCoord;
-    `
+  private combineFragmentShaders(shaders: string[], isWebGL2: boolean = false): string {
+    // Build header with #version first when WebGL2
+    const header = isWebGL2
+      ? "#version 300 es\nprecision highp float;\n"
+      : "precision highp float;\n"
 
-    // Add all uniform declarations from all shaders
+    let combined = header
+    combined += (isWebGL2 ? "in vec2 v_texCoord;\n" : "varying vec2 v_texCoord;\n")
+    combined += "uniform sampler2D u_image;\n"
+    combined += "uniform vec2 u_resolution;\n"
+    combined += "uniform float u_opacity;\n"
+    combined += "// Solid fill uniforms\n"
+    combined += "uniform int u_solidEnabled;\n"
+    combined += "uniform vec3 u_solidColor;\n"
+    combined += "uniform float u_solidAlpha;\n"
+    combined += "// Recolor color (when recolor provided as color+amount)\n"
+    combined += "uniform vec3 u_recolorColor;\n"
+    combined += "// Affinity-style recolor uniforms\n"
+    combined += "uniform float u_recolorHue;\n"
+    combined += "uniform float u_recolorSaturation;\n"
+    combined += "uniform float u_recolorLightness;\n"
+    combined += "uniform int u_recolorPreserveLum;\n"
+    combined += "uniform float u_recolorAmount;\n"
+    if (isWebGL2) combined += "out vec4 outColor;\n"
+
+    // Add all uniform declarations from all shaders (dedup)
     const uniformSet = new Set<string>()
     shaders.forEach((shader) => {
       const uniformMatches = shader.match(/uniform\s+\w+\s+\w+;/g)
@@ -125,225 +134,63 @@ export class ShaderManager {
       }
     })
 
-    // Add unique uniforms
     uniformSet.forEach((uniform) => {
-      combined += `\n  ${uniform}`
+      combined += `${uniform}\n`
     })
 
-    // Add helper functions
+    // Helper functions (compatible with GLSL 100/300 es)
     combined += `
-      
-      // Helper functions
-      vec3 rgb2hsv(vec3 c) {
-        vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
-        vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
-        vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
-        float d = q.x - min(q.w, q.y);
-        float e = 1.0e-10;
-        return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
-      }
+vec3 rgb2hsv(vec3 c){
+  vec4 K=vec4(0.0,-1.0/3.0,2.0/3.0,-1.0);
+  vec4 p=mix(vec4(c.bg,K.wz),vec4(c.gb,K.xy),step(c.b,c.g));
+  vec4 q=mix(vec4(p.xyw,c.r),vec4(c.r,p.yzx),step(p.x,c.r));
+  float d=q.x-min(q.w,q.y);
+  float e=1.0e-10;
+  return vec3(abs(q.z+(q.w-q.y)/(6.0*d+e)),d/(q.x+e),q.x);
+}
+vec3 hsv2rgb(vec3 c){
+  vec4 K=vec4(1.0,2.0/3.0,1.0/3.0,3.0);
+  vec3 p=abs(fract(c.xxx+K.xyz)*6.0-K.www);
+  return c.z*mix(K.xxx,clamp(p-K.xxx,0.0,1.0),c.y);
+}
+vec3 rgb2hsl(vec3 c){
+  float r=c.r,g=c.g,b=c.b;float maxc=max(max(r,g),b);float minc=min(min(r,g),b);
+  float l=(maxc+minc)*0.5;float h=0.0;float s=0.0; if(maxc!=minc){
+    float d=maxc-minc; s=l>0.5?d/(2.0-maxc-minc):d/(maxc+minc);
+    if(maxc==r){h=(g-b)/d+(g<b?6.0:0.0);} else if(maxc==g){h=(b-r)/d+2.0;} else {h=(r-g)/d+4.0;}
+    h/=6.0; }
+  return vec3(h,s,l);
+}
+float hue2rgb(float p,float q,float t){ if(t<0.0) t+=1.0; if(t>1.0) t-=1.0; if(t<1.0/6.0) return p+(q-p)*6.0*t; if(t<1.0/2.0) return q; if(t<2.0/3.0) return p+(q-p)*(2.0/3.0-t)*6.0; return p; }
+vec3 hsl2rgb(vec3 hsl){ float h=hsl.x; float s=hsl.y; float l=hsl.z; float r,g,b; if(s==0.0){ r=g=b=l; } else {
+  float q=l<0.5? l*(1.0+s) : l + s - l*s; float p=2.0*l-q;
+  r=hue2rgb(p,q,h+1.0/3.0); g=hue2rgb(p,q,h); b=hue2rgb(p,q,h-1.0/3.0); } return vec3(r,g,b); }
+float random(vec2 st){ return fract(sin(dot(st.xy,vec2(12.9898,78.233)))*43758.5453123); }
+`
 
-      vec3 hsv2rgb(vec3 c) {
-        vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
-        vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
-        return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
-      }
-
-      // HSL helpers for recolor
-      vec3 rgb2hsl(vec3 c) {
-        float r = c.r, g = c.g, b = c.b;
-        float maxc = max(max(r, g), b);
-        float minc = min(min(r, g), b);
-        float l = (maxc + minc) * 0.5;
-        float h = 0.0;
-        float s = 0.0;
-        if (maxc != minc) {
-          float d = maxc - minc;
-          s = l > 0.5 ? d / (2.0 - maxc - minc) : d / (maxc + minc);
-          if (maxc == r) {
-            h = (g - b) / d + (g < b ? 6.0 : 0.0);
-          } else if (maxc == g) {
-            h = (b - r) / d + 2.0;
-          } else {
-            h = (r - g) / d + 4.0;
-          }
-          h /= 6.0;
-        }
-        return vec3(h, s, l);
-      }
-
-      float hue2rgb(float p, float q, float t) {
-        if (t < 0.0) t += 1.0;
-        if (t > 1.0) t -= 1.0;
-        if (t < 1.0/6.0) return p + (q - p) * 6.0 * t;
-        if (t < 1.0/2.0) return q;
-        if (t < 2.0/3.0) return p + (q - p) * (2.0/3.0 - t) * 6.0;
-        return p;
-      }
-
-      vec3 hsl2rgb(vec3 hsl) {
-        float h = hsl.x;
-        float s = hsl.y;
-        float l = hsl.z;
-        float r, g, b;
-        if (s == 0.0) {
-          r = g = b = l;
-        } else {
-          float q = l < 0.5 ? l * (1.0 + s) : l + s - l * s;
-          float p = 2.0 * l - q;
-          r = hue2rgb(p, q, h + 1.0/3.0);
-          g = hue2rgb(p, q, h);
-          b = hue2rgb(p, q, h - 1.0/3.0);
-        }
-        return vec3(r, g, b);
-      }
-
-      float random(vec2 st) {
-        return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
-      }
-    `
-
-    // Add main function that combines all effects
+    // Main
     combined += `
-      
-      void main() {
-        vec2 uv = v_texCoord;
-        vec4 color = texture2D(u_image, uv);
-        // Optional solid fill adjustment, rendered as top content with opacity
-        if (u_solidEnabled == 1) {
-          // Render solid directly; compositing step applies layer opacity/blend
-          vec4 solidColor = vec4(u_solidColor, u_solidAlpha);
-          color = solidColor;
-        }
-        
-        // Apply color adjustments
-        color.rgb *= (u_brightness / 100.0);
-        color.rgb = ((color.rgb - 0.5) * (u_contrast / 100.0)) + 0.5;
-        
-        vec3 hsv = rgb2hsv(color.rgb);
-        hsv.x = mod(hsv.x + (u_hue / 360.0), 1.0);
-        hsv.y *= (u_saturation / 100.0);
-        color.rgb = hsv2rgb(hsv);
-        
-        color.rgb *= pow(2.0, u_exposure / 100.0);
-        color.rgb += vec3(u_temperature / 100.0, 0.0, -u_temperature / 100.0);
-        color.rgb = pow(color.rgb, vec3(1.0 / u_gamma));
-        
-        // Apply vintage effect
-        float vignette = 1.0 - length(uv - 0.5) * (u_vintage / 100.0);
-        color.rgb *= vignette;
-        
-        // Apply blur effects
-        if (u_blur > 0.0) {
-          float blurAmount = u_blur / 100.0;
-          vec2 blurSize = vec2(blurAmount * 0.2) / u_resolution;
-          vec4 blurColor = vec4(0.0);
-          float total = 0.0;
-          
-          if (u_blurType < 0.5) {
-            for (float x = -8.0; x <= 8.0; x++) {
-              for (float y = -8.0; y <= 8.0; y++) {
-                float weight = exp(-(x*x + y*y) / (8.0 * blurAmount * blurAmount));
-                blurColor += texture2D(u_image, uv + vec2(x, y) * blurSize) * weight;
-                total += weight;
-              }
-            }
-          } else if (u_blurType < 1.5) {
-            for (float x = -6.0; x <= 6.0; x++) {
-              for (float y = -6.0; y <= 6.0; y++) {
-                blurColor += texture2D(u_image, uv + vec2(x, y) * blurSize);
-                total += 1.0;
-              }
-            }
-          } else if (u_blurType < 2.5) {
-            float angle = u_blurDirection * 3.14159 / 180.0;
-            vec2 direction = vec2(cos(angle), sin(angle));
-            for (float i = -12.0; i <= 12.0; i++) {
-              blurColor += texture2D(u_image, uv + direction * i * blurSize * 3.0);
-              total += 1.0;
-            }
-          } else {
-            vec2 center = vec2(0.5 + u_blurCenter * 0.5, 0.5);
-            vec2 dir = uv - center;
-            for (float i = -12.0; i <= 12.0; i++) {
-              vec2 offset = dir * i * blurSize * 3.0;
-              blurColor += texture2D(u_image, uv + offset);
-              total += 1.0;
-            }
-          }
-          
-          color = mix(color, blurColor / total, blurAmount * 2.0);
-        }
-        
-        // Apply artistic effects
-        if (u_invert > 0.0) {
-          color.rgb = mix(color.rgb, 1.0 - color.rgb, u_invert / 100.0);
-        }
-        
-        if (u_sepia > 0.0) {
-          vec3 sepia = vec3(
-            dot(color.rgb, vec3(0.393, 0.769, 0.189)),
-            dot(color.rgb, vec3(0.349, 0.686, 0.168)),
-            dot(color.rgb, vec3(0.272, 0.534, 0.131))
-          );
-          color.rgb = mix(color.rgb, sepia, u_sepia / 100.0);
-        }
-        
-        if (u_grayscale > 0.0) {
-          float gray = dot(color.rgb, vec3(0.299, 0.587, 0.114));
-          color.rgb = mix(color.rgb, vec3(gray), u_grayscale / 100.0);
-        }
-        
-        // Legacy recolor (color + amount)
-        if (u_recolor != 0.0) {
-          float amt = clamp(abs(u_recolor) / 100.0, 0.0, 1.0);
-          color.rgb = mix(color.rgb, u_recolorColor, amt);
-        }
-
-        // Affinity-style Recolor: H/S/(L or preserve) with Amount
-        if (u_recolorAmount > 0.0) {
-          vec3 src = color.rgb;
-          vec3 hsl = rgb2hsl(src);
-          float h = mod((u_recolorHue / 360.0) + 1.0, 1.0);
-          float s = clamp(u_recolorSaturation / 100.0, 0.0, 1.0);
-          float l = (u_recolorPreserveLum == 1)
-            ? hsl.z
-            : clamp(u_recolorLightness / 100.0, -1.0, 2.0);
-          // When not preserving luminance, map lightness directly to grayscale (#000000..#ffffff)
-          vec3 recolored = hsl2rgb(vec3(h, s, l));
-          float amt2 = clamp(u_recolorAmount / 100.0, 0.0, 1.0);
-          color.rgb = mix(src, recolored, amt2);
-        }
-        
-        if (u_vibrance > 0.0) {
-          float maxChannel = max(max(color.r, color.g), color.b);
-          float minChannel = min(min(color.r, color.g), color.b);
-          float saturation = (maxChannel - minChannel) / maxChannel;
-          color.rgb = mix(color.rgb, color.rgb * (1.0 + u_vibrance / 100.0), saturation);
-        }
-        
-        if (u_noise > 0.0) {
-          float noise = random(uv) * (u_noise / 100.0);
-          color.rgb += noise;
-        }
-        
-        if (u_grain > 0.0) {
-          float grain = random(uv * 100.0) * (u_grain / 100.0);
-          color.rgb += grain;
-        }
-        
-        // Apply opacity
-        color.a *= u_opacity / 100.0;
-        
-        if (color.a < 0.01) {
-          discard;
-        }
-        
-        gl_FragColor = color;
-      }
-    `
+void main(){
+  vec2 uv=v_texCoord;
+  vec4 color=${isWebGL2 ? "texture(u_image, uv)" : "texture2D(u_image, uv)"};
+  if(u_solidEnabled==1){ vec4 solidColor=vec4(u_solidColor,u_solidAlpha); color=solidColor; }
+  ${isWebGL2 ? "outColor = color;" : "gl_FragColor = color;"}
+}
+`
 
     return combined
+  }
+
+  private upgradeVertexTo300es(source: string): string {
+    // Transform attribute/varying to in/out and add version directive
+    let s = source
+    s = s.replace(/attribute\s+/g, "in ")
+    s = s.replace(/varying\s+/g, "out ")
+    // Insert #version 300 es at the top if not present
+    if (!/^\s*#version\s+300\s+es/m.test(s)) {
+      s = `#version 300 es\n${s}`
+    }
+    return s
   }
 
   getProgram(): WebGLProgram | null {

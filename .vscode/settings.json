@@ -8,6 +8,10 @@
   "workbench.preferredDarkColorTheme": "Default Dark Modern",
   "workbench.colorTheme": "Omen",
   "workbench.preferredLightColorTheme": "Default Dark Modern",
-  "scm.inputFontSize": 14,
-  "editor.formatOnSave": true
+  "scm.inputFontSize": 16,
+  "editor.formatOnSave": true,
+  "editor.fontSize": 18,
+  "debug.console.fontSize": 16,
+  "terminal.integrated.fontSize": 16,
+  "markdown.preview.fontSize": 16
 }

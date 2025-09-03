@@ -94,7 +94,6 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
           height: canvas.height,
         }
 
-        console.log("workerCanvasSizeRef 1:", workerCanvasSizeRef.current)
 
         // Set up event listeners
         setupEventListeners()
@@ -134,7 +133,6 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
       const ok = await manager.resize(width, height)
       if (ok) {
         workerCanvasSizeRef.current = { width, height }
-        console.log("workerCanvasSizeRef 2:", workerCanvasSizeRef.current)
       }
       return ok
     } catch {
@@ -145,7 +143,6 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
   // Ensure worker canvas matches desired size before rendering
   const ensureCanvasSize = React.useCallback(
     async (width: number, height: number) => {
-      console.log("workerCanvasSizeRef 3:", workerCanvasSizeRef.current)
 
       const current = workerCanvasSizeRef.current
       if (!current || current.width !== width || current.height !== height) {

@@ -93,8 +93,8 @@ let shaderManager: ShaderManager | null = null
 let hybridRendererInstance: HybridRenderer | null = null
 // Enable pipeline path; progressive rendering will render when final texture ready
 // Temporarily disable pipeline and hybrid renderer paths to debug first-frame strip issue
-const USE_PIPELINE = false
-const USE_HYBRID_RENDERER = false
+const USE_PIPELINE = true
+const USE_HYBRID_RENDERER = true
 let currentRenderMessageId: string | null = null
 const pipelineTaskToWorkerId = new Map<string, string>()
 const familyToTokenVersion = new Map<string, number>()
@@ -576,7 +576,7 @@ function initializeWebGL(
       alpha: true,
       premultipliedAlpha: false,
       preserveDrawingBuffer: false,
-      antialias: true,
+      antialias: false, // Disable MSAA to avoid multisampled default framebuffer (blit incompatibility)
       powerPreference: "high-performance",
     })
 
@@ -665,7 +665,7 @@ async function ensureHeavyInit(width: number, height: number): Promise<void> {
   // Initialize HybridRenderer instance for fallback path
   const HybridRendererCtor = hybridMod.HybridRenderer
   hybridRendererInstance = new HybridRendererCtor()
-  hybridRendererInstance.initialize({ gl: glCtx, width, height })
+  hybridRendererInstance.initialize({ gl: glCtx, width, height, useUnpackFlipY: false })
 
   // Initialize asynchronous pipeline
   const AsynchronousPipelineCtor = pipelineMod.AsynchronousPipeline
@@ -788,6 +788,14 @@ async function renderLayers(
   messageId: string
 ): Promise<void> {
   try {
+    // Early abort if this message was superseded by a newer render request
+    try {
+      if (currentRenderMessageId && messageId !== currentRenderMessageId) {
+        postMessage({ type: "success", id: messageId } as SuccessMessage)
+        return
+      }
+    } catch {}
+
     // Ensure heavy GPU resources are prepared lazily
     await ensureHeavyInit(canvasWidth, canvasHeight)
     // Remove cached textures for layers that no longer exist to avoid leaking GPU memory
@@ -826,16 +834,21 @@ async function renderLayers(
       progress: 10,
     } as ProgressMessage)
 
-    // Stage 0: Token-based stale-task drop (if provided)
-    if ((self as any).__lastToken) {
-      const prev = (self as any).__lastToken as {
-        signature?: string
-        version?: number
+    // Token-based stale-task drop for immediate path (not only pipeline)
+    // If a newer token was observed, abort this render early
+    try {
+      const famVer = latestTokenVersion
+      const famSig = latestTokenSignature
+      if (famVer && currentRenderMessageId && messageId !== currentRenderMessageId) {
+        // This message was superseded by a more recent render request
+        postMessage({ type: "success", id: messageId } as SuccessMessage)
+        return
       }
-      const current =
-        (currentRenderMessageId && (self as any).__currentToken) || null
-      // no-op; we replace token below
-    }
+      // Optional: check signature mismatch as well when provided downstream
+      if (famSig && currentRenderMessageId === messageId) {
+        // ok
+      }
+    } catch {}
 
     // Stage 0b: preempt progressive pipeline tasks from older families
     if (USE_PIPELINE && asynchronousPipeline) {
@@ -1074,7 +1087,7 @@ async function renderLayers(
               glCtx.viewport(0, 0, canvasWidth, canvasHeight)
               glCtx.clearColor(0, 0, 0, 0)
               glCtx.clear(glCtx.COLOR_BUFFER_BIT)
-              glCtx.useProgram(blitProgram)
+              glCtx["useProgram"](blitProgram)
               glCtx.bindVertexArray(blitVAO)
               glCtx.activeTexture(glCtx.TEXTURE0)
               glCtx.bindTexture(glCtx.TEXTURE_2D, tex as WebGLTexture)
@@ -1083,7 +1096,7 @@ async function renderLayers(
                 glCtx.uniform1f(blitUOpacityLocation, 1.0)
               glCtx.drawArrays(glCtx.TRIANGLE_STRIP, 0, 4)
               glCtx.bindVertexArray(null)
-              glCtx.useProgram(null)
+              glCtx["useProgram"](null)
             }
 
             // Now blit from scratch into the writeTarget
@@ -1158,7 +1171,7 @@ async function renderLayers(
           // Guard against read-write feedback: if read texture equals output target tex, copy to scratch first
           let readSource: WebGLTexture | null = readTexture
           let scratch: CompTarget | null = null
-          if (readSource && readSource === output.tex) {
+          if (readSource) {
             try {
               scratch = checkoutCompTarget(canvasWidth, canvasHeight)
               const glCtx = gl as WebGL2RenderingContext
@@ -1187,10 +1200,16 @@ async function renderLayers(
           }
           {
             const glCtx = gl as WebGL2RenderingContext
-            glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, output.fb)
-            glCtx.viewport(0, 0, canvasWidth, canvasHeight)
-            glCtx.clearColor(0, 0, 0, 0)
-            glCtx.clear(glCtx.COLOR_BUFFER_BIT)
+                      // Ensure no active textures are bound before targeting output framebuffer
+          glCtx.activeTexture(glCtx.TEXTURE0)
+          glCtx.bindTexture(glCtx.TEXTURE_2D, null)
+          glCtx.activeTexture(glCtx.TEXTURE1)
+          glCtx.bindTexture(glCtx.TEXTURE_2D, null)
+
+          glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, output.fb)
+          glCtx.viewport(0, 0, canvasWidth, canvasHeight)
+          glCtx.clearColor(0, 0, 0, 0)
+          glCtx.clear(glCtx.COLOR_BUFFER_BIT)
 
             glCtx.useProgram(compProgram)
             glCtx.bindVertexArray(compVAO)
@@ -1246,9 +1265,9 @@ async function renderLayers(
             } catch {}
             glCtx.uniform1i(compUBaseLocation as WebGLUniformLocation, 0)
 
-            // Guard against feedback for top texture too
+            // Always copy top texture to scratch before binding to avoid any hazards
             let topSource: WebGLTexture | null = topTexture
-            if (topSource && topSource === output.tex) {
+            if (topSource) {
               try {
                 const scratchTop = checkoutCompTarget(canvasWidth, canvasHeight)
                 glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, scratchTop.fb)
@@ -1274,7 +1293,7 @@ async function renderLayers(
                 // Return scratch to pool
                 returnCompTarget(scratchTop)
               } catch (e) {
-                console.warn("Feedback guard (top) failed:", e)
+                console.warn("Top copy failed:", e)
                 glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, output.fb)
               }
             }
@@ -1305,6 +1324,11 @@ async function renderLayers(
               glCtx.uniform1i(compUBlendModeLocation, mode)
 
             glCtx.drawArrays(glCtx.TRIANGLE_STRIP, 0, 4)
+            // Unbind textures after draw to avoid any potential feedback in subsequent passes
+            glCtx.activeTexture(glCtx.TEXTURE0)
+            glCtx.bindTexture(glCtx.TEXTURE_2D, null)
+            glCtx.activeTexture(glCtx.TEXTURE1)
+            glCtx.bindTexture(glCtx.TEXTURE_2D, null)
             try {
               const err = glCtx.getError()
               if (err) dbg("gl:error", { where: "compose:after-draw", err })
@@ -1785,6 +1809,8 @@ async function renderToCanvas(
   try {
     // Prefer WebGL2 framebuffer blit to avoid any sampling feedback/invalid op
     const gl2 = gl as WebGL2RenderingContext
+    // Ensure final texture is not bound to any texture unit prior to blit
+    try { unbindTextureFromAllUnits(gl2, finalTexture) } catch {}
     // Create temp FBO to attach the final texture as READ_FRAMEBUFFER
     const srcFbo = gl2.createFramebuffer()
     if (!srcFbo)
@@ -1942,6 +1968,7 @@ self.onmessage = async (event: MessageEvent) => {
                 gl: gl as WebGL2RenderingContext,
                 width,
                 height,
+                useUnpackFlipY: false,
               })
             } catch {}
           }

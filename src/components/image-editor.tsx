@@ -23,6 +23,7 @@ import { ImageEditorPanels } from "@/components/panels"
 import type { EditorLayer } from "@/lib/editor/state"
 import { EffectsFooter } from "@/components/tools.image-editor"
 import { WorkerPrewarm } from "./worker-prewarm"
+import { getImageDimensions } from "@/lib/utils/get-image-dimensions"
 
 export interface ImageEditorProps extends React.ComponentProps<"div"> {
   image: File | null
@@ -574,8 +575,29 @@ export function ImageEditor({
   onDragStateChange,
   ...props
 }: ImageEditorProps) {
-  return (
-    <EditorProvider initialImage={image}>
+  const [dimensions, setDimensions] = React.useState<
+    | {
+        width: number
+        height: number
+      }
+    | undefined
+  >(undefined)
+
+  React.useEffect(() => {
+    if (image) {
+      const fetchDimensions = async () => {
+        const { width, height } = await getImageDimensions(image)
+
+        if (dimensions?.width === width && dimensions?.height === height) return
+
+        setDimensions({ width: width || 1, height: height || 1 })
+      }
+      fetchDimensions()
+    }
+  }, [image])
+
+  return dimensions ? (
+    <EditorProvider initialImage={image} dimensions={dimensions}>
       <WorkerPrewarm />
       <ImageEditorInner
         image={image}
@@ -584,5 +606,5 @@ export function ImageEditor({
         {...props}
       />
     </EditorProvider>
-  )
+  ) : null
 }

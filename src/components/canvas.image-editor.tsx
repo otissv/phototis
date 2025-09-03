@@ -229,53 +229,6 @@ export function ImageEditorCanvas({
     renderType,
   ])
 
-  // Initialize hybrid renderer (fallback)
-  React.useEffect(() => {
-    return
-    if (!canvasRef?.current || !glRef.current) return
-
-    const canvas = canvasRef.current
-    const gl = glRef.current
-    const canvasStateManager = CanvasStateManager.getInstance()
-
-    // Check if canvas can be used for WebGL operations
-    if (!canvasStateManager.canUseForWebGL(canvas)) {
-      const error = canvasStateManager.getErrorMessage(canvas)
-      console.warn(
-        "🎨 [Renderer] Canvas cannot be used for hybrid renderer:",
-        error || "Canvas has been transferred to OffscreenCanvas"
-      )
-      return
-    }
-
-    // Use canvas dimensions instead of canvas element size
-    const width = canvasDimensions.width
-    const height = canvasDimensions.height
-
-    if (!hybridRendererRef.current) {
-      console.log("🎨 [Renderer] Creating new hybrid renderer instance")
-      hybridRendererRef.current = new HybridRenderer()
-    }
-
-    console.log(
-      "🎨 [Renderer] Initializing hybrid renderer with dimensions:",
-      width,
-      "x",
-      height
-    )
-    const success = hybridRendererRef.current.initialize({
-      gl,
-      width,
-      height,
-    })
-
-    if (!success) {
-      console.error("🎨 [Renderer] Failed to initialize hybrid renderer")
-    } else {
-      console.log("🎨 [Renderer] Hybrid renderer initialized successfully")
-    }
-  }, [canvasRef?.current, canvasDimensions.width, canvasDimensions.height])
-
   // Motion values for smooth viewport handling
   const viewportX = useMotionValue(0)
   const viewportY = useMotionValue(0)
@@ -674,14 +627,13 @@ export function ImageEditorCanvas({
     if (isDragActive) return
 
     const loadLayerImages = async () => {
-      console.log("loadLayerImages*************", canonicalLayers)
       // Clean up old data
       const currentLayerIds = new Set(
         canonicalLayers.map((layer: EditorLayer) => layer.id)
       )
       const oldData = new Map(imageDataCacheRef.current)
 
-      for (const [layerId, imageData] of oldData) {
+      for (const [layerId, _imageData] of oldData) {
         if (!currentLayerIds.has(layerId) && layerId !== "main") {
           imageDataCacheRef.current.delete(layerId)
           const gl = glRef.current
@@ -916,7 +868,7 @@ export function ImageEditorCanvas({
       alpha: true,
       premultipliedAlpha: false,
       preserveDrawingBuffer: false,
-      antialias: true,
+      antialias: false,
     })
     if (!gl) {
       console.error("WebGL2 not supported")
@@ -1448,7 +1400,8 @@ export function ImageEditorCanvas({
             // Set up the shader program
             const program = programRef.current
             if (program) {
-              gl.useProgram(program)
+              const setProgram = gl.useProgram.bind(gl)
+              setProgram(program)
 
               // Set uniforms for basic rendering
               const opacityLocation = gl.getUniformLocation(
@@ -1595,6 +1548,8 @@ export function ImageEditorCanvas({
     <div
       ref={containerRef}
       className='relative h-full  flex items-center justify-center '
+      role='application'
+      aria-label='Image editor canvas container'
       onWheel={handleWheel}
       onDoubleClick={handleDoubleClick}
     >

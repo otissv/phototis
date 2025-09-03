@@ -17,6 +17,8 @@ export interface HybridRendererOptions {
   width: number
   height: number
   gl: WebGL2RenderingContext
+  /** If true, use UNPACK_FLIP_Y_WEBGL and unflipped texcoords; if false, keep UNPACK off and use flipped texcoords */
+  useUnpackFlipY?: boolean
 }
 
 export class HybridRenderer {
@@ -37,8 +39,10 @@ export class HybridRenderer {
     const { gl, width, height } = options
     this.gl = gl
 
-    // Centralized orientation: flip at unpack time
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true)
+    const useUnpackFlipY = options.useUnpackFlipY ?? true
+
+    // Set unpack flip policy for this renderer
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, useUnpackFlipY)
 
     // Initialize FBO manager
     this.fboManager.initialize(gl)
@@ -101,11 +105,10 @@ export class HybridRenderer {
 
     // Set up texture coordinate buffer
     gl.bindBuffer(gl.ARRAY_BUFFER, this.texCoordBuffer)
-    gl.bufferData(
-      gl.ARRAY_BUFFER,
-      new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]),
-      gl.STATIC_DRAW
-    )
+    const texcoords = useUnpackFlipY
+      ? new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]) // unflipped when unpack flips
+      : new Float32Array([0, 1, 1, 1, 0, 0, 1, 0]) // flipped V when unpack does not flip
+    gl.bufferData(gl.ARRAY_BUFFER, texcoords, gl.STATIC_DRAW)
 
     // Create textures
     this.layerTexture = gl.createTexture()
