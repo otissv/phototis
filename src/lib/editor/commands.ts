@@ -10,6 +10,7 @@ import type {
 import type { Command, CommandMeta } from "@/lib/editor/history"
 import { capitalize } from "@/lib/utils/capitalize"
 import { GPU_SECURITY_CONSTANTS } from "@/lib/security/gpu-security"
+import { LayerDimensions } from "@/components/canvas.image-editor"
 
 export type SerializedCommand =
   | {
@@ -70,9 +71,11 @@ export type SerializedCommand =
       width: number
       height: number
       canvasPosition: CanvasPosition
+      layers: Record<LayerId, EditorLayer>
       previousWidth: number
       previousHeight: number
       previousCanvasPosition: CanvasPosition
+      previousLayers: Record<LayerId, EditorLayer>
     }
 
 function deepSize(obj: unknown): number {
@@ -778,18 +781,22 @@ export class DocumentDimensionsCommand implements Command {
   private readonly width: number
   private readonly height: number
   private readonly canvasPosition: CanvasPosition
+  private readonly layers: CanonicalEditorState['layers']['byId']
   private previous?: {
     width: number
     height: number
     canvasPosition: CanvasPosition
+    layers: CanonicalEditorState['layers']['byId']
   }
 
-  constructor(
+  constructor({width, height, canvasPosition, layers, meta, label}:{
     width: number,
     height: number,
     canvasPosition: CanvasPosition,
+    layers: CanonicalEditorState['layers']['byId'],
     meta?: Partial<CommandMeta>
-  ) {
+    label?: string
+  }) {
     // Validate dimensions before creating the command
     const validationError = this.validateDimensions(width, height)
     if (validationError) {
@@ -799,8 +806,10 @@ export class DocumentDimensionsCommand implements Command {
     this.width = Math.max(1, Math.floor(width))
     this.height = Math.max(1, Math.floor(height))
     this.canvasPosition = canvasPosition
+    this.layers = layers
+    
     this.meta = {
-      label: `Dimensions Document ${this.width}×${this.height} (${canvasPosition})`,
+      label: label || `Dimensions Document ${this.width}×${this.height} (${canvasPosition})`,
       scope: "document",
       timestamp: Date.now(),
       coalescable: false,
@@ -848,11 +857,18 @@ export class DocumentDimensionsCommand implements Command {
       width: state.document.width,
       height: state.document.height,
       canvasPosition: state.document.canvasPosition,
+      layers: state.layers.byId,
     }
 
-    // Return new state with updated dimensions and canvas position
     return {
       ...state,
+      layers: {
+        ...state.layers,
+        byId: {
+          ...state.layers.byId,
+          ...this.layers,
+        },
+      },
       document: {
         ...state.document,
         width: this.width,
@@ -866,7 +882,11 @@ export class DocumentDimensionsCommand implements Command {
     const prevW = this.previous?.width ?? 1
     const prevH = this.previous?.height ?? 1
     const prevPosition = this.previous?.canvasPosition ?? "centerCenter"
-    return new DocumentDimensionsCommand(prevW, prevH, prevPosition, {
+    return new DocumentDimensionsCommand({
+      width: prevW,
+      height: prevH,
+      canvasPosition: prevPosition,
+      layers: this.previous?.layers ?? {},
       label: `Undo Dimensions Document to ${prevW}×${prevH} (${prevPosition})`,
     })
   }
@@ -882,53 +902,25 @@ export class DocumentDimensionsCommand implements Command {
       meta: this.meta,
       width: this.width,
       height: this.height,
+      layers: this.layers,
       canvasPosition: this.canvasPosition,
       previousWidth: this.previous?.width ?? 0,
       previousHeight: this.previous?.height ?? 0,
       previousCanvasPosition: this.previous?.canvasPosition ?? "centerCenter",
+      previousLayers: this.previous?.layers ?? {},
     }
   }
 
   static deserialize(
     data: SerializedCommand & { type: "documentDimensions" }
   ): DocumentDimensionsCommand {
-    return new DocumentDimensionsCommand(
-      data.width,
-      data.height,
-      data.canvasPosition,
-      data.meta
-    )
-  }
-
-  // Test function to validate dimensions logic
-  static testDimensions(
-    width: number,
-    height: number
-  ): {
-    isValid: boolean
-    error?: string
-    area: number
-    maxAllowedArea: number
-    percentage: number
-  } {
-    // Create a temporary command to access the validation method
-    const tempCommand = new DocumentDimensionsCommand(1, 1, "centerCenter")
-    const error = (tempCommand as any).validateDimensions(width, height)
-
-    const totalArea = width * height
-    const maxArea =
-      GPU_SECURITY_CONSTANTS.MAX_TEXTURE_SIZE *
-      GPU_SECURITY_CONSTANTS.MAX_TEXTURE_SIZE
-    const maxAllowedArea = Math.floor(maxArea * 0.8)
-    const percentage = (totalArea / maxAllowedArea) * 100
-
-    return {
-      isValid: !error,
-      error: error || undefined,
-      area: totalArea,
-      maxAllowedArea,
-      percentage,
-    }
+    return new DocumentDimensionsCommand({
+      width: data.width,
+      height: data.height,
+      canvasPosition: data.canvasPosition,
+      layers: data.layers,
+      meta: data.meta,
+    })
   }
 }
 

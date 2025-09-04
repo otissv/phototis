@@ -51,12 +51,14 @@ export function ImageEditorCanvas({
 }: ImageEditorCanvasProps) {
   const { history } = useEditorContext()
   const {
+    state,
+    dimensionsDocument,
     getOrderedLayers,
     getSelectedLayerId,
-    state,
+    getLayerById,
     updateLayer,
-    dimensionsDocument,
   } = useEditorContext()
+
   const selectedLayerId = getSelectedLayerId() || "layer-1"
   const isDragActive = state.ephemeral.interaction.isDragging
   const glRef = React.useRef<WebGL2RenderingContext | null>(null)
@@ -683,6 +685,8 @@ export function ImageEditorCanvas({
                 // If layer is larger than canvas, center it
                 layerX = (currentCanvasWidth - imageData.width) / 2
                 layerY = (currentCanvasHeight - imageData.height) / 2
+
+                // TODO: add to layer dimensions to layers tool value
               }
             } else {
               // For background, set canvas size if not yet initialized
@@ -773,12 +777,6 @@ export function ImageEditorCanvas({
     viewportX,
     viewportY,
   ])
-
-  // Document dimensions are now handled directly in the dimensions-canvas.tools.tsx
-  // No need for custom event listeners - layer positions are updated through the
-  // standard layer update mechanism when dimensions change
-
-  // Previous canvas size tracking removed - no longer needed with direct layer updates
 
   // Create a ref to access current canonical state to avoid dependency issues
   const canonicalStateRef = React.useRef(state.canonical)
@@ -1127,6 +1125,8 @@ export function ImageEditorCanvas({
         // Queue render task with worker
         try {
           // Derive per-render dimensions applying dimensions only to active layer
+
+          console.log("draw:state", getLayerById(selectedLayerId))
 
           let dimsForRender = layerDimensionsRef.current
           try {

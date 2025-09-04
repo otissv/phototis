@@ -13,6 +13,8 @@ import {
   type ImageEditorButtonProps,
 } from "@/components/button.image-editor"
 import { GPU_SECURITY_CONSTANTS } from "@/lib/security/gpu-security"
+import { LayerDimensions } from "../canvas.image-editor"
+import { CanonicalEditorState, EditorLayer, LayerId, CanvasPosition } from "@/lib/editor/state"
 
 function DimensionsCanvasButton({
   onSelectedToolChange,
@@ -34,19 +36,10 @@ function DimensionsCanvasButton({
 }
 DimensionsCanvasButton.displayName = "DimensionsCanvasButton"
 
-type CanvasPosition =
-  | "topLeft"
-  | "topCenter"
-  | "topRight"
-  | "centerLeft"
-  | "centerCenter"
-  | "centerRight"
-  | "bottomLeft"
-  | "bottomCenter"
-  | "bottomRight"
+
 
 function DimensionsCanvasControls() {
-  const { state, dimensionsDocument } = useEditorContext()
+  const { state, dimensionsDocument, getLayerById } = useEditorContext()
   const [width, setWidth] = React.useState<number>(
     state.canonical.document.width
   )
@@ -169,12 +162,25 @@ function DimensionsCanvasControls() {
     }
   }
 
+
+
+  
+
   const handleOnSave = () => {
     try {
       dimensionsDocument?.({
         width,
         height,
         canvasPosition: canvasPositionState as CanvasPosition,
+        layers: updateLayerDimensions({
+          layers: state.canonical.layers.byId,
+          canvas: {
+            width,
+            height,
+            canvasPosition: canvasPositionState as CanvasPosition,
+          },
+          getLayerById,
+        })  ,
       })
     } catch (error) {
       // If the command fails, show the error and revert the local state
@@ -412,5 +418,144 @@ function DimensionsCanvasControls() {
   )
 }
 DimensionsCanvasControls.displayName = "DimensionsCanvasControls"
+
+function updateLayerDimensions ({
+  layers,
+  canvas,
+  getLayerById
+}: {
+  layers: Record<LayerId, EditorLayer>,
+  canvas: {
+    width: number
+    height: number
+    canvasPosition: CanvasPosition
+  },
+  getLayerById: (layerId: LayerId) => EditorLayer | null
+}) {
+  const calculatePositionFromAnchor = (
+    layerDimensions: LayerDimensions,
+    canvasDimensions: {
+      width: number
+      height: number
+      canvasPosition: CanvasPosition
+    }
+  ): { x: number; y: number } => {
+    let x: number
+    let y: number
+
+    switch (canvasDimensions.canvasPosition) {
+      case "topLeft":
+        x = 0
+        y = 0
+        break
+      case "topCenter":
+        x = (canvasDimensions.width - layerDimensions.width) / 2
+        y = 0
+        break
+      case "topRight":
+        x = canvasDimensions.width - layerDimensions.width
+        y = 0
+        break
+      case "centerLeft":
+        x = 0
+        y = (canvasDimensions.height - layerDimensions.height) / 2
+        break
+      case "centerCenter":
+        x = (canvasDimensions.width - layerDimensions.width) / 2
+        y = (canvasDimensions.height - layerDimensions.height) / 2
+        break
+      case "centerRight":
+        x = canvasDimensions.width - layerDimensions.width
+        y = (canvasDimensions.height - layerDimensions.height) / 2
+        break
+      case "bottomLeft":
+        x = 0
+        y = canvasDimensions.height - layerDimensions.height
+        break
+      case "bottomCenter":
+        x = (canvasDimensions.width - layerDimensions.width) / 2
+        y = canvasDimensions.height - layerDimensions.height
+        break
+      case "bottomRight":
+        x = canvasDimensions.width - layerDimensions.width
+        y = canvasDimensions.height - layerDimensions.height
+        break
+      default:
+        // Fallback to center-center
+        x = (canvasDimensions.width - layerDimensions.width) / 2
+        y = (canvasDimensions.height - layerDimensions.height) / 2
+    }
+
+    // For layerDimensionss larger than canvasDimensions, we need to handle them specially
+    // to maintain the intended positioning while keeping them visible
+    if (layerDimensions.width > canvasDimensions.width) {
+      // If layerDimensions is wider than canvasDimensions, adjust x to keep it visible
+      // but maintain the intended horizontal alignment
+      if (canvasDimensions.canvasPosition.endsWith("Left")) {
+        x = 0 // Keep left-aligned
+      } else if (canvasDimensions.canvasPosition.endsWith("Right")) {
+        x = canvasDimensions.width - layerDimensions.width // Keep right-aligned
+      } else {
+        x = (canvasDimensions.width - layerDimensions.width) / 2 // Center horizontally
+      }
+    }
+
+    if (layerDimensions.height > canvasDimensions.height) {
+      // If layerDimensions is taller than canvasDimensions, adjust y to keep it visible
+      // but maintain the intended vertical alignment
+      if (canvasDimensions.canvasPosition.startsWith("top")) {
+        y = 0 // Keep top-aligned
+      } else if (canvasDimensions.canvasPosition.startsWith("bottom")) {
+        y = canvasDimensions.height - layerDimensions.height // Keep bottom-aligned
+      } else {
+        y = (canvasDimensions.height - layerDimensions.height) / 2 // Center vertically
+      }
+    }
+
+    // Only clamp coordinates if the layerDimensions would actually go outside bounds
+    // and we're not dealing with a layerDimensions larger than the canvasDimensions
+    if (layerDimensions.width <= canvasDimensions.width) {
+      x = Math.max(
+        0,
+        Math.min(x, canvasDimensions.width - layerDimensions.width)
+      )
+    }
+    if (layerDimensions.height <= canvasDimensions.height) {
+      y = Math.max(
+        0,
+        Math.min(y, canvasDimensions.height - layerDimensions.height)
+      )
+    }
+
+    return { x: Math.round(x), y: Math.round(y) }
+  }
+  
+  const updatedLayers: Record<LayerId, EditorLayer> = {}
+
+  for (const layer of Object.values(layers)) {
+
+    if (layer.type !== "image") {
+      updatedLayers[layer.id] = layer
+      continue
+    }
+
+    updatedLayers[layer.id] = {
+      ...layer,
+      filters: {
+        ...layer.filters,
+        dimensions: {
+          ...layer.filters.dimensions,
+          ...calculatePositionFromAnchor(layer.filters.dimensions, {
+            width: canvas.width,
+            height: canvas.height,
+            canvasPosition: canvas.canvasPosition
+          })
+        },
+      }
+    }
+  }
+
+  return updatedLayers
+}
 
 export { DimensionsCanvasButton, DimensionsCanvasControls }

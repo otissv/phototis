@@ -33,7 +33,7 @@
         "noExplicitAny": "off"
       },
       "style": {
-        "noUnusedTemplateLiteral": "off"
+        "noUnusedTemplateLiteral": "off",
       },
       "complexity": {
         "noForEach": "off"

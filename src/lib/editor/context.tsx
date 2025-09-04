@@ -77,10 +77,11 @@ export type EditorContextValue = {
   clearRedo?: () => void
   deleteStepsAfterIndex?: (idx: number) => void
   deleteStepsBeforeIndex?: (idx: number) => void
-  dimensionsDocument?: (size: {
+  dimensionsDocument?: (props: {
     width: number
     height: number
     canvasPosition: CanvasPosition
+    layers: Record<LayerId, EditorLayer>
   }) => void
   duplicateLayer: (layerId: LayerId) => void
   exportDocumentAtIndex?: (idx: number) => any
@@ -530,23 +531,25 @@ export function EditorProvider({
   )
 
   const dimensionsDocument = React.useCallback(
-    (size: {
+    (props: {
       width: number
       height: number
       canvasPosition: CanvasPosition
+      layers: Record<LayerId, EditorLayer>
     }) => {
       try {
         const h = historyRef.current
         if (!h) return
         h.beginTransaction(
-          `Dimensions Document ${size.width}×${size.height} (${size.canvasPosition})`
+          `Dimensions Document ${props.width}×${props.height} (${props.canvasPosition})`
         )
         h.push(
-          new DocumentDimensionsCommand(
-            size.width,
-            size.height,
-            size.canvasPosition
-          )
+          new DocumentDimensionsCommand({
+            width: props.width,
+            height: props.height,
+            canvasPosition: props.canvasPosition,
+            layers: props.layers,
+          })
         )
         h.endTransaction(true)
       } catch (error) {
@@ -562,6 +565,10 @@ export function EditorProvider({
     },
     []
   )
+
+  if (process.env.NODE_ENV === "development") {
+    console.log("context:state", runtime)
+  }
 
   const value: EditorContextValue = React.useMemo(
     () => ({
