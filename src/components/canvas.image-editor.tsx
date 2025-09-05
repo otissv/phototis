@@ -128,22 +128,66 @@ export function ImageEditorCanvas({
     new Map()
   )
 
+  // Sync layerDimensionsRef with state.canonical.layers changes
+  React.useEffect(() => {
+    const layers = state.canonical.layers.byId
+    
+    for (const [layerId, layer] of Object.entries(layers)) {
+      if (layer.type === "image") {
+        const imageLayer = layer as any
+        const filters = imageLayer.filters || {}
+        const dimensions = filters.dimensions || {}
+        
+        // Only update if we have valid dimensions
+        if (dimensions.width && dimensions.height) {
+          const currentDims = layerDimensionsRef.current.get(layerId)
+          const newDims = {
+            width: dimensions.width,
+            height: dimensions.height,
+            x: dimensions.x || 0,
+            y: dimensions.y || 0,
+          }
+          
+          // Only update if dimensions actually changed
+          if (!currentDims || 
+              currentDims.width !== newDims.width ||
+              currentDims.height !== newDims.height ||
+              currentDims.x !== newDims.x ||
+              currentDims.y !== newDims.y) {
+            layerDimensionsRef.current.set(layerId, newDims)
+          }
+        }
+      }
+    }
+    
+    // Clean up dimensions for layers that no longer exist
+    const currentLayerIds = new Set(Object.keys(layers))
+    for (const [layerId] of layerDimensionsRef.current) {
+      if (!currentLayerIds.has(layerId)) {
+        layerDimensionsRef.current.delete(layerId)
+      }
+    }
+  }, [state.canonical.layers.byId, state.canonical.layers.order])
+
   // Canvas dimensions state - mirror canonical.document
   const [canvasDimensions, setCanvasDimensions] = React.useState({
     width: state.canonical.document.width,
     height: state.canonical.document.height,
+    canvasPosition: state.canonical.document.canvasPosition,
   })
 
   // Keep canvas in sync with canonical.document changes
   React.useEffect(() => {
     const width = state.canonical.document.width
     const height = state.canonical.document.height
+    const canvasPosition = state.canonical.document.canvasPosition
 
     if (
       width !== canvasDimensions.width ||
-      height !== canvasDimensions.height
+      height !== canvasDimensions.height ||
+      canvasPosition !== canvasDimensions.canvasPosition
     ) {
-      setCanvasDimensions({ width, height })
+      setCanvasDimensions({ width, height, canvasPosition })
 
       // If worker owns the canvas, propagate resize so its framebuffer matches
       if (isWorkerReadyRef.current) {
@@ -158,6 +202,7 @@ export function ImageEditorCanvas({
     state.canonical.document.height,
     canvasDimensions.width,
     canvasDimensions.height,
+    canvasDimensions.canvasPosition,
     resizeWorker,
   ])
 
@@ -171,6 +216,7 @@ export function ImageEditorCanvas({
     isWorkerReady,
     canvasDimensions.width,
     canvasDimensions.height,
+    canvasDimensions.canvasPosition,
     resizeWorker,
   ])
 
@@ -511,7 +557,7 @@ export function ImageEditorCanvas({
       // Update WebGL viewport
       gl.viewport(0, 0, canvasDimensions.width, canvasDimensions.height)
     }
-  }, [canvasDimensions.width, canvasDimensions.height, canvasRef?.current])
+  }, [canvasDimensions.width, canvasDimensions.height, canvasRef?.current, canvasDimensions.canvasPosition])
 
   // Helper function to load image data from various sources (Blob/File or string URL)
   const loadImageDataFromFile = React.useCallback(
@@ -613,6 +659,7 @@ export function ImageEditorCanvas({
       gl,
       width,
       height,
+      useUnpackFlipY: false,
     })
 
     if (!success) {
@@ -620,7 +667,7 @@ export function ImageEditorCanvas({
       // Reset the hybrid renderer reference so we can try again
       hybridRendererRef.current = null
     }
-  }, [canvasRef?.current, canvasDimensions.width, canvasDimensions.height])
+  }, [canvasRef?.current, canvasDimensions.width, canvasDimensions.height, canvasDimensions.canvasPosition])
 
   // Handle layer-specific image data loading
   // biome-ignore lint/correctness/useExhaustiveDependencies: loadImageDataFromFile cause infinite loop
@@ -685,8 +732,6 @@ export function ImageEditorCanvas({
                 // If layer is larger than canvas, center it
                 layerX = (currentCanvasWidth - imageData.width) / 2
                 layerY = (currentCanvasHeight - imageData.height) / 2
-
-                // TODO: add to layer dimensions to layers tool value
               }
             } else {
               // For background, set canvas size if not yet initialized
@@ -701,6 +746,7 @@ export function ImageEditorCanvas({
                     height: imageData.height,
                     canvasPosition:
                       state.canonical.document.canvasPosition || "centerCenter",
+                    layers: state.canonical.layers.byId,
                   })
                 }
               } catch {}
@@ -739,6 +785,7 @@ export function ImageEditorCanvas({
     canonicalLayers,
     canvasDimensions.width,
     canvasDimensions.height,
+    canvasDimensions.canvasPosition,
     isDragActive,
   ])
 
@@ -773,6 +820,7 @@ export function ImageEditorCanvas({
   }, [
     canvasDimensions.width,
     canvasDimensions.height,
+    canvasDimensions.canvasPosition,
     viewportScale,
     viewportX,
     viewportY,
@@ -873,8 +921,8 @@ export function ImageEditorCanvas({
     }
     glRef.current = gl
 
-    // Centralized orientation: flip at unpack time
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true)
+    // Disable Y flip at unpack time - we'll handle coordinate conversion in shaders
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false)
 
     // Initialize Shader Manager
     if (!shaderManager.initialize(gl)) {
@@ -1124,40 +1172,25 @@ export function ImageEditorCanvas({
 
         // Queue render task with worker
         try {
-          // Derive per-render dimensions applying dimensions only to active layer
-
-          console.log("draw:state", getLayerById(selectedLayerId))
-
-          let dimsForRender = layerDimensionsRef.current
-          try {
-            const selectedDims = layerDimensionsRef.current.get(selectedLayerId)
-            const rz: any = (selectedFiltersRef.current as any)?.dimensions
-            if (
-              selectedDims &&
-              rz &&
-              typeof rz.width === "number" &&
-              typeof rz.height === "number" &&
-              rz.width > 0 &&
-              rz.height > 0 &&
-              (rz.width !== selectedDims.width ||
-                rz.height !== selectedDims.height)
-            ) {
-              const centeredX = selectedDims.x + selectedDims.width / 2
-              const centeredY = selectedDims.y + selectedDims.height / 2
-              const newWidth = rz.width
-              const newHeight = rz.height
-              const newX = Math.round(centeredX - newWidth / 2)
-              const newY = Math.round(centeredY - newHeight / 2)
-              const clone = new Map(layerDimensionsRef.current)
-              clone.set(selectedLayerId, {
-                width: newWidth,
-                height: newHeight,
-                x: newX,
-                y: newY,
-              })
-              dimsForRender = clone
+          // Build layer dimensions from current state
+          const dimsForRender = new Map<string, LayerDimensions>()
+          
+          for (const layer of canonicalLayers) {
+            if (layer.type === "image") {
+              const imageLayer = layer as any
+              const filters = imageLayer.filters || {}
+              const dimensions = filters.dimensions || {}
+              
+              if (dimensions.width && dimensions.height) {
+                dimsForRender.set(layer.id, {
+                  width: dimensions.width,
+                  height: dimensions.height,
+                  x: dimensions.x || 0,
+                  y: dimensions.y || 0,
+                })
+              }
             }
-          } catch {}
+          }
 
           const taskId = await renderLayersWithWorker(
             canonicalLayers,
@@ -1293,38 +1326,29 @@ export function ImageEditorCanvas({
             allLayersToRender.length,
             "layers"
           )
-          // Apply dimensions to active layer in hybrid path too
-          let dimsForRender = layerDimensionsRef.current
-          try {
-            const selectedDims = layerDimensionsRef.current.get(selectedLayerId)
 
-            const rz: any = (selectedFiltersRef.current as any)?.dimensions
-            if (
-              selectedDims &&
-              rz &&
-              typeof rz.width === "number" &&
-              typeof rz.height === "number" &&
-              rz.width > 0 &&
-              rz.height > 0 &&
-              (rz.width !== selectedDims.width ||
-                rz.height !== selectedDims.height)
-            ) {
-              const centeredX = selectedDims.x + selectedDims.width / 2
-              const centeredY = selectedDims.y + selectedDims.height / 2
-              const newWidth = rz.width
-              const newHeight = rz.height
-              const newX = Math.round(centeredX - newWidth / 2)
-              const newY = Math.round(centeredY - newHeight / 2)
-              const clone = new Map(layerDimensionsRef.current)
-              clone.set(selectedLayerId, {
-                width: newWidth,
-                height: newHeight,
-                x: newX,
-                y: newY,
-              })
-              dimsForRender = clone
+
+
+
+          // Build layer dimensions from current state for hybrid renderer
+          const dimsForRender = new Map<string, LayerDimensions>()
+          
+          for (const layer of allLayersToRender) {
+            if (layer.type === "image") {
+              const imageLayer = layer as any
+              const filters = imageLayer.filters || {}
+              const dimensions = filters.dimensions || {}
+              
+              if (dimensions.width && dimensions.height) {
+                dimsForRender.set(layer.id, {
+                  width: dimensions.width,
+                  height: dimensions.height,
+                  x: dimensions.x || 0,
+                  y: dimensions.y || 0,
+                })
+              }
             }
-          } catch {}
+          }
 
           hybridRendererRef.current.renderLayers(
             allLayersToRender,
@@ -1423,6 +1447,10 @@ export function ImageEditorCanvas({
     []
   )
 
+
+
+  console.log("=========================", canvasDimensions)
+
   // Keep a stable reference to the latest draw function (no state update -> no render loop)
   const drawRef = React.useRef<() => void>(() => {})
   // biome-ignore lint/correctness/useExhaustiveDependencies: keep drawRef updated on relevant changes without depending on draw itself
@@ -1434,6 +1462,7 @@ export function ImageEditorCanvas({
     isDragActive,
     canvasDimensions.width,
     canvasDimensions.height,
+    canvasDimensions.canvasPosition,
     renderType,
   ])
 

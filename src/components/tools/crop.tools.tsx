@@ -583,12 +583,26 @@ function useCrop({
       const newImageData = octx.getImageData(0, 0, sw, sh)
 
       imageDataCacheRef.current.set(selectedLayerId, newImageData)
-      layerDimensionsRef.current.set(selectedLayerId, {
+      
+      // Update the layer state with new dimensions instead of directly setting the ref
+      const newX = Math.max(0, Math.min(cropRect.x, canvasDimensions.width - sw))
+      const newY = Math.max(0, Math.min(cropRect.y, canvasDimensions.height - sh))
+      
+      const currentLayer = state.canonical.layers.byId[selectedLayerId] as any
+      const currentFilters = currentLayer?.filters || {}
+      const nextFilters = {
+        ...currentFilters,
+        dimensions: {
+          ...(currentFilters.dimensions || {}),
         width: sw,
         height: sh,
-        x: Math.max(0, Math.min(cropRect.x, canvasDimensions.width - sw)),
-        y: Math.max(0, Math.min(cropRect.y, canvasDimensions.height - sh)),
-      })
+          x: newX,
+          y: newY,
+        },
+      }
+      
+      // Update the layer state - the sync effect will update the ref
+      updateLayer(selectedLayerId, { filters: nextFilters } as any)
 
       const gl = glRef.current
       const prevTex = textureCacheRef.current.get(selectedLayerId)
@@ -644,8 +658,7 @@ function useCrop({
     glRef.current,
     imageDataCacheRef.current.set,
     imageDataCacheRef.current.get,
-    layerDimensionsRef.current.set,
-    layerDimensionsRef.current.get,
+
     textureCacheRef.current.get,
     textureCacheRef.current.delete,
   ])

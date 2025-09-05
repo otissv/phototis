@@ -161,9 +161,6 @@ function DimensionsCanvasControls() {
       handleOnSave()
     }
   }
-
-
-
   
 
   const handleOnSave = () => {
@@ -527,7 +524,7 @@ function updateLayerDimensions ({
       )
     }
 
-    return { x: Math.round(x), y: Math.round(y) }
+    return { x: Math.round(x), y: Math.round(canvasDimensions.height - y - layerDimensions.height) }
   }
   
   const updatedLayers: Record<LayerId, EditorLayer> = {}
@@ -546,9 +543,9 @@ function updateLayerDimensions ({
         dimensions: {
           ...layer.filters.dimensions,
           ...calculatePositionFromAnchor(layer.filters.dimensions, {
-            width: canvas.width,
-            height: canvas.height,
-            canvasPosition: canvas.canvasPosition
+        width: canvas.width,
+        height: canvas.height,
+        canvasPosition: canvas.canvasPosition
           })
         },
       }

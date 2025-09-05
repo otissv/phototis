@@ -1902,13 +1902,18 @@ async function renderLayerWithFilters(
       lh = dim.height
     }
 
+    // The vertex shader expects center position in pixels in UI coordinates (top-left origin)
+    // The vertex shader will convert to WebGL coordinates (bottom-left origin)
+    const layerCenterX = lx + lw / 2
+    const layerCenterY = ly + lh / 2
+
     // Provide geometry uniforms so the shader can position correctly
     shaderManager.updateUniforms({
       ...validatedParameters,
       layerSize: [lw, lh],
       canvasSize: [canvasWidth, canvasHeight],
       // Vertex shader expects center position in pixels
-      layerPosition: [lx + lw / 2, ly + lh / 2],
+      layerPosition: [layerCenterX, layerCenterY],
       opacity: (layer as any).opacity ?? 100,
     })
     // Debug: log resolved layer geometry
