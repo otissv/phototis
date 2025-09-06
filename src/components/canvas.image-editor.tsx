@@ -1447,10 +1447,6 @@ export function ImageEditorCanvas({
     []
   )
 
-
-
-  console.log("=========================", canvasDimensions)
-
   // Keep a stable reference to the latest draw function (no state update -> no render loop)
   const drawRef = React.useRef<() => void>(() => {})
   // biome-ignore lint/correctness/useExhaustiveDependencies: keep drawRef updated on relevant changes without depending on draw itself
