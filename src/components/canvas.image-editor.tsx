@@ -21,6 +21,8 @@ import { useCrop } from "./tools/crop.tools"
 const shaderManager = new ShaderManager()
 
 export interface LayerDimensions {
+  layerId: string
+  type: "image"|"document"
   width: number
   height: number
   x: number
@@ -142,6 +144,8 @@ export function ImageEditorCanvas({
         if (dimensions.width && dimensions.height) {
           const currentDims = layerDimensionsRef.current.get(layerId)
           const newDims = {
+            type: layer.type,
+            layerId,
             width: dimensions.width,
             height: dimensions.height,
             x: dimensions.x || 0,
@@ -659,7 +663,7 @@ export function ImageEditorCanvas({
       gl,
       width,
       height,
-      useUnpackFlipY: false,
+      useUnpackFlipY: true,
     })
 
     if (!success) {
@@ -733,6 +737,20 @@ export function ImageEditorCanvas({
                 layerX = (currentCanvasWidth - imageData.width) / 2
                 layerY = (currentCanvasHeight - imageData.height) / 2
               }
+
+              updateLayer(layer.id, {
+                filters: {
+                  ...layer.filters,
+                  dimensions: {
+                    ...layer.filters.dimensions,
+                    width: imageData.width,
+                    height: imageData.height,
+                    x: layerX,
+                    y: layerY,
+                  },
+                },
+              })
+
             } else {
               // For background, set canvas size if not yet initialized
               // When image is first loaded, update document size to image dimensions
@@ -753,11 +771,14 @@ export function ImageEditorCanvas({
             }
 
             const dimensions: LayerDimensions = {
+              type: layer.type,
+              layerId: layer.id,
               width: imageData.width,
               height: imageData.height,
               x: layerX,
               y: layerY,
             }
+
 
             layerDimensionsRef.current.set(layer.id, dimensions)
           }
@@ -1120,6 +1141,23 @@ export function ImageEditorCanvas({
       }
     } catch {}
 
+    // Build layer dimensions from current state
+    const dimsForRender = new Map<string, Omit<LayerDimensions, "type"|"layerId">>()
+
+
+    for (const [id, dimensions] of layerDimensionsRef.current.entries()) {
+        if (dimensions.type === "image") {
+          if (dimensions.width && dimensions.height) {
+            dimsForRender.set(id, {
+              width: dimensions.width,
+              height: dimensions.height,
+              x: dimensions.x || 0,
+              y: dimensions.y || 0,
+            })
+          }
+        }
+    }
+
     try {
       // Use worker-based rendering if available (always queue; manager cancels in-flight)
 
@@ -1172,26 +1210,6 @@ export function ImageEditorCanvas({
 
         // Queue render task with worker
         try {
-          // Build layer dimensions from current state
-          const dimsForRender = new Map<string, LayerDimensions>()
-          
-          for (const layer of canonicalLayers) {
-            if (layer.type === "image") {
-              const imageLayer = layer as any
-              const filters = imageLayer.filters || {}
-              const dimensions = filters.dimensions || {}
-              
-              if (dimensions.width && dimensions.height) {
-                dimsForRender.set(layer.id, {
-                  width: dimensions.width,
-                  height: dimensions.height,
-                  x: dimensions.x || 0,
-                  y: dimensions.y || 0,
-                })
-              }
-            }
-          }
-
           const taskId = await renderLayersWithWorker(
             canonicalLayers,
             renderingToolsValues,
@@ -1326,29 +1344,6 @@ export function ImageEditorCanvas({
             allLayersToRender.length,
             "layers"
           )
-
-
-
-
-          // Build layer dimensions from current state for hybrid renderer
-          const dimsForRender = new Map<string, LayerDimensions>()
-          
-          for (const layer of allLayersToRender) {
-            if (layer.type === "image") {
-              const imageLayer = layer as any
-              const filters = imageLayer.filters || {}
-              const dimensions = filters.dimensions || {}
-              
-              if (dimensions.width && dimensions.height) {
-                dimsForRender.set(layer.id, {
-                  width: dimensions.width,
-                  height: dimensions.height,
-                  x: dimensions.x || 0,
-                  y: dimensions.y || 0,
-                })
-              }
-            }
-          }
 
           hybridRendererRef.current.renderLayers(
             allLayersToRender,

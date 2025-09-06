@@ -566,10 +566,6 @@ export function EditorProvider({
     []
   )
 
-  if (process.env.NODE_ENV === "development") {
-    console.log("context:state", runtime)
-  }
-
   const value: EditorContextValue = React.useMemo(
     () => ({
       state: runtime,
