@@ -2,6 +2,7 @@
 [] Worker mode - layer dimentions
 [] Fallback mode - visibilty is not working
 [] Fallback mode - layer dimentions
-[] Fallback mode - sometimes canvas is blank
+[] Worker mode - sometimes canvas is blank
 [] Fallback mode - opacity not working
 [] Fallback mode - adjustment layers not working
+[] insert new layers above adjusted layers

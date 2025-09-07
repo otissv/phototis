@@ -855,6 +855,9 @@ export function ImageEditorCanvas({
 
   const handleWheel = React.useCallback(
     (e: React.WheelEvent) => {
+      // Only handle wheel events when Ctrl key is held down
+      if (!e.ctrlKey) return
+      
       const delta = e.deltaY > 0 ? 0.9 : 1.1
       const currentScale = viewportScale.get()
       const newScale = Math.max(0.1, Math.min(5, currentScale * delta))
