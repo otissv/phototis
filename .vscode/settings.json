@@ -5,9 +5,6 @@
     "phototis",
     "regl"
   ],
-  "workbench.preferredDarkColorTheme": "Default Dark Modern",
-  "workbench.colorTheme": "Cursor Dark",
-  "workbench.preferredLightColorTheme": "Default Dark Modern",
   "scm.inputFontSize": 16,
   "editor.formatOnSave": true,
   "editor.fontSize": 18,
