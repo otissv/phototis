@@ -42,6 +42,12 @@ import { loadDocument } from "@/lib/editor/persistence"
 
 export type EditorContextValue = {
   state: EditorRuntimeState
+  documentLayerDimensions: {
+    width: number
+    height: number
+    size: number
+    name: string
+  }
   history: {
     begin: (name: string) => void
     push: (command: Command) => void
@@ -75,7 +81,7 @@ export type EditorContextValue = {
   ) => void
   addCheckpoint?: (name: string) => void
   addEmptyLayer: () => void
-  addImageLayer: (file: File) => void
+  addImageLayer: (files: File | File[]) => void
   clearHistory?: () => void
   clearRedo?: () => void
   deleteStepsAfterIndex?: (idx: number) => void
@@ -148,47 +154,59 @@ export function useEditorContext(): EditorContextValue {
 
 export function EditorProvider({
   children,
-  initialImage,
-  dimensions = {
-    width: 1,
-    height: 1,
-  },
+  images,
+  dimensions: imageDimensions = [],
 }: {
   children: React.ReactNode
-  initialImage: File | null
+  images: File[]
   dimensions: {
     width: number
     height: number
-  }
+    size: number
+    name: string
+  }[]
 }): React.JSX.Element {
+
+  const documentLayerDimensions = imageDimensions.sort((a, b) => b.size- a.size )[0] || { width: 800, height: 600, size: 800 * 600, name: "Document" }
+ 
   const [runtime, setRuntime] = React.useState<EditorRuntimeState>(() => {
     const base = createEditorRuntimeState({
       activeTool: { sidebar: "rotate", tool: "rotate" } as ActiveToolModel,
     })
 
-    const baseLayer: ImageLayer = {
-      id: "layer-1",
-      name: "Layer 1",
-      visible: true,
-      locked: false,
-      type: "image",
-      filters: {
-        ...defaultFilters,
-        dimensions: {
-          ...dimensions,
-          x: 0,
-          y: 0,
+    const initialLayers: ImageLayer[] = images.map((image, index) => {
+      const dimensions = imageDimensions.find((dim) => dim.name === image.name)
+
+      return {
+        id: `layer-${Date.now()}-${index}`,
+        name: image.name,
+        visible: true,
+        locked: false,
+        type: "image",
+        filters: {
+          ...defaultFilters,
+          dimensions: {
+            width: dimensions?.width || 1,
+            height: dimensions?.height || 1,
+            x: 0,
+            y: 0,
+          },
+          crop: {
+            ...defaultFilters.crop,
+            width: dimensions?.width || 1,
+            height: dimensions?.height || 1,
+          },
         },
-        crop: {
-          ...defaultFilters.crop,
-          ...dimensions,
-        },
-      },
-      opacity: 100,
-      isEmpty: !initialImage,
-      blendMode: "normal",
-      image: initialImage ?? undefined,
-    }
+        opacity: 100,
+        isEmpty: !image,
+        blendMode: "normal",
+        image: image ?? undefined,
+      }
+    })
+
+    // Set document dimensions to first image if available
+    const documentWidth = documentLayerDimensions?.width || 800
+    const documentHeight = documentLayerDimensions?.height || 600
 
     const documentLayer: DocumentLayer = {
       id: "document",
@@ -201,8 +219,16 @@ export function EditorProvider({
       blendMode: "normal",
     }
 
-    const layers = normalizeLayers([baseLayer, documentLayer])
-    const canonical: CanonicalEditorState = { ...base.canonical, layers }
+    const layers = normalizeLayers([...initialLayers, documentLayer])
+    const canonical: CanonicalEditorState = { 
+      ...base.canonical, 
+      layers,
+      document: {
+        ...base.canonical.document,
+        width: documentWidth,
+        height: documentHeight,
+      }
+    }
     const result = { canonical, ephemeral: base.ephemeral }
     assertInvariants(canonical)
     return result
@@ -336,10 +362,24 @@ export function EditorProvider({
   }, [runtime.canonical.layers.order.length])
 
   const addImageLayer = React.useCallback(
-    (file: File) => {
-      const newLayer: ImageLayer = {
-        id: `layer-${Date.now()}`,
-        name: file.name || `Layer ${runtime.canonical.layers.order.length + 1}`,
+    (files: File | File[]) => {
+      const fileArray = Array.isArray(files) ? files : [files]
+      const imageFiles = fileArray.filter(file => file.type.startsWith("image/"))
+      
+      if (imageFiles.length === 0) {
+        console.warn("No valid image files provided")
+        return
+      }
+
+      const transactionName = imageFiles.length === 1 
+        ? "Add Image Layer" 
+        : `Add ${imageFiles.length} Image Layers`
+
+      historyRef.current?.beginTransaction(transactionName)
+      
+      const newLayers: ImageLayer[] = imageFiles.map((file, index) => ({
+        id: `layer-${Date.now()}-${index}`,
+        name: file.name || `Layer ${runtime.canonical.layers.order.length + index + 1}`,
         visible: true,
         locked: false,
         type: "image",
@@ -348,10 +388,18 @@ export function EditorProvider({
         isEmpty: false,
         image: file,
         blendMode: "normal",
+      }))
+
+      // Add all layers
+      newLayers.forEach(layer => {
+        historyRef.current?.push(new AddLayerCommand(layer, "top"))
+      })
+
+      // Select the first new layer
+      if (newLayers.length > 0) {
+        historyRef.current?.push(new SetSelectionCommand([newLayers[0].id]))
       }
-      historyRef.current?.beginTransaction("Add Image Layer")
-      historyRef.current?.push(new AddLayerCommand(newLayer, "top"))
-      historyRef.current?.push(new SetSelectionCommand([newLayer.id]))
+
       historyRef.current?.endTransaction(true)
     },
     [runtime.canonical.layers.order.length]
@@ -629,6 +677,7 @@ export function EditorProvider({
   const value: EditorContextValue = React.useMemo(
     () => ({
       state: runtime,
+      documentLayerDimensions,
       history: {
         begin: (name: string) => historyRef.current?.beginTransaction(name),
         push: (cmd: Command) => historyRef.current?.push(cmd),
@@ -665,7 +714,6 @@ export function EditorProvider({
         exportDocumentAtIndex: (idx: number) =>
           historyRef.current?.exportDocumentAtIndex(idx),
       },
-
       addAdjustmentLayer,
       addEmptyLayer,
       addImageLayer,
@@ -686,7 +734,6 @@ export function EditorProvider({
       setActiveTool,
       setBlendMode,
       setCanonical,
-
       setEphemeral,
       setLayerName,
       setOpacity,
@@ -701,6 +748,7 @@ export function EditorProvider({
     }),
     [
       runtime,
+      documentLayerDimensions,
       addAdjustmentLayer,
       addEmptyLayer,
       addImageLayer,

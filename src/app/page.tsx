@@ -65,9 +65,12 @@ interface RouterProps {
   setRoute: (route: "gallery" | "editor" | "dropzone") => void
 }
 
+
+const MULTIPLE_IMAGE_UPLOAD = true
+
 function Router({ route, setRoute }: RouterProps) {
   const [images, setImages] = useState<File[]>([])
-  const [selectedImage, setSelectedImage] = useState<File | null>(null)
+  const [selectedImages, setSelectedImages] = useState<File[]>([])
 
   const handleProcess = async (file: File, options: any) => {
     const formData = new FormData()
@@ -126,11 +129,12 @@ function Router({ route, setRoute }: RouterProps) {
           <Dropzone
             onFilesAccepted={(files) => {
               setImages((prev) => [...prev, ...files])
-              setSelectedImage(files[0])
+              setSelectedImages(files)
               setRoute("editor")
             }}
             className='rounded-md h-160'
             onDragStateChange={setGlobalDragActive}
+            isMultiple={MULTIPLE_IMAGE_UPLOAD}
           />
         </div>
       )
@@ -147,35 +151,18 @@ function Router({ route, setRoute }: RouterProps) {
                 setImages((prev) => [...prev, ...files])
               }
               className='rounded-md'
+              isMultiple={MULTIPLE_IMAGE_UPLOAD}
             />
-          </div>
-
-          <div className='w-full flex flex-wrap overflow-y-auto'>
-            {images.map((image) => (
-              <div
-                key={`${image.name}-${image.lastModified}`}
-                className='pl-1 w-full md:basis-1/3 lg:basis-1/4'
-              >
-                <ImageCard
-                  key={`${image.name}-${image.lastModified}`}
-                  image={image}
-                  onProcess={handleProcess}
-                  onDownload={handleDownload}
-                  setRoute={setRoute}
-                  setSelectedImage={setSelectedImage}
-                />
-              </div>
-            ))}
           </div>
         </div>
       )
     case "editor":
       return (
         <ImageEditor
-          image={selectedImage}
+          images={selectedImages}
           onDragStateChange={setGlobalDragActive}
           notify={toast.error}
-          allowAddMultipleImages={true}
+          allowAddMultipleImages={MULTIPLE_IMAGE_UPLOAD}
         />
       )
   }

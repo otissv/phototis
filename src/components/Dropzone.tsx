@@ -11,6 +11,7 @@ interface DropzoneProps {
   className?: string
   isMultiple?: boolean
   onDragStateChange?: (isDragging: boolean) => void
+  
 }
 
 export function Dropzone({

@@ -54,6 +54,7 @@ export function ImageEditorCanvas({
   const { history } = useEditorContext()
   const {
     state,
+    documentLayerDimensions,
     dimensionsDocument,
     getOrderedLayers,
     getSelectedLayerId,
@@ -761,27 +762,33 @@ export function ImageEditorCanvas({
                     y: layerY,
                   },
                 },
-              })
-            } else {
-              // For background, set canvas size if not yet initialized
-              // When image is first loaded, update document size to image dimensions
-              try {
-                if (
-                  state.canonical.document.width === 800 &&
-                  state.canonical.document.height === 600
-                ) {
-                  dimensionsDocument?.({
-                    width: imageData.width,
-                    height: imageData.height,
-                    canvasPosition:
-                      state.canonical.document.canvasPosition || "centerCenter",
-                    layers: state.canonical.layers.byId,
-                  })
-                }
-              } catch {}
+              } as any)
+            } 
+            else {
+              // // For the first image layer (index 0), set canvas size if not yet initialized
+              // // When the first image is loaded, update document size to image dimensions
+              // const isFirstImage = dimensions.find(dim => dim.name === layer.name) === 0
+
+              
+
+              // try {
+              //   if (
+              //     isFirstImage &&
+              //     state.canonical.document.width === 800 &&
+              //     state.canonical.document.height === 600
+              //   ) {
+              //     dimensionsDocument?.({
+              //       width: imageData.width,
+              //       height: imageData.height,
+              //       canvasPosition:
+              //         state.canonical.document.canvasPosition || "centerCenter",
+              //       layers: state.canonical.layers.byId,
+              //     })
+              //   }
+              // } catch {}
             }
 
-            const dimensions: LayerDimensions = {
+            const layerDimensions: LayerDimensions = {
               type: layer.type,
               layerId: layer.id,
               width: imageData.width,
@@ -790,7 +797,7 @@ export function ImageEditorCanvas({
               y: layerY,
             }
 
-            layerDimensionsRef.current.set(layer.id, dimensions)
+            layerDimensionsRef.current.set(layer.id, layerDimensions)
           }
         }
       }

@@ -1013,7 +1013,6 @@ export class HybridRenderer {
       .filter((layer) => {
         if (!layer.visible) return false
         if (layer.opacity <= 0) return false
-        if (layer.id === "layer-1") return true
         if (layer.type === "image") {
           return !!(layer as any).image || !(layer as any).isEmpty
         }

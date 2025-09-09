@@ -85,16 +85,19 @@ export function LayersPanelInner({
       const files = event.target.files
       if (!files || files.length === 0) return
 
-      const file = files[0]
-      if (!file.type.startsWith("image/")) {
-        console.warn("Selected file is not an image")
+      // Convert FileList to Array and filter for image files
+      const fileArray = Array.from(files)
+      const imageFiles = fileArray.filter(file => file.type.startsWith("image/"))
+      
+      if (imageFiles.length === 0) {
+        console.warn("No valid image files selected")
         return
       }
 
-      // Create a new layer with the uploaded image
-      addImageLayer(file)
+      // Create new layers with all uploaded images
+      addImageLayer(imageFiles)
 
-      // Reset the input value to allow selecting the same file again
+      // Reset the input value to allow selecting the same files again
       event.target.value = ""
     },
     [addImageLayer, isDragActive, isGlobalDragActive.current]

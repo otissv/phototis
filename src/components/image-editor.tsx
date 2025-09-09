@@ -25,7 +25,7 @@ import { WorkerPrewarm } from "./worker-prewarm"
 import { getImageDimensions } from "@/lib/utils/get-image-dimensions"
 
 export interface ImageEditorProps extends React.ComponentProps<"div"> {
-  image: File | null
+  images: File[]
   onImageDrop?: (file: File) => void
   onDragStateChange?: (isDragging: boolean) => void
   notify?: (props: { message: string; title?: string }) => void
@@ -33,7 +33,7 @@ export interface ImageEditorProps extends React.ComponentProps<"div"> {
 }
 
 function ImageEditorInner({
-  image,
+  images,
   onImageDrop,
   onDragStateChange,
   notify,
@@ -572,7 +572,7 @@ function ZoomControls({
 }
 
 export function ImageEditor({
-  image,
+  images,
   onImageDrop,
   onDragStateChange,
   ...props
@@ -581,28 +581,41 @@ export function ImageEditor({
     | {
         width: number
         height: number
-      }
-    | undefined
-  >(undefined)
+        name: string
+        size: number
+      }[]
+    | []
+  >([])
 
   React.useEffect(() => {
-    if (image) {
-      const fetchDimensions = async () => {
-        const { width, height } = await getImageDimensions(image)
-
-        if (dimensions?.width === width && dimensions?.height === height) return
-
-        setDimensions({ width: width || 1, height: height || 1 })
-      }
-      fetchDimensions()
+    const fetchDimensions = async (image: File) => {
+      const { width, height } = await getImageDimensions(image)
+      return { size: width * height, width, height, name: image.name }
     }
-  }, [image, dimensions?.width, dimensions?.height])
 
-  return dimensions ? (
-    <EditorProvider initialImage={image} dimensions={dimensions}>
+    const getCanvasDimensions = async (images: File[]) => {
+      const imageSizes: {
+        size: number
+        width: number
+        height: number
+        name: string
+      }[] = []
+
+      for (const image of images) {
+        imageSizes.push(await fetchDimensions(image))
+      }
+
+      setDimensions([...dimensions, ...imageSizes])
+    }
+
+    getCanvasDimensions(images)
+  }, [])
+
+  return dimensions.length > 0 ? (
+    <EditorProvider images={images} dimensions={dimensions}>
       <WorkerPrewarm />
       <ImageEditorInner
-        image={image}
+        images={images}
         onImageDrop={onImageDrop}
         onDragStateChange={onDragStateChange}
         {...props}
