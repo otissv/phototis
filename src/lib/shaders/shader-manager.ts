@@ -2,7 +2,11 @@ import { VertexShaderPlugin } from "./vertex-shader"
 import { ColorAdjustmentsPlugin } from "./color-adjustments"
 import { BlurEffectsPlugin } from "./blur-effects"
 import { VintageEffectsPlugin } from "./vintage-effects"
-import type { ShaderPlugin, ShaderUniforms } from "./base-shader"
+import type {
+  BaseShaderPlugin,
+  ShaderPlugin,
+  ShaderUniforms,
+} from "./base-shader"
 
 export class ShaderManager {
   private gl: WebGL2RenderingContext | null = null
@@ -11,13 +15,14 @@ export class ShaderManager {
   private uniformLocations: Map<string, WebGLUniformLocation | null> = new Map()
   private lastUniformValues: Map<string, any> = new Map()
 
-  constructor() {
+  constructor(plugins: ShaderPlugin[] = []) {
     // Initialize all plugins
     this.plugins = [
       new VertexShaderPlugin(),
       new ColorAdjustmentsPlugin(),
       new BlurEffectsPlugin(),
       new VintageEffectsPlugin(),
+      ...plugins,
     ]
   }
 
@@ -39,7 +44,10 @@ export class ShaderManager {
 
     // Combine all fragment shaders
     const fragmentShaders = this.plugins.map((plugin) => plugin.fragmentShader)
-    const combinedFragmentShader = this.combineFragmentShaders(fragmentShaders, isWebGL2)
+    const combinedFragmentShader = this.combineFragmentShaders(
+      fragmentShaders,
+      isWebGL2
+    )
 
     // Create and compile vertex shader
     const vertexShader = this.gl.createShader(this.gl.VERTEX_SHADER)
@@ -91,14 +99,16 @@ export class ShaderManager {
     return true
   }
 
-  private combineFragmentShaders(shaders: string[], isWebGL2: boolean = false): string {
+  private combineFragmentShaders(shaders: string[], isWebGL2 = false): string {
     // Build header with #version first when WebGL2
     const header = isWebGL2
       ? "#version 300 es\nprecision highp float;\n"
       : "precision highp float;\n"
 
     let combined = header
-    combined += (isWebGL2 ? "in vec2 v_texCoord;\n" : "varying vec2 v_texCoord;\n")
+    combined += isWebGL2
+      ? "in vec2 v_texCoord;\n"
+      : "varying vec2 v_texCoord;\n"
     combined += "uniform sampler2D u_image;\n"
     combined += "uniform vec2 u_resolution;\n"
     combined += "uniform float u_opacity;\n"

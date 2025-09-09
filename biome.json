@@ -1,16 +1,16 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "files": {
-    "includes": ["**", "!**/node_modules",
-  "!**/.vscode",
-      "!**/.next",
-      "!**/.turbo",
-      "!**/apps/**/public",
-      "!**/test-results/",
-      "!**/playwright-report",
-      "!**/blob-report",
-      "!**/playwright/.cache"
-  ]
+    "ignore": [
+      ".vscode/**",
+      ".next/**",
+      ".turbo",
+      "apps/**/public/**",
+      "**/test-results/**",
+      "**/playwright-report/**",
+      "**/blob-report/**",
+      "**/playwright/.cache/**"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -33,7 +33,7 @@
         "noExplicitAny": "off"
       },
       "style": {
-        "noUnusedTemplateLiteral": "off",
+        "noUnusedTemplateLiteral": "off"
       },
       "complexity": {
         "noForEach": "off"

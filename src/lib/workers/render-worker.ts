@@ -1,13 +1,13 @@
 // Render Worker for WebGL operations using OffscreenCanvas
 // This worker handles all GPU-intensive operations to prevent main thread blocking
 
-import type { ImageLayer } from "@/lib/editor/state"
+import type { EditorLayer } from "@/lib/editor/state"
 import type { ImageEditorToolsState } from "@/lib/tools/tools-state"
 import type { PipelineStage } from "@/lib/shaders/asynchronous-pipeline"
 import type { AsynchronousPipeline } from "@/lib/shaders/asynchronous-pipeline"
 import type { HybridRenderer } from "@/lib/shaders/hybrid-renderer"
 import type { ShaderManager } from "@/lib/shaders"
-import { BLEND_MODE_MAP } from "@/lib/shaders/blend-modes"
+import { BLEND_MODE_MAP, type BlendMode } from "@/lib/shaders/blend-modes"
 import {
   validateImageDimensions,
   validateFilterParameters,
@@ -36,7 +36,7 @@ interface InitializeMessage extends WorkerMessage {
 interface RenderMessage extends WorkerMessage {
   type: "render"
   data: {
-    layers: ImageLayer[]
+    layers: EditorLayer[]
     toolsValues: ImageEditorToolsState
     selectedLayerId: string
     canvasWidth: number
@@ -650,7 +650,7 @@ void main(){\n
   vec4 topColor = texture(u_topTexture, uv);\n
   topColor.a *= u_opacity;\n
   outColor = applyBlendMode(baseColor, topColor, u_blendMode);\n
-}`
+}\n`
 
   compProgram = createProgram(glCtx, vs, fs)
   compUBaseLocation = glCtx.getUniformLocation(compProgram, "u_baseTexture")
@@ -896,7 +896,12 @@ async function ensureHeavyInit(width: number, height: number): Promise<void> {
   // Initialize HybridRenderer instance for fallback path
   const HybridRendererCtor = hybridMod.HybridRenderer
   hybridRendererInstance = new HybridRendererCtor()
-  hybridRendererInstance.initialize({ gl: glCtx, width, height, useUnpackFlipY: false })
+  hybridRendererInstance.initialize({
+    gl: glCtx,
+    width,
+    height,
+    useUnpackFlipY: false,
+  })
 
   // Initialize asynchronous pipeline
   const AsynchronousPipelineCtor = pipelineMod.AsynchronousPipeline
@@ -1007,7 +1012,7 @@ function getLayerDims(
 
 // Render layers with progressive quality
 async function renderLayers(
-  layers: ImageLayer[],
+  layers: EditorLayer[],
   toolsValues: ImageEditorToolsState,
   selectedLayerId: string,
   canvasWidth: number,
@@ -1070,7 +1075,11 @@ async function renderLayers(
     try {
       const famVer = latestTokenVersion
       const famSig = latestTokenSignature
-      if (famVer && currentRenderMessageId && messageId !== currentRenderMessageId) {
+      if (
+        famVer &&
+        currentRenderMessageId &&
+        messageId !== currentRenderMessageId
+      ) {
         // This message was superseded by a more recent render request
         postMessage({ type: "success", id: messageId } as SuccessMessage)
         return
@@ -1105,7 +1114,7 @@ async function renderLayers(
       }
 
       // Load and validate layer texture
-      if (layer.image) {
+      if (layer.type === "image" && layer.image) {
         try {
           const texture = await loadLayerTexture(layer)
           if (texture) {
@@ -1168,7 +1177,11 @@ async function renderLayers(
 
       // Validate filter parameters
       const layerToolsValues =
-        layer.id === selectedLayerId ? toolsValues : layer.filters
+        layer.id === selectedLayerId
+          ? toolsValues
+          : layer.type === "image"
+            ? layer.filters
+            : toolsValues
       const { validatedParameters: validatedToolsValues } =
         validateFilterParameters(layerToolsValues)
 
@@ -1318,7 +1331,7 @@ async function renderLayers(
               glCtx.viewport(0, 0, canvasWidth, canvasHeight)
               glCtx.clearColor(0, 0, 0, 0)
               glCtx.clear(glCtx.COLOR_BUFFER_BIT)
-              glCtx["useProgram"](blitProgram)
+              glCtx.useProgram(blitProgram)
               glCtx.bindVertexArray(blitVAO)
               glCtx.activeTexture(glCtx.TEXTURE0)
               glCtx.bindTexture(glCtx.TEXTURE_2D, tex as WebGLTexture)
@@ -1327,7 +1340,7 @@ async function renderLayers(
                 glCtx.uniform1f(blitUOpacityLocation, 1.0)
               glCtx.drawArrays(glCtx.TRIANGLE_STRIP, 0, 4)
               glCtx.bindVertexArray(null)
-              glCtx["useProgram"](null)
+              glCtx.useProgram(null)
             }
 
             // Now blit from scratch into the writeTarget
@@ -1431,16 +1444,16 @@ async function renderLayers(
           }
           {
             const glCtx = gl as WebGL2RenderingContext
-                      // Ensure no active textures are bound before targeting output framebuffer
-          glCtx.activeTexture(glCtx.TEXTURE0)
-          glCtx.bindTexture(glCtx.TEXTURE_2D, null)
-          glCtx.activeTexture(glCtx.TEXTURE1)
-          glCtx.bindTexture(glCtx.TEXTURE_2D, null)
+            // Ensure no active textures are bound before targeting output framebuffer
+            glCtx.activeTexture(glCtx.TEXTURE0)
+            glCtx.bindTexture(glCtx.TEXTURE_2D, null)
+            glCtx.activeTexture(glCtx.TEXTURE1)
+            glCtx.bindTexture(glCtx.TEXTURE_2D, null)
 
-          glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, output.fb)
-          glCtx.viewport(0, 0, canvasWidth, canvasHeight)
-          glCtx.clearColor(0, 0, 0, 0)
-          glCtx.clear(glCtx.COLOR_BUFFER_BIT)
+            glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, output.fb)
+            glCtx.viewport(0, 0, canvasWidth, canvasHeight)
+            glCtx.clearColor(0, 0, 0, 0)
+            glCtx.clear(glCtx.COLOR_BUFFER_BIT)
 
             glCtx.useProgram(compProgram)
             glCtx.bindVertexArray(compVAO)
@@ -1549,7 +1562,7 @@ async function renderLayers(
 
             const mode =
               (layer as any).blendModeCode ??
-              BLEND_MODE_CODE[(layer as any).blendMode] ??
+              BLEND_MODE_CODE[layer.blendMode as BlendMode] ??
               0
             if (compUBlendModeLocation)
               glCtx.uniform1i(compUBlendModeLocation, mode)
@@ -1719,12 +1732,12 @@ async function renderLayers(
 
 // Load layer texture with validation
 async function loadLayerTexture(
-  layer: ImageLayer
+  layer: EditorLayer
 ): Promise<WebGLTexture | null> {
   if (!gl) return null
 
   try {
-    if (!layer.image) return null
+    if (layer.type !== "image" || !layer.image) return null
 
     // Basic signature for cache invalidation
     const signature: string | undefined = (layer as any).imageSignature
@@ -1851,7 +1864,7 @@ async function loadLayerTexture(
 
 // Render layer with filters
 async function renderLayerWithFilters(
-  layer: ImageLayer,
+  layer: EditorLayer,
   layerTexture: WebGLTexture,
   toolsValues: ImageEditorToolsState,
   canvasWidth: number,
@@ -2046,7 +2059,9 @@ async function renderToCanvas(
     // Prefer WebGL2 framebuffer blit to avoid any sampling feedback/invalid op
     const gl2 = gl as WebGL2RenderingContext
     // Ensure final texture is not bound to any texture unit prior to blit
-    try { unbindTextureFromAllUnits(gl2, finalTexture) } catch {}
+    try {
+      unbindTextureFromAllUnits(gl2, finalTexture)
+    } catch {}
     // Create temp FBO to attach the final texture as READ_FRAMEBUFFER
     const srcFbo = gl2.createFramebuffer()
     if (!srcFbo)

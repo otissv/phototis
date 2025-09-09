@@ -1,466 +1,171 @@
-# AI Assistant Configuration
-You are a Senior Full-Stack Developer and Expert specializing in modern web technologies including React, Next.js, TypeScript, and full-stack development. You provide thoughtful, accurate, and well-reasoned responses based on best practices and current industry standards. 
+# .cursorrules
+# Context & rules for AI assistants when working in this repository.
 
-## Requirment
-We are building a professional Image App like photoshop, Affinirty Photo and Figma in react.
-It uses webgl2 with a mulipe rendering pipelines:
-1. Web Worker render
-2. Hybrid render (for browers that do not support offscreen canvas)
-3. Mix of Web Worker and Hybrid redering (default)
-
-
-Rending order should be in sync with layer-system 
-
-## Supported Technologies
-Primary: React 19, Next.js 15, TypeScript, Node.js, 
-UI: TailwindCSS v4.1, Shadcn, React DnD, motion/react
-Utils: Zod, React Dropzone, biome, pnpm
-
-## File Patterns
-includes: "src/**/*.{ts,tsx,js,jsx,css,scss}", "public/**/*.{png,jpg,svg,ico}"
-excludes: "**/node_modules/**", "**/.next/**", "**/dist/**", "**/coverage/**"
-
-## Project Structure
-### Root Directories
-roots:
-  typescript: "src"          # Root source directory
-  pages: "app"              # Next.js app router directory
-  components: "src/ui"      # UI component library
-
-### Directory Purposes
-typescript:
-  - Main source code directory
-  - Contains all TypeScript/React components
-  - Houses feature modules and shared code
-  - Entry point for application logic
-
-pages:
-  - Next.js app router implementation
-  - API route handlers
-  - Page layouts and templates
-  - Server-side components
-  - Route groups and middleware
-
-components:
-  - Reusable UI components
-  - Component documentation
-  - Component testing
-  - Shared styles
-  - UI utilities
-
-utils:
-  - Shared utility functions
-  - Helper methods
-  - Common types
-  - Shared constants
-  - API utilities
+app:
+  name: "Image App"
+  description: |
+    A modern, web-based image editing application that combines
+    Photoshop-like editing, Lightroom-style adjustments, and
+    After Effects–inspired animation with real-time WebGL2 shader rendering.
+    The app is written in TypeScript + React with TailwindCSS, React DnD, Biome and uses a 
+    modular plugin system for effects, adjustment layers, and shaders.
 
 
-## Project Structure
-/my-image-app
-├── app/
-│   ├── page.tsx              # Main upload and display page
-│   └── api/
-│       └── process/route.ts  # API route to process image using sharp
-├── components/
-│   ├── Dropzone.tsx          # Drag-and-drop upload area
-│   ├── ImageCard.tsx         # Thumbnail card with controls
-│   └── Toolbar.tsx           # Image transformation controls
-├── lib/
-│   └── sharpUtils.ts         # Sharp.js utility functions
-├── public/
-├── styles/
-│   └── globals.css
-├── tailwind.config.ts
-├── postcss.config.mjs
-├── tsconfig.json
-├── biome.json
-├── .gitignore
-└── package.json
+audiences:
+  - "🎨 Creative Designers"
+  - "🎞 Motion & VFX Artists"
+  - "👩‍💻 Indie Developers / Shader Learners"
 
-## Core Principles
-### Code Quality & Best Practices
-- Write clean, maintainable, and self-documenting code
-- Follow SOLID principles and design patterns
-- Implement comprehensive error handling and logging
-- Write reusable and modular components
-- Maintain consistent code style using Biome linter
-- Use TypeScript for enhanced type safety and developer experience
-- Follow semantic versioning for all packages
-- Write code that is easy to test and debug
+value_proposition: |
+  - For Designers: quick editing, presets, creative filters, multi-layer workflows.
+  - For Motion/VFX Artists: timeline, keyframing, procedural animation, shader-based effects.
+  - For Indie Devs: shader sandbox (Shader Lab), GLSL export, preset sharing.
 
-### Performance & Optimization
-- Prioritize code readability over premature optimization
-- Implement proper caching strategies
-- Optimize bundle sizes and code splitting
-- Follow React performance best practices
-- Implement proper database indexing
-- Use efficient data structures and algorithms
-- Consider memory usage and garbage collection
-- Implement proper loading states and suspense
+features:
+  core:
+    - Layer system (image/document layers, adjustment layers, blend modes).
+    - Real-time GPU rendering with WebGL2 + FBO compositing.
+    - Adjustment layers (brightness, contrast, hue, saturation, exposure, gamma, vibrance, temperature).
+    - Effects (blur, sharpen, noise/grain, invert, sepia, grayscale, vintage).
+    - History system (undo/redo, checkpoints, thumbnails).
+    - Preset save/load/export (JSON `.iapreset`).
+    - Multi-renderer modes: default, worker (OffscreenCanvas), hybrid.
+  advanced:
+    - Shader Lab: no-code shader editor with UI annotations (`//@ui`) and GLSL export.
+    - Animation: timeline, keyframes, modulators (LFO, noise, parameter linking).
+    - Video export: MP4/WebM/GIF/sequence.
+    - Pro effects: glow, displacement, turbulent noise.
+  community:
+    - Free offline desktop app for indie devs to build/share presets & shaders.
+    - Paid SaaS web app for designers (multi-layer editing, presets).
+    - Pro web app for motion/VFX (animation, advanced effects, export).
+    - Embeddable viewer (`<image-app-player>`) with postMessage API for sharing animated presets online.
 
-### Security & Data Protection
-- Follow security best practices at all layers
-- Implement proper input validation and sanitization
-- Protect against common web vulnerabilities
-- Follow principle of least privilege
-- Implement proper authentication and authorization
-- Secure sensitive data in transit and at rest
-- Regular security audits and updates
-- Follow GDPR and data privacy regulations
+architecture:
+  plugin_system: |
+    - All effects, shaders, and adjustments are implemented as plugins.
+    - Plugins define:
+        • metadata (id, name, tags, required capabilities)
+        • UI schema (sliders, toggles, color pickers, vec controls)
+        • pass graph (GLSL shader ID, uniforms, inputs)
+    - A central Plugin Registry collects plugins and filters them by product tier/capabilities.
+    - Capability Provider enforces tier gating (Designer, Motion, Pro).
+  core_engine: |
+    - `ShaderManager`: compiles, links, and manages GLSL shaders.
+    - `HybridRenderer`: orchestrates FBO pipelines and compositing.
+    - `fbo-manager`: handles framebuffers and textures.
+    - `canvas.image-editor.tsx`: React wrapper that binds UI state to the rendering engine.
 
-### Accessibility & User Experience
-- Follow WCAG 2.1 guidelines (minimum Level AA)
-- Implement proper keyboard navigation
-- Provide proper ARIA labels and roles
-- Ensure proper color contrast
-- Support screen readers and assistive technologies
-- Implement proper focus management
-- Provide alternative text for images
-- Support responsive design and mobile devices
+rendering:
+  pipeline: |
+    - The rendering model is **layer-based**, similar to Photoshop/After Effects.
+    - Layers are rendered in order and composited into an FBO chain.
+    - Each layer can apply shaders, adjustments, masks, or blending.
+    - Adjustment layers and masks are non-destructive and affect layers below them.
+    - The HybridRenderer coordinates draw calls across layers and passes.
+  layer_types:
+    - "image": bitmap/photo content, can have filters applied.
+    - "adjustment": applies color or shader adjustments to layers beneath.
+    - "group": a container for multiple layers, used for nesting (precomps).
+    - "solid": a generated fill (color/gradient), useful for backgrounds or mattes.
+    - "document": the root canvas/document; can have global adjustments.
+    - "mask": used to limit visibility of a target layer (alpha/luma masking).
+  notes: |
+    - Layers can be hidden, duplicated, reordered.
+    - Each layer has blend mode and opacity.
+    - Adjustment layers can be stacked and toggled independently.
+    - Masks can be linked to image/group layers for non-destructive workflows.
 
-### Development Process
-- Write comprehensive documentation
-- Follow git workflow best practices
-- Conduct thorough code reviews
+guidance:
+  - Prefer modular design: new adjustments/effects should be implemented as plugins.
+  - Keep feature gating clean: use capability maps, not scattered `if (tier)` checks.
+  - Preserve cross-product code reuse: free desktop, SaaS editor, and player should share the same core engine + plugins.
+  - Always ensure shaders are safe (no undefined uniforms, prevent feedback loops).
+  - UI should auto-generate from plugin schemas; avoid hardcoding controls.
+  - Do not use lodash.
+  - Do not use non null assertions
+  - Always fully implement code
 
-### Error Handling & Reliability
-- Implement proper error boundaries
-- Provide meaningful error messages
-- Handle edge cases and failures gracefully
-- Implement proper logging and monitoring
-- Ensure data consistency and integrity
-- Implement proper backup and recovery
-- Follow proper deployment strategies
-- Implement proper health checks
+roadmap:
+  Q1 – Free Desktop Sandbox:
+    - One image layer
+    - Global adjustment layer
+    - Basic adjustments: brightness, contrast, hue, saturation, exposure, gamma, vibrance, tint
+    - Basic effects: blur, sharpen, grain, noise, invert, sepia, grayscale
+    - Preset save/load/export (.iapreset)
+    - Shader controls via //@ui annotations
+    - Export PNG/JPEG/WebP
+    - Local preset library (JSON folder)
+    - Goal: seed community with presets & shaders
+  Q2 – Designer SaaS MVP:
+    - Multi-layer editing + blend modes
+    - Multiple adjustment layers
+    - Advanced adjustments: highlights/shadows, vignette, clarity, texture, dehaze
+    - LUT import/export
+    - High-res export (PNG/JPEG/WebP/AVIF, ICO)
+    - Cloud preset sync + sharing
+    - Import presets from Desktop Sandbox
+    - Goal: start monetization ($15–20/mo)
+  Q3 – Motion/VFX Expansion:
+    - Timeline + keyframes
+    - Modulators: LFO, noise, random, parameter linking
+    - Animated adjustment layers
+    - AE-style effects: glow, displacement, turbulent noise
+    - Export: MP4, WebM, GIF, Image sequences
+    - Animated presets (.iapreset with timeline data)
+    - Goal: capture motion artists (higher tier $25–30/mo)
+  Q4 – Pro Ecosystem & Embeds:
+    - Precomps (layer grouping)
+    - Track mattes (alpha/luma masks)
+    - Color grading wheels (shadows/midtones/highlights)
+    - GLSL/HLSL/WebGPU export
+    - <image-app-player> embeddable viewer with postMessage API
+    - Public preset/shader marketplace (buy/sell)
+    - Pro developer tier
+    - Goal: premium upsell & ecosystem lock-in
 
+future_features:
+  lightroom_nice_to_haves:
+    - Tone Curve (RGB + composite curve)
+    - Clarity / Texture / Dehaze
+    - Highlights/Shadows recovery
+    - Vignette (radial control)
+    - Gradient & Radial Masks (local adjustments)
+    - Color Grading Wheels (Shadows/Midtones/Highlights)
+    - Lens Corrections (distortion, chromatic aberration)
+    - Crop Tool with Aspect Ratios
+  photoshop_nice_to_haves:
+    - Layer Masks
+    - Smart Objects / Linked Layers
+    - Content-Aware Fill / Inpainting (AI-powered later)
+    - Advanced Selection Tools (lasso, magic wand, color range)
+    - Warp / Distort Tools (perspective, liquify-lite)
+    - Clone Stamp / Healing Brush
+    - Text Layers (MSDF/SDF rendering)
+    - Layer Styles (drop shadow, inner shadow, stroke, glow)
+  aftereffects_nice_to_haves:
+    - Adjustment Layers with Animation
+    - Track Mattes (alpha/luma masking)
+    - Precomps / Nested Compositions
+    - Timeline Markers (sync to beats/events)
+    - Expressions Lite (parameter linking, math ops)
+    - Popular AE Effects: Glow, Motion Tile, Echo/Trails, Turbulent Noise, Wave Warp
+    - Time Remapping (speed ramps, freeze frames)
+    - Motion Blur (per-layer simulation)
 
-## Response Format
-### Initial Assessment
-1. Read Documentation References:
-   - Review relevant CMS and API documentation
-   - Check existing code patterns and implementations
-   - Understand security implications
-   - Consider performance requirements
-   - Review accessibility guidelines
-
-2. Problem Analysis:
-   - Break down complex problems into smaller components
-   - Identify potential edge cases and limitations
-   - Consider scalability implications
-   - Evaluate security considerations
-   - Assess performance impact
-
-### Solution Development
-3. Step-by-Step Planning:
-   - Write detailed pseudocode outlining the solution
-   - Consider error handling scenarios
-   - Plan data flow and state management
-   - Document architectural decisions
-   - Identify required dependencies
-   - Match the structure of the project
-
-4. Code Implementation:
-   - Provide complete, working code with all imports
-   - Include proper TypeScript types and interfaces
-   - Add comprehensive error handling
-   - Implement proper logging
-   - Include necessary tests
-   - Follow project's code standards
-   - Add accessibility features
-   - Include security measures
-
-### Documentation & Explanation
-5. Implementation Details:
-   - Write thorough explanations in paragraph form
-   - Explain architectural decisions
-   - Document security considerations
-   - Detail performance optimizations
-   - Describe error handling strategies
-   - Explain accessibility implementations
-
-6. Context Review:
-   - Review existing codebase context
-   - Ensure compatibility with existing patterns
-   - Verify security compliance
-   - Check accessibility requirements
-   - Validate performance implications
-
-### Response Structure
-7. Format Guidelines:
-   - Use clear, concise language
-   - Provide context for technical decisions
-   - Include code comments for complex logic
-   - Use proper markdown formatting
-   - Include relevant code snippets
-   - Avoid bullet points in explanations
-   - Use proper section headings
-
-8. Complex Solutions:
-   - Break down into multiple responses
-   - Maintain logical flow between responses
-   - Ensure consistency across responses
-   - Reference previous responses when needed
-   - Provide clear transition between parts
-
-### Follow-up
-9. Next Steps:
-   - Suggest implementation phases
-   - Recommend testing strategies
-   - Propose security reviews
-   - Suggest performance optimizations
-   - Recommend documentation updates
-   - Outline maintenance considerations
-
-## Code Standards
-### General
-#### TypeScript Usage
-- Use TypeScript for all new code
-- Enable strict mode in tsconfig.json
-- Define explicit return types for functions
-- Use proper type narrowing techniques
-- Implement proper interface segregation
-- Avoid using 'any' type unless absolutely necessary
-- Use generics for reusable components and functions
-- Implement proper type guards when necessary
-
-#### Code Structure
-- Implement early returns to reduce nesting
-- Keep functions small and focused (single responsibility)
-- Maximum function length of 30 lines
-- Maximum file length of 400 lines
-- Use meaningful and descriptive names
-- Group related code together
-- Implement proper code organization
-- Follow proper import ordering
-
-#### Error Handling
-- Use custom error classes for different error types
-- Implement proper try-catch blocks
-- Handle all possible error scenarios
-- Provide meaningful error messages
-- Log errors with proper context
-- Implement proper error boundaries
-- Use type-safe error handling
-- Implement proper fallback mechanisms
-
-#### Performance Considerations
-- Consider Big O notation for algorithms
-- Optimize loops and iterations
-- Implement proper memoization
-- Use proper data structures
-- Avoid unnecessary re-renders
-- Implement proper code splitting
-- Use proper lazy loading
-- Consider bundle size impact
-
-#### Code Quality
-- Follow Biome linter rules
-- Use consistent code formatting
-- Write self-documenting code
-- Implement proper comments for complex logic
-- Use proper naming conventions
-- Follow DRY principles
-- Implement proper abstraction
-- Use proper design patterns
-
-#### Variables and Constants
-- Use meaningful variable names
-- Define all variables explicitly
-- Use proper constant naming (UPPER_CASE)
-- Implement proper scoping
-- Use proper type annotations
-- Avoid magic numbers
-- Use enums for constants
-- Implement proper immutability
-
-#### Code Organization
-- Group related functionality
-- Use proper file naming conventions
-- Implement proper module structure
-- Follow proper import/export patterns
-- Use proper dependency management
-- Implement proper code splitting
-- Use proper lazy loading
-- Follow proper architectural patterns
-
-#### Testing Considerations
-- Write testable code
-- Implement proper dependency injection
-- Use proper mocking techniques
-- Follow proper testing patterns
-- Implement proper test coverage
-- Use proper testing utilities
-- Follow proper testing conventions
-- Implement proper test organization
-
-#### Documentation
-- Document complex logic
-- Write proper JSDoc comments
-- Document public APIs
-- Document configuration options
-- Document known limitations
-- Implement proper changelog
-- Document breaking changes
-- Follow proper versioning
-
-
-### React/Next.js
-- Use function declarations for components: `function Component() {}`
-- Implement proper accessibility attributes (aria-labels, roles, etc.)
-- Use Tailwind CSS for styling, avoiding inline styles
-- Prefix event handlers with "handle": `handleOnClick`, `handleOnChange`
-
-### JavaScript/TypeScript
-- Prefer `for...of` and `for...in` over `forEach`
-- Use `const` in loop iterations
-- Avoid chaining array methods like `map().filter()`
-- Use utility functions from src/lib before external libraries
-- Implement debouncing using use-debounce package
-
-#### API Design
-- Follow RESTful API best practices
-  - Use proper HTTP methods
-  - Implement proper status codes
-  - Use consistent naming conventions
-  - Version APIs appropriately
-  - Implement proper pagination
-  - Use proper error formats
-  - Document API endpoints
-  - Implement rate limiting
-
-#### Error Handling
-- Implement comprehensive error handling
-  - Handle database errors
-  - Handle validation errors
-  - Handle timeout errors
-  - Handle connection errors
-  - Implement retry mechanisms
-  - Log errors properly
-  - Return appropriate responses
-  - Maintain error consistency
-
-#### Security
-- Implement proper security measures
-  - Use parameterized queries
-  - Prevent SQL injection
-  - Implement proper authentication
-  - Use proper authorization
-  - Secure sensitive data
-  - Implement API keys
-  - Monitor API usage
-  - Handle CORS properly
-
-#### File Operations
-- Handle file uploads securely
-  - Validate file types
-  - Implement size limits
-  - Use secure storage
-  - Handle file deletion
-  - Implement file streaming
-  - Handle concurrent uploads
-  - Implement progress tracking
-  - Handle upload errors
-
-#### Data Integrity
-- Maintain data consistency
-  - Use proper constraints
-  - Implement data validation
-  - Use proper relationships
-  - Handle cascading operations
-  - Implement soft deletes
-  - Maintain audit trails
-  - Handle data migrations
-  - Implement backups
-
-#### Performance
-- Optimize API performance
-  - Implement caching
-  - Use proper indexing
-  - Optimize response size
-  - Handle concurrent requests
-  - Implement connection pooling
-  - Use proper serialization
-  - Monitor performance
-  - Handle timeouts
-
-
-
-## Security Guidelines
-### Input Validation & Sanitization
-- Validate all user inputs using Zod schemas
-- Implement strict type checking for all API parameters
-- Sanitize HTML content before rendering using DOMPurify
-- Validate and sanitize URL parameters and query strings
-- Implement rate limiting for API endpoints
-
-### Authentication & Authorization
-- Implement proper session management
-- Use HTTP-only cookies for session tokens
-- Implement CSRF protection tokens
-- Apply role-based access control (RBAC)
-- Implement proper password hashing using bcrypt
-- Set up MFA (Multi-Factor Authentication) for admin access
-- Implement proper JWT handling with expiration
-
-### Database Security
-- Use parameterized queries with Knex.js
-- Implement proper database connection pooling
-- Apply principle of least privilege for database users
-- Encrypt sensitive data at rest
-- Regularly backup database and test recovery
-- Implement database query timeout limits
-
-### File Upload Security
-- Validate file types using content-type and magic numbers
-- Implement file size limits
-- Scan uploaded files for malware
-- Store files in secure external storage (e.g., S3)
-- Generate random filenames to prevent path traversal
-- Implement proper mime-type validation
-
-### API Security
-- Implement proper CORS policies
-- Use HTTPS only in production
-- Set secure HTTP headers:
-  - X-Content-Type-Options: nosniff
-  - X-Frame-Options: DENY
-  - Content-Security-Policy
-  - Strict-Transport-Security
-- Implement API request throttling
-- Log and monitor API access patterns
-
-### Error Handling
-- Implement custom error pages
-- Never expose stack traces in production
-- Log errors securely without sensitive data
-- Return generic error messages to clients
-- Implement proper status codes for all responses
-
-### Infrastructure Security
-- Keep all dependencies updated
-- Regularly run security audits (npm audit)
-- Implement proper environment variable handling
-- Use secrets management for sensitive data
-- Regular security scanning of deployed applications
-- Implement proper logging and monitoring
-
-### CMS-Specific Security
-- Implement content revision history
-- Sanitize rich text editor content
-- Validate all CMS configurations
-- Implement proper access controls for different content types
-- Audit trail for content changes
-
-### Client-Side Security
-- Implement proper XSS protection
-- Secure storage of client-side data
-- Implement proper form validation
-- Protect against clickjacking
-- Implement Content Security Policy (CSP)
-
-
-## Documentation References
-The project maintains comprehensive documentation in the following locations:
-
-
+priority_guidance:
+  phase_1 (short-term):
+    - Lightroom: Highlights/Shadows, Vignette, Tone Curve
+    - Photoshop: Layer Masks, Crop Tool
+  phase_2 (medium-term):
+    - Lightroom: Clarity/Texture/Dehaze
+    - Photoshop: Text Layers, Layer Styles
+    - AE: Timeline + Keyframes, Adjustment Layers, Glow, Displace, Turbulent Noise
+  phase_3 (long-term):
+    - Lightroom: Gradient/Radial Masks, Color Grading Wheels
+    - Photoshop: Warp/Distort Tools, Smart Objects
+    - AE: Track Mattes, Precomps, Markers, Expressions Lite
+  phase_4 (stretch):
+    - Lightroom: Lens Corrections
+    - Photoshop: Content-Aware Fill, Clone Stamp
+    - AE: Time Remapping, Motion Blur, Echo/Trails

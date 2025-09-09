@@ -24,6 +24,7 @@ import { HistoryManager, type Command } from "@/lib/editor/history"
 import {
   AddLayerCommand,
   RemoveLayerCommand,
+  ReorderLayerCommand,
   ReorderLayersCommand,
   UpdateLayerCommand,
   SetSelectionCommand,
@@ -34,6 +35,8 @@ import {
   DocumentRotateCommand,
   DocumentFlipCommand,
   DocumentDimensionsCommand,
+  CreateGroupLayerCommand,
+  UngroupLayerCommand,
 } from "@/lib/editor/commands"
 import { loadDocument } from "@/lib/editor/persistence"
 
@@ -97,6 +100,10 @@ export type EditorContextValue = {
     update: Partial<Omit<EditorLayer, "id">>
   ) => void
   removeLayer: (layerId: LayerId) => void
+  reorderLayer: (
+    layerId: LayerId,
+    to: { parentId?: LayerId | null; index: number }
+  ) => void
   reorderLayers: (fromIndex: number, toIndex: number) => void
   rotateDocument: (rotation: number) => void
   selectLayer: (layerId: LayerId | null) => void
@@ -126,6 +133,9 @@ export type EditorContextValue = {
     layerId: LayerId,
     update: Partial<Omit<EditorLayer, "id">>
   ) => void
+  createGroupLayer: (layerIds: LayerId[], groupName?: string) => void
+  ungroupLayer: (groupLayerId: LayerId) => void
+  toggleGroupCollapse: (groupLayerId: LayerId) => void
 }
 
 const EditorContext = React.createContext<EditorContextValue | null>(null)
@@ -351,6 +361,20 @@ export function EditorProvider({
     historyRef.current?.execute(new RemoveLayerCommand(layerId))
   }, [])
 
+  const reorderLayer = React.useCallback(
+    (layerId: LayerId, to: { parentId?: LayerId | null; index: number }) => {
+      historyRef.current?.beginTransaction("Move layer to top level")
+      historyRef.current?.push(
+        new ReorderLayerCommand(layerId, {
+          parentId: to.parentId,
+          index: to.index,
+        })
+      )
+      historyRef.current?.endTransaction(true)
+    },
+    []
+  )
+
   const duplicateLayer = React.useCallback(
     (layerId: LayerId) => {
       const layer = runtime.canonical.layers.byId[layerId]
@@ -388,6 +412,42 @@ export function EditorProvider({
       historyRef.current?.push(new UpdateLayerCommand(layerId, update))
     },
     []
+  )
+
+  const createGroupLayer = React.useCallback(
+    (layerIds: LayerId[], groupName?: string) => {
+      if (layerIds.length < 2) return
+
+      historyRef.current?.beginTransaction(`Group ${layerIds.length} layers`)
+      historyRef.current?.push(new CreateGroupLayerCommand(layerIds, groupName))
+      historyRef.current?.endTransaction(true)
+    },
+    []
+  )
+
+  const ungroupLayer = React.useCallback(
+    (groupLayerId: LayerId) => {
+      const groupLayer = runtime.canonical.layers.byId[groupLayerId]
+      if (!groupLayer || groupLayer.type !== "group") return
+
+      historyRef.current?.beginTransaction("Ungroup layers")
+      historyRef.current?.push(new UngroupLayerCommand(groupLayerId))
+      historyRef.current?.endTransaction(true)
+    },
+    [runtime.canonical.layers.byId]
+  )
+
+  const toggleGroupCollapse = React.useCallback(
+    (groupLayerId: LayerId) => {
+      const groupLayer = runtime.canonical.layers.byId[groupLayerId]
+      if (!groupLayer || groupLayer.type !== "group") return
+
+      const groupLayerTyped = groupLayer as any
+      updateLayer(groupLayerId, {
+        collapsed: !groupLayerTyped.collapsed,
+      } as any)
+    },
+    [runtime.canonical.layers.byId, updateLayer]
   )
 
   const addAdjustmentLayer = React.useCallback(
@@ -618,6 +678,7 @@ export function EditorProvider({
       getSelectedLayerId,
       pushLayerUpdate,
       removeLayer,
+      reorderLayer,
       reorderLayers,
       rotateDocument,
       save: () => historyRef.current?.save().catch(() => {}),
@@ -634,6 +695,9 @@ export function EditorProvider({
       toggleVisibility,
       updateAdjustmentParameters,
       updateLayer,
+      createGroupLayer,
+      ungroupLayer,
+      toggleGroupCollapse,
     }),
     [
       runtime,
@@ -649,6 +713,7 @@ export function EditorProvider({
       getSelectedLayerId,
       pushLayerUpdate,
       removeLayer,
+      reorderLayer,
       reorderLayers,
       rotateDocument,
       selectLayer,
@@ -664,6 +729,9 @@ export function EditorProvider({
       toggleVisibility,
       updateAdjustmentParameters,
       updateLayer,
+      createGroupLayer,
+      ungroupLayer,
+      toggleGroupCollapse,
     ]
   )
 

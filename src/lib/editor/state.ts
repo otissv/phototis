@@ -23,9 +23,13 @@ import type { TOOL_VALUES } from "@/lib/tools/tools"
 export type LayerId = string
 
 // New layer type system
-export type LayerType = "image" | "adjustment" | "group" | "solid" | "document"
-
-// Interface for layer dimensions and positioning
+export type LayerType =
+  | "image"
+  | "adjustment"
+  | "group"
+  | "solid"
+  | "document"
+  | "mask"
 
 // Base layer properties shared by all layer types
 export interface BaseLayer {
@@ -36,6 +40,7 @@ export interface BaseLayer {
   opacity: number
   blendMode: BlendMode
   type: LayerType
+  parentGroupId?: string
 }
 
 // Document layer
@@ -67,14 +72,6 @@ export interface AdjustmentLayer extends BaseLayer {
     | "sepia"
     | "solid"
   parameters: Record<string, number | { value: number; color: string }>
-  mask?: MaskData
-}
-
-// Group layer for organizing layers
-export interface GroupLayer extends BaseLayer {
-  type: "group"
-  children: LayerId[]
-  collapsed: boolean
 }
 
 // Solid color layer
@@ -90,19 +87,30 @@ export interface DocumentLayer extends BaseLayer {
 }
 
 // Mask data for adjustment layers
-export interface MaskData {
+export interface MaskLayer extends BaseLayer {
+  type: "mask"
   enabled: boolean
   inverted: boolean
   // TODO: Add actual mask texture/path data
 }
 
 // Union type for all layer types
-export type EditorLayer =
+export type BaseEditorLayer =
   | ImageLayer
   | AdjustmentLayer
-  | GroupLayer
   | SolidLayer
   | DocumentLayer
+  | MaskLayer
+
+// Group layer for organizing layers
+export interface GroupLayer extends BaseLayer {
+  type: "group"
+  children: BaseEditorLayer[]
+  collapsed: boolean
+}
+
+// Union type for all layer types
+export type EditorLayer = BaseEditorLayer | GroupLayer
 
 /**
  * Layers collection uses an order array for deterministic z-order and a map

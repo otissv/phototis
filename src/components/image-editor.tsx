@@ -21,7 +21,6 @@ import { EditorProvider, useEditorContext } from "@/lib/editor/context"
 import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover"
 import { ImageEditorPanels } from "@/components/panels"
 import type { EditorLayer } from "@/lib/editor/state"
-import { EffectsFooter } from "@/components/tools.image-editor"
 import { WorkerPrewarm } from "./worker-prewarm"
 import { getImageDimensions } from "@/lib/utils/get-image-dimensions"
 
@@ -30,6 +29,7 @@ export interface ImageEditorProps extends React.ComponentProps<"div"> {
   onImageDrop?: (file: File) => void
   onDragStateChange?: (isDragging: boolean) => void
   notify?: (props: { message: string; title?: string }) => void
+  allowAddMultipleImages?: boolean
 }
 
 function ImageEditorInner({
@@ -37,6 +37,7 @@ function ImageEditorInner({
   onImageDrop,
   onDragStateChange,
   notify,
+  allowAddMultipleImages = false,
   ...props
 }: ImageEditorProps) {
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null)
@@ -519,6 +520,7 @@ function ImageEditorInner({
           defaultValue='layers'
           notify={notify}
           setSelectedSidebar={setSelectedSidebar}
+          allowAddMultipleImages={allowAddMultipleImages}
         />
       </div>
     </div>
@@ -594,7 +596,7 @@ export function ImageEditor({
       }
       fetchDimensions()
     }
-  }, [image])
+  }, [image, dimensions?.width, dimensions?.height])
 
   return dimensions ? (
     <EditorProvider initialImage={image} dimensions={dimensions}>

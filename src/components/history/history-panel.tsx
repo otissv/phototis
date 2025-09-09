@@ -28,7 +28,7 @@ import {
 } from "@/ui/tooltip"
 import { timeAgo } from "@/lib/utils/time-ago"
 
-export interface HistoryControlsProps extends React.ComponentProps<"div"> {
+export interface HistoryPanelProps extends React.ComponentProps<"div"> {
   notify?: ({ message, title }: { message: string; title?: string }) => void
   className?: string
 }
@@ -40,11 +40,11 @@ type HistoryEntry = {
   scope?: string
 }
 
-export function HistoryControls({
+export function HistoryPanel({
   className,
   notify,
   ...props
-}: HistoryControlsProps) {
+}: HistoryPanelProps) {
   const { history, state } = useEditorContext()
   // Poll minimal labels from history for UI
   const inspected = history.inspect() as any
@@ -106,9 +106,9 @@ export function HistoryControls({
   const topSpacer = startIndex * itemHeight
   const bottomSpacer = Math.max(0, (past.length - endIndex) * itemHeight)
 
-  const onListScroll = (e: React.UIEvent<HTMLUListElement>) => {
-    setScrollTop((e.currentTarget as HTMLUListElement).scrollTop)
-  }
+  // const onListScroll = (e: React.UIEvent<HTMLUListElement>) => {
+  //   setScrollTop((e.currentTarget as HTMLUListElement).scrollTop)
+  // }
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     const key = e.key
@@ -137,7 +137,7 @@ export function HistoryControls({
   }
 
   return (
-    <div className={cn("w-full space-y-2", className)} {...props}>
+    <div className={cn("w-full space-y-2 ", className)} {...props}>
       <div className='flex items-center gap-2 border-b px-2 h-12'>
         <TooltipProvider>
           <Tooltip>
@@ -220,10 +220,10 @@ export function HistoryControls({
       </div>
 
       <section
-        className='max-h-[40vh] overflow-auto space-y-1 pr-1 outline-none'
+        className='space-y-1 pr-1 max-h-[320px] overflow-y-auto'
         aria-label='History timeline'
         ref={listRef as unknown as React.RefObject<HTMLElement>}
-        onScroll={onListScroll as any}
+        // onScroll={onListScroll as any}
         onKeyDown={onKeyDown as any}
       >
         {/* Checkpoints */}
@@ -389,7 +389,7 @@ export function HistoryControls({
               </li>
             )
           })}
-          <li className='h-0' style={{ height: `${bottomSpacer}px` }} />
+          {/* <li className='h-0' style={{ height: `${bottomSpacer}px` }} /> */}
         </ul>
       </section>
 

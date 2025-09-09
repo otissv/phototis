@@ -29,10 +29,28 @@ export type SerializedCommand =
     }
   | { type: "removeLayer"; meta: CommandMeta; layerId: LayerId }
   | {
+      type: "reorderLayer"
+      meta: CommandMeta
+      layerId: LayerId
+      toParentId?: LayerId | null
+      toIndex: number
+    }
+  | {
       type: "reorderLayers"
       meta: CommandMeta
       fromIndex: number
       toIndex: number
+    }
+  | {
+      type: "createGroupLayer"
+      meta: CommandMeta
+      layerIds: LayerId[]
+      groupName?: string
+    }
+  | {
+      type: "ungroupLayer"
+      meta: CommandMeta
+      groupLayerId: LayerId
     }
   | {
       type: "updateLayer"
@@ -158,6 +176,7 @@ export class RemoveLayerCommand implements Command {
 
   apply(state: CanonicalEditorState): CanonicalEditorState {
     this.backup = state.layers.byId[this.layerId]
+
     this.backupIndex = state.layers.order.indexOf(this.layerId)
     const { [this.layerId]: _removed, ...rest } = state.layers.byId
     const order = state.layers.order.filter((id) => id !== this.layerId)
@@ -184,6 +203,242 @@ export class RemoveLayerCommand implements Command {
 
   serialize(): SerializedCommand {
     return { type: "removeLayer", meta: this.meta, layerId: this.layerId }
+  }
+}
+
+export class ReorderLayerCommand implements Command {
+  meta: CommandMeta
+  private readonly layerId: LayerId
+  private readonly toParentId?: LayerId | null
+  private readonly toIndex: number
+  private previous?: {
+    fromParentId: LayerId | null
+    fromIndex: number
+  }
+
+  constructor(
+    layerId: LayerId,
+    to: { parentId?: LayerId | null; index: number },
+    meta?: Partial<CommandMeta>
+  ) {
+    this.layerId = layerId
+    this.toParentId = typeof to.parentId === "undefined" ? null : to.parentId
+    this.toIndex = Math.max(0, Math.floor(to.index))
+    this.meta = {
+      label: `Reorder Layer`,
+      scope: "layers",
+      timestamp: Date.now(),
+      coalescable: false,
+      ...meta,
+    }
+  }
+
+  apply(state: CanonicalEditorState): CanonicalEditorState {
+    const order = [...state.layers.order]
+    const byId = { ...state.layers.byId }
+
+    // Find current container and index for the layer
+    let fromParentId: LayerId | null = null
+    let fromIndex = -1
+    let movingLayer: EditorLayer | null = null
+
+    if (Object.prototype.hasOwnProperty.call(byId, this.layerId)) {
+      fromParentId = null
+      fromIndex = order.indexOf(this.layerId)
+      movingLayer = byId[this.layerId]
+    } else {
+      // Search inside groups
+      for (const topId of order) {
+        const layer = byId[topId]
+        if (layer && layer.type === "group") {
+          const group = layer as any
+          const children: EditorLayer[] = Array.isArray(group.children)
+            ? group.children
+            : []
+          const idx = children.findIndex((c) => c.id === this.layerId)
+          if (idx !== -1) {
+            fromParentId = topId
+            fromIndex = idx
+            movingLayer = children[idx]
+            break
+          }
+        }
+      }
+    }
+
+    if (!movingLayer || fromIndex === -1) {
+      return state
+    }
+
+    // Store previous for undo
+    this.previous = { fromParentId, fromIndex }
+
+    const destinationParentId = this.toParentId ?? null
+
+    // If destination is same container, just reorder within it
+    if (fromParentId === destinationParentId) {
+      if (destinationParentId === null) {
+        // Top-level reorder
+        const newOrder = [...order]
+        const [id] = newOrder.splice(fromIndex, 1)
+        const clamped = Math.max(0, Math.min(newOrder.length, this.toIndex))
+        newOrder.splice(clamped, 0, id)
+        return { ...state, layers: { ...state.layers, order: newOrder } }
+      }
+
+      // Reorder within the same group
+      const groupLayer = byId[destinationParentId]
+      if (!groupLayer || groupLayer.type !== "group") return state
+      const group = groupLayer as any
+      const children: EditorLayer[] = Array.isArray(group.children)
+        ? group.children
+        : []
+      const newChildren = [...children]
+      const [moved] = newChildren.splice(fromIndex, 1)
+      const clamped = Math.max(0, Math.min(newChildren.length, this.toIndex))
+      newChildren.splice(clamped, 0, moved)
+      const updatedGroup = { ...group, children: newChildren }
+      return {
+        ...state,
+        layers: {
+          order,
+          byId: { ...byId, [destinationParentId]: updatedGroup },
+        },
+      }
+    }
+
+    // Moving across containers
+    let nextOrder = [...order]
+    let nextById = { ...byId }
+
+    // 1) Remove from source container
+    if (fromParentId === null) {
+      // From top-level
+      nextOrder = nextOrder.filter((id) => id !== this.layerId)
+      // Remove from byId only if moving into a group
+      if (destinationParentId !== null) {
+        const { [this.layerId]: _removed, ...rest } = nextById
+        nextById = rest
+      }
+    } else {
+      // From group
+      const srcGroup = nextById[fromParentId]
+      if (!srcGroup || srcGroup.type !== "group") return state
+      const srcGroupAny = srcGroup as any
+      const srcChildren: EditorLayer[] = Array.isArray(srcGroupAny.children)
+        ? srcGroupAny.children
+        : []
+      const newChildren = srcChildren.filter((c) => c.id !== this.layerId)
+      if (newChildren.length === 0) {
+        // Remove empty group completely
+        const { [fromParentId]: _removedGroup, ...restById } = nextById
+        nextById = restById
+        nextOrder = nextOrder.filter((id) => id !== fromParentId)
+      } else {
+        nextById[fromParentId] = { ...srcGroupAny, children: newChildren }
+      }
+    }
+
+    // 2) Add to destination container
+    if (destinationParentId === null) {
+      // To top-level
+      // Ensure clean payload without parentGroupId
+      const payload = { ...(movingLayer as any) }
+      if (Object.prototype.hasOwnProperty.call(payload, "parentGroupId")) {
+        // biome-ignore lint/performance/noDelete: <explanation>
+        delete (payload as any).parentGroupId
+      }
+      nextById = { ...nextById, [this.layerId]: payload }
+      const clamped = Math.max(0, Math.min(nextOrder.length, this.toIndex))
+      nextOrder.splice(clamped, 0, this.layerId)
+    } else {
+      // To group
+      const dstGroup = nextById[destinationParentId]
+      if (!dstGroup || dstGroup.type !== "group") return state
+      const dstGroupAny = dstGroup as any
+      const dstChildren: EditorLayer[] = Array.isArray(dstGroupAny.children)
+        ? dstGroupAny.children
+        : []
+      const clamped = Math.max(0, Math.min(dstChildren.length, this.toIndex))
+      const childForGroup = {
+        ...(movingLayer as any),
+        parentGroupId: destinationParentId,
+      }
+      const newChildren = [...dstChildren]
+      newChildren.splice(clamped, 0, childForGroup)
+      nextById[destinationParentId] = { ...dstGroupAny, children: newChildren }
+    }
+
+    return { ...state, layers: { order: nextOrder, byId: nextById } }
+  }
+
+  invert(
+    prevState: CanonicalEditorState,
+    nextState: CanonicalEditorState
+  ): Command {
+    // Prefer using captured previous info when available
+    if (this.previous) {
+      return new ReorderLayerCommand(
+        this.layerId,
+        {
+          parentId: this.previous.fromParentId,
+          index: this.previous.fromIndex,
+        },
+        { label: `Undo Reorder Layer` }
+      )
+    }
+
+    // Fallback: derive location from states by searching containers
+    const findLocation = (
+      state: CanonicalEditorState
+    ): { parentId: LayerId | null; index: number } | null => {
+      const { order, byId } = state.layers
+      // Top-level
+      const topIdx = order.indexOf(this.layerId)
+      if (topIdx !== -1) return { parentId: null, index: topIdx }
+      // Groups
+      for (const id of order) {
+        const l = byId[id]
+        if (l && l.type === "group") {
+          const group = l as any
+          const children: EditorLayer[] = Array.isArray(group.children)
+            ? group.children
+            : []
+          const idx = children.findIndex((c) => c.id === this.layerId)
+          if (idx !== -1) return { parentId: id, index: idx }
+        }
+      }
+      return null
+    }
+
+    const before = findLocation(prevState)
+    const after = findLocation(nextState)
+
+    // If we can’t determine previous, make it a no-op safe inverse
+    if (!before || !after) {
+      return new ReorderLayerCommand(this.layerId, { parentId: null, index: 0 })
+    }
+
+    // Inverse moves the layer back to its previous location
+    return new ReorderLayerCommand(
+      this.layerId,
+      { parentId: before.parentId, index: before.index },
+      { label: `Undo Reorder Layer` }
+    )
+  }
+
+  estimateSize(): number {
+    return 96
+  }
+
+  serialize(): SerializedCommand {
+    return {
+      type: "reorderLayer",
+      meta: this.meta,
+      layerId: this.layerId,
+      toParentId: this.toParentId ?? null,
+      toIndex: this.toIndex,
+    }
   }
 }
 
@@ -248,6 +503,187 @@ export class ReorderLayersCommand implements Command {
       meta: this.meta,
       fromIndex: this.fromIndex,
       toIndex: this.toIndex,
+    }
+  }
+}
+
+export class CreateGroupLayerCommand implements Command {
+  meta: CommandMeta
+  private readonly layerIds: LayerId[]
+  private readonly groupName?: string
+  private groupLayerId?: LayerId
+  private previousState?: {
+    layers: CanonicalEditorState["layers"]
+    selection: CanonicalEditorState["selection"]
+  }
+
+  constructor(
+    layerIds: LayerId[],
+    groupName?: string,
+    meta?: Partial<CommandMeta>
+  ) {
+    this.layerIds = [...layerIds]
+    this.groupName = groupName
+    this.meta = {
+      label: `Group ${this.layerIds.length} layers`,
+      scope: "layers",
+      timestamp: Date.now(),
+      coalescable: false,
+      ...meta,
+    }
+  }
+
+  apply(state: CanonicalEditorState): CanonicalEditorState {
+    this.previousState = {
+      layers: state.layers,
+      selection: state.selection,
+    }
+
+    // Create group layer
+    this.groupLayerId = `group-${Date.now()}`
+    const groupLayer: EditorLayer = {
+      id: this.groupLayerId,
+      name: this.groupName || `Group Layer`,
+      visible: true,
+      locked: false,
+      opacity: 100,
+      blendMode: "normal",
+      type: "group",
+      children: this.layerIds
+        .map((id) => state.layers.byId[id])
+        .filter((l): l is any => Boolean(l) && l.type !== "group"),
+      collapsed: false,
+    }
+
+    // Remove grouped layers from main order and add group layer
+    const newOrder = state.layers.order.filter(
+      (id) => !this.layerIds.includes(id)
+    )
+    const groupIndex = Math.min(
+      ...this.layerIds.map((id) => state.layers.order.indexOf(id))
+    )
+    newOrder.splice(groupIndex, 0, this.groupLayerId)
+
+    // Remove grouped layers from byId and add group layer
+    const newById = { ...state.layers.byId }
+    for (const id of this.layerIds) {
+      delete newById[id]
+    }
+    newById[this.groupLayerId] = groupLayer
+
+    return {
+      ...state,
+      layers: {
+        order: newOrder,
+        byId: newById,
+      },
+      selection: {
+        layerIds: [this.groupLayerId],
+      },
+    }
+  }
+
+  invert(): Command {
+    if (!this.groupLayerId || !this.previousState) {
+      throw new Error("Cannot invert CreateGroupLayerCommand: missing state")
+    }
+    return new UngroupLayerCommand(this.groupLayerId, {
+      label: `Ungroup ${this.layerIds.length} layers`,
+    })
+  }
+
+  serialize(): SerializedCommand {
+    return {
+      type: "createGroupLayer",
+      meta: this.meta,
+      layerIds: this.layerIds,
+      groupName: this.groupName,
+    }
+  }
+}
+
+export class UngroupLayerCommand implements Command {
+  meta: CommandMeta
+  private readonly groupLayerId: LayerId
+  private previousState?: {
+    layers: CanonicalEditorState["layers"]
+    selection: CanonicalEditorState["selection"]
+  }
+
+  constructor(groupLayerId: LayerId, meta?: Partial<CommandMeta>) {
+    this.groupLayerId = groupLayerId
+    this.meta = {
+      label: `Ungroup layer`,
+      scope: "layers",
+      timestamp: Date.now(),
+      coalescable: false,
+      ...meta,
+    }
+  }
+
+  apply(state: CanonicalEditorState): CanonicalEditorState {
+    this.previousState = {
+      layers: state.layers,
+      selection: state.selection,
+    }
+
+    const groupLayer = state.layers.byId[this.groupLayerId]
+    if (!groupLayer || groupLayer.type !== "group") {
+      return state
+    }
+
+    const groupLayerTyped = groupLayer as any
+    const childIds = groupLayerTyped.children.map(
+      (child: EditorLayer) => child.id
+    )
+
+    // Add children back to main order at the group's position
+    const groupIndex = state.layers.order.indexOf(this.groupLayerId)
+    const newOrder = [...state.layers.order]
+    newOrder.splice(groupIndex, 1, ...childIds)
+
+    // Remove group from byId and add children back
+    const newById = { ...state.layers.byId }
+    delete newById[this.groupLayerId]
+    for (const child of groupLayerTyped.children) {
+      newById[child.id] = child
+    }
+
+    return {
+      ...state,
+      layers: {
+        order: newOrder,
+        byId: newById,
+      },
+      selection: {
+        layerIds: childIds,
+      },
+    }
+  }
+
+  invert(): Command {
+    if (!this.previousState) {
+      throw new Error("Cannot invert UngroupLayerCommand: missing state")
+    }
+    const groupLayer = this.previousState.layers.byId[this.groupLayerId]
+    if (!groupLayer || groupLayer.type !== "group") {
+      throw new Error(
+        "Cannot invert UngroupLayerCommand: group layer not found"
+      )
+    }
+    const childIds = (groupLayer as any).children.map(
+      (child: EditorLayer) => child.id
+    )
+    return new CreateGroupLayerCommand(childIds, groupLayer.name, {
+      label: `Group ${childIds.length} layers`,
+    })
+  }
+
+  serialize(): SerializedCommand {
+    return {
+      type: "ungroupLayer",
+      meta: this.meta,
+      groupLayerId: this.groupLayerId,
     }
   }
 }
@@ -781,19 +1217,26 @@ export class DocumentDimensionsCommand implements Command {
   private readonly width: number
   private readonly height: number
   private readonly canvasPosition: CanvasPosition
-  private readonly layers: CanonicalEditorState['layers']['byId']
+  private readonly layers: CanonicalEditorState["layers"]["byId"]
   private previous?: {
     width: number
     height: number
     canvasPosition: CanvasPosition
-    layers: CanonicalEditorState['layers']['byId']
+    layers: CanonicalEditorState["layers"]["byId"]
   }
 
-  constructor({width, height, canvasPosition, layers, meta, label}:{
-    width: number,
-    height: number,
-    canvasPosition: CanvasPosition,
-    layers: CanonicalEditorState['layers']['byId'],
+  constructor({
+    width,
+    height,
+    canvasPosition,
+    layers,
+    meta,
+    label,
+  }: {
+    width: number
+    height: number
+    canvasPosition: CanvasPosition
+    layers: CanonicalEditorState["layers"]["byId"]
     meta?: Partial<CommandMeta>
     label?: string
   }) {
@@ -807,9 +1250,11 @@ export class DocumentDimensionsCommand implements Command {
     this.height = Math.max(1, Math.floor(height))
     this.canvasPosition = canvasPosition
     this.layers = layers
-    
+
     this.meta = {
-      label: label || `Dimensions Document ${this.width}×${this.height} (${canvasPosition})`,
+      label:
+        label ||
+        `Dimensions Document ${this.width}×${this.height} (${canvasPosition})`,
       scope: "document",
       timestamp: Date.now(),
       coalescable: false,
@@ -938,8 +1383,22 @@ export function deserializeCommand(json: SerializedCommand): Command {
       )
     case "removeLayer":
       return new RemoveLayerCommand(json.layerId, json.meta)
+    case "reorderLayer":
+      return new ReorderLayerCommand(
+        json.layerId,
+        { parentId: json.toParentId, index: json.toIndex },
+        json.meta
+      )
     case "reorderLayers":
       return new ReorderLayersCommand(json.fromIndex, json.toIndex, json.meta)
+    case "createGroupLayer":
+      return new CreateGroupLayerCommand(
+        json.layerIds,
+        json.groupName,
+        json.meta
+      )
+    case "ungroupLayer":
+      return new UngroupLayerCommand(json.groupLayerId, json.meta)
     case "updateLayer":
       return new UpdateLayerCommand(json.layerId, json.patch, json.meta)
     case "updateAdjustmentParameters":

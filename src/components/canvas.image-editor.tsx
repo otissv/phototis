@@ -22,11 +22,17 @@ const shaderManager = new ShaderManager()
 
 export interface LayerDimensions {
   layerId: string
-  type: "image"|"document"
+  type: "image" | "document"
   width: number
   height: number
   x: number
   y: number
+}
+
+export interface ViewportState {
+  x: number
+  y: number
+  scale: number
 }
 export interface ImageEditorCanvasProps
   extends Omit<React.ComponentProps<"canvas">, "onProgress"> {
@@ -35,12 +41,6 @@ export interface ImageEditorCanvasProps
   onDrawReady?: (draw: () => void) => void
   onImageDrop?: (file: File) => void
   renderType?: "worker" | "hybrid" | "default"
-}
-
-export interface ViewportState {
-  x: number
-  y: number
-  scale: number
 }
 
 export function ImageEditorCanvas({
@@ -133,13 +133,13 @@ export function ImageEditorCanvas({
   // Sync layerDimensionsRef with state.canonical.layers changes
   React.useEffect(() => {
     const layers = state.canonical.layers.byId
-    
+
     for (const [layerId, layer] of Object.entries(layers)) {
       if (layer.type === "image") {
         const imageLayer = layer as any
         const filters = imageLayer.filters || {}
         const dimensions = filters.dimensions || {}
-        
+
         // Only update if we have valid dimensions
         if (dimensions.width && dimensions.height) {
           const currentDims = layerDimensionsRef.current.get(layerId)
@@ -151,19 +151,21 @@ export function ImageEditorCanvas({
             x: dimensions.x || 0,
             y: dimensions.y || 0,
           }
-          
+
           // Only update if dimensions actually changed
-          if (!currentDims || 
-              currentDims.width !== newDims.width ||
-              currentDims.height !== newDims.height ||
-              currentDims.x !== newDims.x ||
-              currentDims.y !== newDims.y) {
+          if (
+            !currentDims ||
+            currentDims.width !== newDims.width ||
+            currentDims.height !== newDims.height ||
+            currentDims.x !== newDims.x ||
+            currentDims.y !== newDims.y
+          ) {
             layerDimensionsRef.current.set(layerId, newDims)
           }
         }
       }
     }
-    
+
     // Clean up dimensions for layers that no longer exist
     const currentLayerIds = new Set(Object.keys(layers))
     for (const [layerId] of layerDimensionsRef.current) {
@@ -561,7 +563,12 @@ export function ImageEditorCanvas({
       // Update WebGL viewport
       gl.viewport(0, 0, canvasDimensions.width, canvasDimensions.height)
     }
-  }, [canvasDimensions.width, canvasDimensions.height, canvasRef?.current, canvasDimensions.canvasPosition])
+  }, [
+    canvasDimensions.width,
+    canvasDimensions.height,
+    canvasRef?.current,
+    canvasDimensions.canvasPosition,
+  ])
 
   // Helper function to load image data from various sources (Blob/File or string URL)
   const loadImageDataFromFile = React.useCallback(
@@ -671,7 +678,12 @@ export function ImageEditorCanvas({
       // Reset the hybrid renderer reference so we can try again
       hybridRendererRef.current = null
     }
-  }, [canvasRef?.current, canvasDimensions.width, canvasDimensions.height, canvasDimensions.canvasPosition])
+  }, [
+    canvasRef?.current,
+    canvasDimensions.width,
+    canvasDimensions.height,
+    canvasDimensions.canvasPosition,
+  ])
 
   // Handle layer-specific image data loading
   // biome-ignore lint/correctness/useExhaustiveDependencies: loadImageDataFromFile cause infinite loop
@@ -750,7 +762,6 @@ export function ImageEditorCanvas({
                   },
                 },
               })
-
             } else {
               // For background, set canvas size if not yet initialized
               // When image is first loaded, update document size to image dimensions
@@ -778,7 +789,6 @@ export function ImageEditorCanvas({
               x: layerX,
               y: layerY,
             }
-
 
             layerDimensionsRef.current.set(layer.id, dimensions)
           }
@@ -857,7 +867,7 @@ export function ImageEditorCanvas({
     (e: React.WheelEvent) => {
       // Only handle wheel events when Ctrl key is held down
       if (!e.ctrlKey) return
-      
+
       const delta = e.deltaY > 0 ? 0.9 : 1.1
       const currentScale = viewportScale.get()
       const newScale = Math.max(0.1, Math.min(5, currentScale * delta))
@@ -1145,20 +1155,22 @@ export function ImageEditorCanvas({
     } catch {}
 
     // Build layer dimensions from current state
-    const dimsForRender = new Map<string, Omit<LayerDimensions, "type"|"layerId">>()
-
+    const dimsForRender = new Map<
+      string,
+      Omit<LayerDimensions, "type" | "layerId">
+    >()
 
     for (const [id, dimensions] of layerDimensionsRef.current.entries()) {
-        if (dimensions.type === "image") {
-          if (dimensions.width && dimensions.height) {
-            dimsForRender.set(id, {
-              width: dimensions.width,
-              height: dimensions.height,
-              x: dimensions.x || 0,
-              y: dimensions.y || 0,
-            })
-          }
+      if (dimensions.type === "image") {
+        if (dimensions.width && dimensions.height) {
+          dimsForRender.set(id, {
+            width: dimensions.width,
+            height: dimensions.height,
+            x: dimensions.x || 0,
+            y: dimensions.y || 0,
+          })
         }
+      }
     }
 
     try {

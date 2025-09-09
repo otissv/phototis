@@ -175,6 +175,7 @@ function Router({ route, setRoute }: RouterProps) {
           image={selectedImage}
           onDragStateChange={setGlobalDragActive}
           notify={toast.error}
+          allowAddMultipleImages={true}
         />
       )
   }
