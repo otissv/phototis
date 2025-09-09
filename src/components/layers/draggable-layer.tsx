@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils"
 
 import { useEditorContext } from "@/lib/editor/context"
 import type { EditorLayer, AdjustmentLayer } from "@/lib/editor/state"
-import { AdjustmentLayerEditor } from "@/components/adjustment.layer"
+import { AdjustmentLayerEditor } from "@/components/layers/adjustment.layer"
 import { LayerItemContent } from "@/components/layers/layer-content"
 import { LayerContext } from "@/components/layers/layer-panel"
 

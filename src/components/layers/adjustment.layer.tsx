@@ -7,7 +7,7 @@ import { Color } from "@/components/color"
 import { colorPalette } from "@/components/color-palette"
 import type { AdjustmentLayer } from "@/lib/editor/state"
 import { Toggle } from "@/ui/toggle"
-import { ToggleSwitch } from "./toggle-switch"
+import { ToggleSwitch } from "../toggle-switch"
 import { cn } from "@/lib/utils"
 import { Fragment } from "react"
 
