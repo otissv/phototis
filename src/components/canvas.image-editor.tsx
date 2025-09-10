@@ -216,50 +216,47 @@ export function ImageEditorCanvas({
     new Map()
   )
 
-  // Sync layerDimensionsRef with state.canonical.layers changes
+  // Sync layerDimensionsRef with current layers (including children of groups)
   React.useEffect(() => {
-    const layers = state.canonical.layers.byId
+    // Iterate over the flattened list so grouped children are included
+    for (const layer of canonicalLayers) {
+      if (layer.type !== "image") continue
+      const imageLayer = layer as any
+      const filters = imageLayer.filters || {}
+      const dimensions = filters.dimensions || {}
 
-    for (const [layerId, layer] of Object.entries(layers)) {
-      if (layer.type === "image") {
-        const imageLayer = layer as any
-        const filters = imageLayer.filters || {}
-        const dimensions = filters.dimensions || {}
+      if (dimensions.width && dimensions.height) {
+        const layerId = layer.id
+        const currentDims = layerDimensionsRef.current.get(layerId)
+        const newDims = {
+          type: layer.type,
+          layerId,
+          width: dimensions.width,
+          height: dimensions.height,
+          x: dimensions.x || 0,
+          y: dimensions.y || 0,
+        }
 
-        // Only update if we have valid dimensions
-        if (dimensions.width && dimensions.height) {
-          const currentDims = layerDimensionsRef.current.get(layerId)
-          const newDims = {
-            type: layer.type,
-            layerId,
-            width: dimensions.width,
-            height: dimensions.height,
-            x: dimensions.x || 0,
-            y: dimensions.y || 0,
-          }
-
-          // Only update if dimensions actually changed
-          if (
-            !currentDims ||
-            currentDims.width !== newDims.width ||
-            currentDims.height !== newDims.height ||
-            currentDims.x !== newDims.x ||
-            currentDims.y !== newDims.y
-          ) {
-            layerDimensionsRef.current.set(layerId, newDims)
-          }
+        if (
+          !currentDims ||
+          currentDims.width !== newDims.width ||
+          currentDims.height !== newDims.height ||
+          currentDims.x !== newDims.x ||
+          currentDims.y !== newDims.y
+        ) {
+          layerDimensionsRef.current.set(layerId, newDims)
         }
       }
     }
 
-    // Clean up dimensions for layers that no longer exist
-    const currentLayerIds = new Set(Object.keys(layers))
+    // Remove entries for layers that no longer exist (by flattened ids)
+    const currentLayerIds = new Set(canonicalLayers.map((l) => l.id))
     for (const [layerId] of layerDimensionsRef.current) {
       if (!currentLayerIds.has(layerId)) {
         layerDimensionsRef.current.delete(layerId)
       }
     }
-  }, [state.canonical.layers.byId, state.canonical.layers.order])
+  }, [canonicalLayers])
 
   // Canvas dimensions state - mirror canonical.document
   const [canvasDimensions, setCanvasDimensions] = React.useState({
@@ -292,6 +289,7 @@ export function ImageEditorCanvas({
   }, [
     state.canonical.document.width,
     state.canonical.document.height,
+    state.canonical.document.canvasPosition,
     canvasDimensions.width,
     canvasDimensions.height,
     canvasDimensions.canvasPosition,
@@ -309,7 +307,6 @@ export function ImageEditorCanvas({
     isWorkerReady,
     canvasDimensions.width,
     canvasDimensions.height,
-    canvasDimensions.canvasPosition,
     resizeWorker,
   ])
 
@@ -686,12 +683,7 @@ export function ImageEditorCanvas({
       // Update WebGL viewport
       gl.viewport(0, 0, canvasDimensions.width, canvasDimensions.height)
     }
-  }, [
-    canvasDimensions.width,
-    canvasDimensions.height,
-    canvasRef?.current,
-    canvasDimensions.canvasPosition,
-  ])
+  }, [canvasDimensions.width, canvasDimensions.height, canvasRef?.current])
 
   // Helper function to load image data from various sources (Blob/File or string URL)
   const loadImageDataFromFile = React.useCallback(
@@ -800,12 +792,7 @@ export function ImageEditorCanvas({
       // Reset the hybrid renderer reference so we can try again
       hybridRendererRef.current = null
     }
-  }, [
-    canvasRef?.current,
-    canvasDimensions.width,
-    canvasDimensions.height,
-    canvasDimensions.canvasPosition,
-  ])
+  }, [canvasRef?.current, canvasDimensions.width, canvasDimensions.height])
 
   // Handle layer-specific image data loading
   // biome-ignore lint/correctness/useExhaustiveDependencies: loadImageDataFromFile cause infinite loop
@@ -938,7 +925,6 @@ export function ImageEditorCanvas({
     canonicalLayers,
     canvasDimensions.width,
     canvasDimensions.height,
-    canvasDimensions.canvasPosition,
     isDragActive,
   ])
 
@@ -973,7 +959,6 @@ export function ImageEditorCanvas({
   }, [
     canvasDimensions.width,
     canvasDimensions.height,
-    canvasDimensions.canvasPosition,
     viewportScale,
     viewportX,
     viewportY,
