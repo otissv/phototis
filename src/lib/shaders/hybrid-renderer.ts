@@ -4,7 +4,7 @@ import {
   type LayerFBO,
   type LayerBounds,
 } from "./fbo-manager"
-import { BLEND_MODE_MAP, type BlendMode } from "./blend-modes"
+import { BLEND_MODE_MAP, type BlendMode } from "./blend-modes/blend-modes"
 import {
   COMPOSITING_VERTEX_SHADER,
   COMPOSITING_FRAGMENT_SHADER,
@@ -27,9 +27,12 @@ export class HybridRenderer {
   private layerProgram: WebGLProgram | null = null
   private compositingProgram: WebGLProgram | null = null
   private positionBuffer: WebGLBuffer | null = null
-  private texCoordBuffer: WebGLBuffer | null = null
+  // Separate texcoord buffers: layer sampling vs FBO compositing/adjustments
+  private layerTexCoordBuffer: WebGLBuffer | null = null
+  private compTexCoordBuffer: WebGLBuffer | null = null
   private layerTexture: WebGLTexture | null = null
   private compositingTexture: WebGLTexture | null = null
+  private useUnpackFlipY = true
 
   constructor() {
     this.fboManager = new FBOManager()
@@ -40,9 +43,19 @@ export class HybridRenderer {
     this.gl = gl
 
     const useUnpackFlipY = options.useUnpackFlipY ?? true
+    this.useUnpackFlipY = useUnpackFlipY
 
     // Set unpack flip policy for this renderer
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, useUnpackFlipY)
+
+    // Debug: Log HybridRenderer initialization
+    console.log("HybridRenderer initialized:", {
+      useUnpackFlipY,
+      texcoords: useUnpackFlipY
+        ? [0, 0, 1, 0, 0, 1, 1, 1]
+        : [0, 1, 1, 1, 0, 0, 1, 0],
+      unpackFlipYSetting: gl.getParameter(gl.UNPACK_FLIP_Y_WEBGL),
+    })
 
     // Initialize FBO manager
     this.fboManager.initialize(gl)
@@ -85,12 +98,18 @@ export class HybridRenderer {
 
     // Create buffers
     this.positionBuffer = gl.createBuffer()
-    this.texCoordBuffer = gl.createBuffer()
+    this.layerTexCoordBuffer = gl.createBuffer()
+    this.compTexCoordBuffer = gl.createBuffer()
 
-    if (!this.positionBuffer || !this.texCoordBuffer) {
+    if (
+      !this.positionBuffer ||
+      !this.layerTexCoordBuffer ||
+      !this.compTexCoordBuffer
+    ) {
       console.error("Failed to create buffers:", {
         positionBuffer: !!this.positionBuffer,
-        texCoordBuffer: !!this.texCoordBuffer,
+        layerTexCoordBuffer: !!this.layerTexCoordBuffer,
+        compTexCoordBuffer: !!this.compTexCoordBuffer,
       })
       return false
     }
@@ -103,12 +122,17 @@ export class HybridRenderer {
       gl.STATIC_DRAW
     )
 
-    // Set up texture coordinate buffer
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.texCoordBuffer)
-    const texcoords = useUnpackFlipY
-      ? new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]) // unflipped when unpack flips
-      : new Float32Array([0, 1, 1, 1, 0, 0, 1, 0]) // flipped V when unpack does not flip
-    gl.bufferData(gl.ARRAY_BUFFER, texcoords, gl.STATIC_DRAW)
+    // Texcoords for layer sampling (uploads): if UNPACK=false, use flipped V
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.layerTexCoordBuffer)
+    const layerTexcoords = useUnpackFlipY
+      ? new Float32Array([0, 0, 1, 0, 0, 1, 1, 1])
+      : new Float32Array([0, 1, 1, 1, 0, 0, 1, 0])
+    gl.bufferData(gl.ARRAY_BUFFER, layerTexcoords, gl.STATIC_DRAW)
+
+    // Texcoords for FBO sampling (compositing/adjustments): FBOs are upright; use normal V
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.compTexCoordBuffer)
+    const compTexcoords = new Float32Array([0, 0, 1, 0, 0, 1, 1, 1])
+    gl.bufferData(gl.ARRAY_BUFFER, compTexcoords, gl.STATIC_DRAW)
 
     // Create textures
     this.layerTexture = gl.createTexture()
@@ -256,13 +280,46 @@ export class HybridRenderer {
     this.gl.enableVertexAttribArray(positionLocation)
     this.gl.vertexAttribPointer(positionLocation, 2, this.gl.FLOAT, false, 0, 0)
 
+    // Layer rendering samples uploaded bitmaps
+    this.gl.bindBuffer(
+      this.gl.ARRAY_BUFFER,
+      this.layerTexCoordBuffer as WebGLBuffer
+    )
     const texCoordLocation = this.gl.getAttribLocation(
       this.layerProgram,
       "a_texCoord"
     )
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.texCoordBuffer)
     this.gl.enableVertexAttribArray(texCoordLocation)
     this.gl.vertexAttribPointer(texCoordLocation, 2, this.gl.FLOAT, false, 0, 0)
+
+    // Debug: Log layer orientation and texcoords
+    try {
+      const rotRaw = Number((toolsValues as any).rotate || 0)
+      const rot = ((rotRaw % 360) + 360) % 360
+      const flipV = Boolean((toolsValues as any).flipVertical)
+      const flipH = Boolean((toolsValues as any).flipHorizontal)
+      const near = (a: number, b: number, tol = 0.5) => Math.abs(a - b) <= tol
+      let baseOrient: "upright" | "upsideDown" | "rotated90" | "rotated270" =
+        "upright"
+      if (near(rot, 90)) baseOrient = "rotated90"
+      else if (near(rot, 270)) baseOrient = "rotated270"
+      else if (near(rot, 180)) baseOrient = "upsideDown"
+      let finalOrient = baseOrient
+      if (baseOrient === "upright" || baseOrient === "upsideDown") {
+        if (flipV) {
+          finalOrient = baseOrient === "upright" ? "upsideDown" : "upright"
+        }
+      }
+      console.log("HybridRenderer layer:orientation", {
+        layerId: (layer as any).id,
+        flipVertical: flipV,
+        flipHorizontal: flipH,
+        rotate: rot,
+        texcoordV: this.useUnpackFlipY ? "normal" : "flipped",
+        orientation: finalOrient,
+        unpackFlipY: this.gl.getParameter(this.gl.UNPACK_FLIP_Y_WEBGL),
+      })
+    } catch {}
 
     // Bind layer texture
     this.gl.activeTexture(this.gl.TEXTURE0)
@@ -323,11 +380,15 @@ export class HybridRenderer {
     this.gl.enableVertexAttribArray(positionLocation)
     this.gl.vertexAttribPointer(positionLocation, 2, this.gl.FLOAT, false, 0, 0)
 
+    // Adjustment samples accumulated base texture from FBO; use comp texcoords
+    this.gl.bindBuffer(
+      this.gl.ARRAY_BUFFER,
+      this.compTexCoordBuffer as WebGLBuffer
+    )
     const texCoordLocation = this.gl.getAttribLocation(
       this.layerProgram,
       "a_texCoord"
     )
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.texCoordBuffer)
     this.gl.enableVertexAttribArray(texCoordLocation)
     this.gl.vertexAttribPointer(texCoordLocation, 2, this.gl.FLOAT, false, 0, 0)
 
@@ -352,6 +413,34 @@ export class HybridRenderer {
       0,
       0
     )
+
+    // Debug: Log adjustment orientation/texcoords
+    try {
+      const rotRaw = Number((adjustmentTools as any).rotate || 0)
+      const rot = ((rotRaw % 360) + 360) % 360
+      const flipV = Boolean((adjustmentTools as any).flipVertical)
+      const flipH = Boolean((adjustmentTools as any).flipHorizontal)
+      const near = (a: number, b: number, tol = 0.5) => Math.abs(a - b) <= tol
+      let baseOrient: "upright" | "upsideDown" | "rotated90" | "rotated270" =
+        "upright"
+      if (near(rot, 90)) baseOrient = "rotated90"
+      else if (near(rot, 270)) baseOrient = "rotated270"
+      else if (near(rot, 180)) baseOrient = "upsideDown"
+      let finalOrient = baseOrient
+      if (baseOrient === "upright" || baseOrient === "upsideDown") {
+        if (flipV) {
+          finalOrient = baseOrient === "upright" ? "upsideDown" : "upright"
+        }
+      }
+      console.log("HybridRenderer adjustment:orientation", {
+        flipVertical: flipV,
+        flipHorizontal: flipH,
+        rotate: rot,
+        texcoordV: this.useUnpackFlipY ? "normal" : "flipped",
+        unpackFlipY: this.gl.getParameter(this.gl.UNPACK_FLIP_Y_WEBGL),
+        orientation: finalOrient,
+      })
+    } catch {}
 
     // Draw fullscreen quad
     this.gl.drawArrays(this.gl.TRIANGLE_STRIP, 0, 4)
@@ -385,11 +474,15 @@ export class HybridRenderer {
     this.gl.enableVertexAttribArray(positionLocation)
     this.gl.vertexAttribPointer(positionLocation, 2, this.gl.FLOAT, false, 0, 0)
 
+    // Compositing samples FBOs; use comp texcoords
+    this.gl.bindBuffer(
+      this.gl.ARRAY_BUFFER,
+      this.compTexCoordBuffer as WebGLBuffer
+    )
     const texCoordLocation = this.gl.getAttribLocation(
       this.compositingProgram,
       "a_texCoord"
     )
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.texCoordBuffer)
     this.gl.enableVertexAttribArray(texCoordLocation)
     this.gl.vertexAttribPointer(texCoordLocation, 2, this.gl.FLOAT, false, 0, 0)
 
@@ -520,8 +613,12 @@ export class HybridRenderer {
     this.gl.enableVertexAttribArray(positionLocation)
     this.gl.vertexAttribPointer(positionLocation, 2, this.gl.FLOAT, false, 0, 0)
 
+    // Simple copy should sample from source texture; treat as FBO sampling -> comp texcoords
+    this.gl.bindBuffer(
+      this.gl.ARRAY_BUFFER,
+      this.compTexCoordBuffer as WebGLBuffer
+    )
     const texCoordLocation = this.gl.getAttribLocation(program, "a_texCoord")
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.texCoordBuffer)
     this.gl.enableVertexAttribArray(texCoordLocation)
     this.gl.vertexAttribPointer(texCoordLocation, 2, this.gl.FLOAT, false, 0, 0)
 
@@ -586,11 +683,15 @@ export class HybridRenderer {
     this.gl.enableVertexAttribArray(positionLocation)
     this.gl.vertexAttribPointer(positionLocation, 2, this.gl.FLOAT, false, 0, 0)
 
+    // Ping-pong compositing uses FBO sampling
+    this.gl.bindBuffer(
+      this.gl.ARRAY_BUFFER,
+      this.compTexCoordBuffer as WebGLBuffer
+    )
     const texCoordLocation = this.gl.getAttribLocation(
       this.compositingProgram,
       "a_texCoord"
     )
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.texCoordBuffer)
     this.gl.enableVertexAttribArray(texCoordLocation)
     this.gl.vertexAttribPointer(texCoordLocation, 2, this.gl.FLOAT, false, 0, 0)
 
@@ -972,8 +1073,12 @@ export class HybridRenderer {
     this.gl.enableVertexAttribArray(positionLocation)
     this.gl.vertexAttribPointer(positionLocation, 2, this.gl.FLOAT, false, 0, 0)
 
+    // Direct render to canvas samples the result FBO texture; use comp texcoords
+    this.gl.bindBuffer(
+      this.gl.ARRAY_BUFFER,
+      this.compTexCoordBuffer as WebGLBuffer
+    )
     const texCoordLocation = this.gl.getAttribLocation(program, "a_texCoord")
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.texCoordBuffer)
     this.gl.enableVertexAttribArray(texCoordLocation)
     this.gl.vertexAttribPointer(texCoordLocation, 2, this.gl.FLOAT, false, 0, 0)
 
@@ -1347,9 +1452,13 @@ export class HybridRenderer {
       this.gl.deleteBuffer(this.positionBuffer)
       this.positionBuffer = null
     }
-    if (this.texCoordBuffer) {
-      this.gl.deleteBuffer(this.texCoordBuffer)
-      this.texCoordBuffer = null
+    if (this.layerTexCoordBuffer) {
+      this.gl.deleteBuffer(this.layerTexCoordBuffer)
+      this.layerTexCoordBuffer = null
+    }
+    if (this.compTexCoordBuffer) {
+      this.gl.deleteBuffer(this.compTexCoordBuffer)
+      this.compTexCoordBuffer = null
     }
 
     // Clean up textures

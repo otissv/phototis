@@ -11,7 +11,7 @@ import {
   BLEND_MODE_MAP,
   BLEND_MODE_GLSL,
   type BlendMode,
-} from "@/lib/shaders/blend-modes"
+} from "@/lib/shaders/blend-modes/blend-modes"
 import {
   validateImageDimensions,
   validateFilterParameters,
@@ -464,12 +464,19 @@ void main(){\n
   if (!compTexCoordBuffer)
     throw new Error("Failed to create compositing texcoord buffer")
   glCtx.bindBuffer(glCtx.ARRAY_BUFFER, compTexCoordBuffer)
-  glCtx.bufferData(
-    glCtx.ARRAY_BUFFER,
-    // Use flipped V texcoords because we do NOT flip on unpack in worker
-    new Float32Array([0, 1, 1, 1, 0, 0, 1, 0]),
-    glCtx.STATIC_DRAW
-  )
+  // Compositing samples FBOs produced by layer passes; those are upright. Use normal V.
+  const compTexCoords = new Float32Array([0, 0, 1, 0, 0, 1, 1, 1])
+  glCtx.bufferData(glCtx.ARRAY_BUFFER, compTexCoords, glCtx.STATIC_DRAW)
+
+  // Debug: Log compositing shader texture coordinates
+  try {
+    dbg("compositing:texcoords", {
+      coords: Array.from(compTexCoords),
+      description:
+        "compositing shader texture coordinates (normal; sampling upright FBOs)",
+      unpackFlipY: glCtx.getParameter(glCtx.UNPACK_FLIP_Y_WEBGL),
+    })
+  } catch {}
   const aTexLoc = glCtx.getAttribLocation(compProgram, "a_texCoord")
   glCtx.enableVertexAttribArray(aTexLoc)
   glCtx.vertexAttribPointer(aTexLoc, 2, glCtx.FLOAT, false, 0, 0)
@@ -548,12 +555,22 @@ void main() {\n
   glCtx.enableVertexAttribArray(aPosLoc)
   glCtx.vertexAttribPointer(aPosLoc, 2, glCtx.FLOAT, false, 0, 0)
 
-  // Texture coordinates (flip V because we do not UNPACK_FLIP)
-  const texCoords = new Float32Array([0, 1, 1, 1, 0, 0, 1, 0])
+  // Final blit samples the final composed FBO which is upright; use normal V
+  const texCoords = new Float32Array([0, 0, 1, 0, 0, 1, 1, 1])
   blitTexCoordBuffer = glCtx.createBuffer()
   if (!blitTexCoordBuffer) throw new Error("Failed to create texcoord buffer")
   glCtx.bindBuffer(glCtx.ARRAY_BUFFER, blitTexCoordBuffer)
   glCtx.bufferData(glCtx.ARRAY_BUFFER, texCoords, glCtx.STATIC_DRAW)
+
+  // Debug: Log blit shader texture coordinates
+  try {
+    dbg("blit:texcoords", {
+      coords: Array.from(texCoords),
+      description:
+        "blit shader texture coordinates (normal; sampling upright final texture)",
+      unpackFlipY: glCtx.getParameter(glCtx.UNPACK_FLIP_Y_WEBGL),
+    })
+  } catch {}
 
   const aTexLoc = glCtx.getAttribLocation(blitProgram, "a_texCoord")
   glCtx.enableVertexAttribArray(aTexLoc)
@@ -671,11 +688,18 @@ async function ensureHeavyInit(width: number, height: number): Promise<void> {
   if (!layerTexCoordBuffer)
     throw new Error("Failed to create layer texcoord buffer")
   glCtx.bindBuffer(glCtx.ARRAY_BUFFER, layerTexCoordBuffer)
-  glCtx.bufferData(
-    glCtx.ARRAY_BUFFER,
-    new Float32Array([0, 1, 1, 1, 0, 0, 1, 0]),
-    glCtx.STATIC_DRAW
-  )
+  const layerTexCoords = new Float32Array([0, 1, 1, 1, 0, 0, 1, 0])
+  glCtx.bufferData(glCtx.ARRAY_BUFFER, layerTexCoords, glCtx.STATIC_DRAW)
+
+  // Debug: Log layer rendering texture coordinates
+  try {
+    dbg("layer:texcoords", {
+      coords: Array.from(layerTexCoords),
+      description:
+        "layer rendering texture coordinates (flipped V to compensate for vertex shader Y-flip)",
+      unpackFlipY: glCtx.getParameter(glCtx.UNPACK_FLIP_Y_WEBGL),
+    })
+  } catch {}
   glCtx.bindVertexArray(null)
 
   // Initialize HybridRenderer instance for fallback path
@@ -765,7 +789,12 @@ async function ensureHeavyInit(width: number, height: number): Promise<void> {
       } catch {}
     },
   })
-  asynchronousPipeline.initialize({ gl: glCtx, width, height })
+  asynchronousPipeline.initialize({
+    gl: glCtx,
+    width,
+    height,
+    useUnpackFlipY: false,
+  })
   dbg("heavy:init:done")
   heavyInitDone = true
 }
@@ -996,6 +1025,21 @@ async function renderLayers(
     // Stage 3: Individual layer rendering with filters
     const renderedLayers = new Map<string, WebGLTexture>()
 
+    // Debug: Log layer rendering start
+    try {
+      dbg("layers:render-start", {
+        totalLayers: flattenedLayers.length,
+        layerIds: flattenedLayers.map((l) => l.id),
+        layerOrder: flattenedLayers.map((l, i) => ({
+          index: i,
+          id: l.id,
+          type: (l as any).type,
+          visible: l.visible,
+          opacity: l.opacity,
+        })),
+      })
+    } catch {}
+
     for (const layer of flattenedLayers) {
       const layerTexture = layerTextures.get(layer.id)
       if (!layerTexture) continue
@@ -1007,10 +1051,37 @@ async function renderLayers(
           : layer.type === "image"
             ? layer.filters
             : toolsValues
+      try {
+        dbg("layer:tools-source", {
+          layerId: layer.id,
+          source:
+            layer.id === selectedLayerId
+              ? "selected-global"
+              : layer.type === "image"
+                ? "layer.filters"
+                : "global",
+          flipH: Boolean((layerToolsValues as any)?.flipHorizontal),
+          flipV: Boolean((layerToolsValues as any)?.flipVertical),
+          rotate: Number((layerToolsValues as any)?.rotate || 0),
+        })
+      } catch {}
+
       const { validatedParameters: validatedToolsValues } =
         validateFilterParameters(layerToolsValues)
 
       try {
+        // Debug: Log individual layer rendering
+        try {
+          dbg("layer:render-start", {
+            layerId: layer.id,
+            hasTexture: !!layerTexture,
+            layerType: (layer as any).type,
+            layerIndex: flattenedLayers.indexOf(layer),
+            layerOpacity: layer.opacity,
+            layerVisible: layer.visible,
+          })
+        } catch {}
+
         // Render layer with filters
         const renderedTexture = await renderLayerWithFilters(
           layer,
@@ -1023,9 +1094,23 @@ async function renderLayers(
 
         if (renderedTexture) {
           renderedLayers.set(layer.id, renderedTexture)
+          try {
+            dbg("layer:render-success", {
+              layerId: layer.id,
+              hasRenderedTexture: !!renderedTexture,
+              layerIndex: flattenedLayers.indexOf(layer),
+            })
+          } catch {}
         }
       } catch (error) {
         console.warn(`Failed to render layer ${layer.id}:`, error)
+        try {
+          dbg("layer:render-error", {
+            layerId: layer.id,
+            error: error instanceof Error ? error.message : String(error),
+            layerIndex: flattenedLayers.indexOf(layer),
+          })
+        } catch {}
       }
     }
 
@@ -1044,7 +1129,12 @@ async function renderLayers(
     let drewAnyLayer = false
     if (renderedLayers.size > 0) {
       try {
-        dbg("composite:start", { canvasWidth, canvasHeight })
+        dbg("composite:start", {
+          canvasWidth,
+          canvasHeight,
+          layerCount: renderedLayers.size,
+          layerIds: Array.from(renderedLayers.keys()),
+        })
       } catch {}
       // Ensure persistent ping/pong comp targets sized to current canvas
       compPingTarget = ensureCompTarget(
@@ -1114,6 +1204,21 @@ async function renderLayers(
         // The editor currently provides layers in top-first order (new layers are unshifted),
         // so convert to bottom->top for correct compositing.
         const orderedLayers = flattenedLayers.slice().reverse()
+
+        // Debug: Log compositing order
+        try {
+          dbg("composite:order", {
+            totalLayers: orderedLayers.length,
+            layerOrder: orderedLayers.map((l, i) => ({
+              index: i,
+              id: l.id,
+              visible: l.visible,
+              opacity: l.opacity,
+              hasTexture: !!renderedLayers.get(l.id),
+            })),
+          })
+        } catch {}
+
         for (const layer of orderedLayers) {
           const tex = renderedLayers.get(layer.id)
           if (layer.visible === false || layer.opacity <= 0) continue
@@ -1123,11 +1228,24 @@ async function renderLayers(
           if (!readTexture) {
             // First visible layer must be an image layer to establish a base
             if (!tex) {
+              try {
+                dbg("composite:skip", {
+                  layerId: layer.id,
+                  reason: "no texture (adjustment layer)",
+                  layerType: (layer as any).type,
+                })
+              } catch {}
               // Skip non-image (e.g., adjustment) layers until we have a base
               continue
             }
             try {
-              dbg("composite:base", { layerId: layer.id })
+              dbg("composite:base", {
+                layerId: layer.id,
+                layerName: (layer as any).name || null,
+                renderingPath: "blit shader (first layer)",
+                hasTexture: !!tex,
+                layerIndex: orderedLayers.indexOf(layer),
+              })
             } catch {}
             // First visible image layer: copy via scratch then blit to destination (avoid any feedback)
             if (!blitProgram || !blitVAO || !blitUTexLocation) {
@@ -1235,7 +1353,14 @@ async function renderLayers(
           }
 
           try {
-            dbg("composite:over", { layerId: layer.id })
+            dbg("composite:over", {
+              layerId: layer.id,
+              layerName: (layer as any).name || null,
+              renderingPath: "compositing shader (subsequent layers)",
+              hasTopTexture: !!topTexture,
+              hasReadTexture: !!readTexture,
+              layerIndex: orderedLayers.indexOf(layer),
+            })
           } catch {}
           // Composite current layer over accumulated result into the opposite target
           const output: CompTarget = writeTarget === ping ? pong : ping
@@ -1433,6 +1558,16 @@ async function renderLayers(
               } catch {}
             }
 
+            // Debug: Log compositing draw call
+            try {
+              dbg("compose:draw", {
+                texcoordBuffer: "compTexCoordBuffer (normal V)",
+                texcoords: [0, 0, 1, 0, 0, 1, 1, 1],
+                unpackFlipY: glCtx.getParameter(glCtx.UNPACK_FLIP_Y_WEBGL),
+                renderingPath: "compositing",
+              })
+            } catch {}
+
             glCtx.drawArrays(glCtx.TRIANGLE_STRIP, 0, 4)
             // Unbind textures after draw to avoid any potential feedback in subsequent passes
             glCtx.activeTexture(glCtx.TEXTURE0)
@@ -1464,6 +1599,12 @@ async function renderLayers(
 
         // Render final to canvas
         if (drewAnyLayer && finalTexture) {
+          try {
+            dbg("composite:final-render", {
+              hasFinalTexture: !!finalTexture,
+              canvasSize: { width: canvasWidth, height: canvasHeight },
+            })
+          } catch {}
           await renderToCanvas(finalTexture, canvasWidth, canvasHeight)
         }
       } catch (error) {
@@ -1756,7 +1897,8 @@ async function renderLayerWithFilters(
     glCtx.enableVertexAttribArray(aPosLoc)
     glCtx.vertexAttribPointer(aPosLoc, 2, glCtx.FLOAT, false, 0, 0)
     const aTexLoc = glCtx.getAttribLocation(program, "a_texCoord")
-    glCtx.bindBuffer(glCtx.ARRAY_BUFFER, layerTexCoordBuffer)
+    // Layer rendering samples uploaded bitmaps with UNPACK_FLIP_Y_WEBGL=false; use flipped-V texcoords.
+    glCtx.bindBuffer(glCtx.ARRAY_BUFFER, layerTexCoordBuffer as WebGLBuffer)
     glCtx.enableVertexAttribArray(aTexLoc)
     glCtx.vertexAttribPointer(aTexLoc, 2, glCtx.FLOAT, false, 0, 0)
 
@@ -1795,7 +1937,38 @@ async function renderLayerWithFilters(
       layerPosition: [layerCenterX, layerCenterY],
       opacity: (layer as any).opacity ?? 100,
     })
-    // Debug: log resolved layer geometry
+
+    // Debug: compute human-readable orientation for this layer pass
+    try {
+      const flipV = Boolean((validatedParameters as any).flipVertical)
+      const flipH = Boolean((validatedParameters as any).flipHorizontal)
+      const rotRaw = Number((validatedParameters as any).rotate || 0)
+      const rot = ((rotRaw % 360) + 360) % 360
+      const near = (a: number, b: number, tol = 0.5) => Math.abs(a - b) <= tol
+      let baseOrient: "upright" | "upsideDown" | "rotated90" | "rotated270" =
+        "upright"
+      if (near(rot, 90)) baseOrient = "rotated90"
+      else if (near(rot, 270)) baseOrient = "rotated270"
+      else if (near(rot, 180)) baseOrient = "upsideDown"
+      // Vertical flip toggles upright <-> upsideDown for non-90/270 cases
+      let finalOrient = baseOrient
+      if (baseOrient === "upright" || baseOrient === "upsideDown") {
+        if (flipV) {
+          finalOrient = baseOrient === "upright" ? "upsideDown" : "upright"
+        }
+      }
+      dbg("layer:orientation", {
+        layerId: (layer as any).id,
+        layerName: (layer as any).name || null,
+        flipVertical: flipV,
+        flipHorizontal: flipH,
+        rotate: rot,
+        texcoordV: "flipped", // layer pass uses flipped V texcoords
+        orientation: finalOrient,
+      })
+    } catch {}
+
+    // Debug: Log layer uniforms and transformations
     try {
       dbg("layer:uniforms", {
         layerId: (layer as any).id,
@@ -1805,6 +1978,18 @@ async function renderLayerWithFilters(
         layerH: lh,
         canvasW: canvasWidth,
         canvasH: canvasHeight,
+        layerCenterX,
+        layerCenterY,
+        opacity: (layer as any).opacity ?? 100,
+        flipHorizontal: validatedParameters.flipHorizontal,
+        flipVertical: validatedParameters.flipVertical,
+        rotate: validatedParameters.rotate,
+        scale: validatedParameters.scale,
+        renderingPath: "shaderManager (with Y-flip transformation)",
+        vertexShader: "VertexShaderPlugin with coordinate system conversion",
+        texcoordBuffer: "layerTexCoordBuffer (flipped V)",
+        texcoords: [0, 1, 1, 1, 0, 0, 1, 0],
+        unpackFlipY: glCtx.getParameter(glCtx.UNPACK_FLIP_Y_WEBGL),
       })
     } catch {}
     shaderManager.setUniforms(glCtx, program)
@@ -1856,7 +2041,8 @@ async function renderAdjustmentFromBase(
     glCtx.vertexAttribPointer(aPosLoc, 2, glCtx.FLOAT, false, 0, 0)
 
     const aTexLoc = glCtx.getAttribLocation(program, "a_texCoord")
-    glCtx.bindBuffer(glCtx.ARRAY_BUFFER, layerTexCoordBuffer)
+    // Adjustment-from-base samples the full-canvas base FBO (upright); use normal texcoords.
+    glCtx.bindBuffer(glCtx.ARRAY_BUFFER, blitTexCoordBuffer as WebGLBuffer)
     glCtx.enableVertexAttribArray(aTexLoc)
     glCtx.vertexAttribPointer(aTexLoc, 2, glCtx.FLOAT, false, 0, 0)
 
@@ -1872,6 +2058,16 @@ async function renderAdjustmentFromBase(
       u_opacity: 100,
     })
     shaderManager.setUniforms(glCtx, program)
+
+    // Debug: Log adjustment rendering
+    try {
+      dbg("adjustment:uniforms", {
+        texcoordBuffer: "blitTexCoordBuffer (normal V)",
+        texcoords: [0, 0, 1, 0, 0, 1, 1, 1],
+        unpackFlipY: glCtx.getParameter(glCtx.UNPACK_FLIP_Y_WEBGL),
+        renderingPath: "renderAdjustmentFromBase",
+      })
+    } catch {}
 
     // Draw into a pooled comp target (distinct from the texture being sampled)
     const target = checkoutCompTarget(canvasWidth, canvasHeight)
@@ -1922,6 +2118,13 @@ async function renderToCanvas(
   if (!gl) return
 
   try {
+    // Debug: Log final canvas rendering
+    try {
+      dbg("renderToCanvas:start", {
+        canvasSize: { width: canvasWidth, height: canvasHeight },
+        hasTexture: !!finalTexture,
+      })
+    } catch {}
     // Prefer WebGL2 framebuffer blit to avoid any sampling feedback/invalid op
     const gl2 = gl as WebGL2RenderingContext
     // Ensure final texture is not bound to any texture unit prior to blit
@@ -1968,6 +2171,13 @@ async function renderToCanvas(
     if (blitError !== gl2.NO_ERROR) {
       // Fallback: draw a fullscreen quad using the blit shader
       try {
+        // Debug: Log fallback to blit shader
+        try {
+          dbg("renderToCanvas:blit-fallback", {
+            blitError,
+            reason: "framebuffer blit failed",
+          })
+        } catch {}
         // Bind default framebuffer explicitly
         gl2.bindFramebuffer(gl2.FRAMEBUFFER, null)
         gl2.viewport(0, 0, canvasWidth, canvasHeight)
@@ -2095,6 +2305,7 @@ self.onmessage = async (event: MessageEvent) => {
                 gl: gl as WebGL2RenderingContext,
                 width,
                 height,
+                useUnpackFlipY: false,
               })
             } catch {}
           }

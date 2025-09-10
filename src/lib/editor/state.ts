@@ -9,7 +9,7 @@
  * implemented via explicit runtime guards and strongly typed APIs.
  */
 
-import type { BlendMode } from "@/lib/shaders/blend-modes"
+import type { BlendMode } from "@/lib/shaders/blend-modes/blend-modes"
 import type {
   ImageEditorToolsState,
   SIDEBAR_TOOLS,

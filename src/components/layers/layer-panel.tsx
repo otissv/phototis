@@ -18,7 +18,10 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/ui/dropdown-menu"
-import { BLEND_MODE_NAMES, type BlendMode } from "@/lib/shaders/blend-modes"
+import {
+  BLEND_MODE_NAMES,
+  type BlendMode,
+} from "@/lib/shaders/blend-modes/blend-modes"
 import { useEditorContext } from "@/lib/editor/context"
 import { TOOL_VALUES } from "@/lib/tools/tools"
 

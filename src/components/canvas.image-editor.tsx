@@ -1240,10 +1240,6 @@ export function ImageEditorCanvas({
     [createTextureFromImageData]
   )
 
-  console.log("isWorkerProcessingRef.current", isWorkerProcessingRef.current)
-  console.log("isWorkerProcessing (state)", isWorkerProcessing)
-  console.log("pendingRenderRef.current", pendingRenderRef.current)
-
   // Draw function using worker-based rendering for non-blocking GPU operations
   const draw = async () => {
     // Prevent overlapping draws; allow during drags for live preview
@@ -1354,6 +1350,14 @@ export function ImageEditorCanvas({
           flipHorizontal: selectedFiltersRef.current.flipHorizontal,
           flipVertical: selectedFiltersRef.current.flipVertical,
         }
+        // Debug: log flips being sent to worker (global/selected)
+        try {
+          console.debug("editor:tools:global", {
+            flipH: renderingToolsValues.flipHorizontal,
+            flipV: renderingToolsValues.flipVertical,
+            rotate: selectedFiltersRef.current.rotate,
+          })
+        } catch {}
 
         // If document layer is selected, apply document transformations to all layers
         const isDocumentSelected = selectedLayerId === "document"
