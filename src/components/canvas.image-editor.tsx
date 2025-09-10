@@ -346,12 +346,13 @@ export function ImageEditorCanvas({
       )
       return
     }
+    initializingCanvasesRef.current.add(canvas)
+
+    if (renderType !== "worker") return
+
     console.log(
       `🎨 [WORKER] Initializing worker-based renderer at ${Date.now()}`
     )
-    initializingCanvasesRef.current.add(canvas)
-
-    if (renderType !== "worker" && renderType !== "default") return
 
     void initializeWorker(canvas).then((success) => {
       if (success) {
@@ -1038,7 +1039,7 @@ export function ImageEditorCanvas({
     // If the worker is initializing or the canvas can still be transferred,
     // defer creating a WebGL context to avoid blocking OffscreenCanvas transfer.
     if (
-      renderType !== "hybrid" &&
+      renderType === "worker" &&
       !isWorkerReady &&
       (isWorkerInitializing ||
         canvasStateManager.canTransferToOffscreen(canvas))
