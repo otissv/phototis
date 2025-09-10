@@ -10,8 +10,8 @@ import type { ShaderManager } from "@/lib/shaders"
 import {
   BLEND_MODE_MAP,
   BLEND_MODE_GLSL,
-  type BlendMode,
 } from "@/lib/shaders/blend-modes/blend-modes"
+import type { BlendMode } from "@/lib/shaders/blend-modes/types.blend"
 import {
   validateImageDimensions,
   validateFilterParameters,
@@ -1340,12 +1340,29 @@ async function renderLayers(
           // If current layer is an adjustment layer (no tex), render adjusted top from base
           let topTexture: WebGLTexture | null = tex || null
           if (!topTexture && (layer as any).type === "adjustment") {
-            topTexture = await renderAdjustmentFromBase(
-              readTexture,
-              (layer as any).parameters || {},
-              canvasWidth,
-              canvasHeight
-            )
+            // Map UI-level params to shader params via adjustment plugin registry
+            try {
+              const { mapParametersToShader } = await import(
+                "@/lib/editor/adjustments/registry"
+              )
+              const shaderParams = mapParametersToShader(
+                (layer as any).adjustmentType,
+                (layer as any).parameters || {}
+              ) as Record<string, number | { value: number; color: string }>
+              topTexture = await renderAdjustmentFromBase(
+                readTexture,
+                shaderParams,
+                canvasWidth,
+                canvasHeight
+              )
+            } catch {
+              topTexture = await renderAdjustmentFromBase(
+                readTexture,
+                (layer as any).parameters || {},
+                canvasWidth,
+                canvasHeight
+              )
+            }
           }
           if (!topTexture) {
             // Nothing to composite for this layer

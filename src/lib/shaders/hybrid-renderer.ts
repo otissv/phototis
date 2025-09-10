@@ -4,13 +4,14 @@ import {
   type LayerFBO,
   type LayerBounds,
 } from "./fbo-manager"
-import { BLEND_MODE_MAP, type BlendMode } from "./blend-modes/blend-modes"
+import { BLEND_MODE_MAP } from "./blend-modes/blend-modes"
+import type { BlendMode } from "./blend-modes/types.blend"
 import {
   COMPOSITING_VERTEX_SHADER,
   COMPOSITING_FRAGMENT_SHADER,
   LAYER_RENDER_FRAGMENT_SHADER,
 } from "./compositing-shader"
-import type { ImageEditorToolsState } from "@/lib/state.image-editor"
+import type { ImageEditorToolsState } from "@/lib/tools/tools-state"
 import type { EditorLayer as Layer } from "@/lib/editor/state"
 
 export interface HybridRendererOptions {
@@ -1361,11 +1362,24 @@ export class HybridRenderer {
           continue
         }
 
-        // Build tool values from adjustment parameters
+        // Build tool values from adjustment parameters using plugin mapping
         const adjustmentParams = (layer.parameters || {}) as Record<string, any>
         const adjustmentTools = withDefaults(undefined)
-        for (const [k, v] of Object.entries(adjustmentParams)) {
-          ;(adjustmentTools as any)[k] = v
+        try {
+          // dynamic require to avoid top-level await and keep main bundle small
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const reg = require("@/lib/editor/adjustments/registry")
+          const mapped = reg.mapParametersToShader(
+            layer.adjustmentType as any,
+            adjustmentParams
+          ) as Record<string, any>
+          for (const [k, v] of Object.entries(mapped)) {
+            ;(adjustmentTools as any)[k] = v
+          }
+        } catch {
+          for (const [k, v] of Object.entries(adjustmentParams)) {
+            ;(adjustmentTools as any)[k] = v
+          }
         }
 
         // Render adjusted version of the base at full opacity

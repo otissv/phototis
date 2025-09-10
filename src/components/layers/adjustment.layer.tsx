@@ -3,6 +3,10 @@
 import { Eclipse, Palette, Sun, Droplets, Sparkles } from "lucide-react"
 
 import { TOOL_VALUES, type ToolValueColorType } from "@/lib/tools/tools"
+import {
+  ADJUSTMENT_PLUGINS,
+  getAdjustmentPlugin,
+} from "@/lib/editor/adjustments/registry"
 import { Color } from "@/components/color"
 import { colorPalette } from "@/components/color-palette"
 import type { AdjustmentLayer } from "@/lib/editor/state"
@@ -230,12 +234,80 @@ export function AdjustmentLayerEditor({
     }
   }
 
+  const plugin = getAdjustmentPlugin(layer.adjustmentType as any)
+  const ui = plugin?.uiSchema
+  const params = layer.parameters
+
   return (
     <div className='flex items-center mb-4 rounded-b-sm min-h-10 border'>
       <div className='flex flex-col  w-full'>
-        {Object.entries(layer.parameters).map(([key, value]) => (
-          <Fragment key={key}>{renderParameterControl(key, value)}</Fragment>
-        ))}
+        {ui
+          ? ui.map((control) => {
+              const key = control.key
+              const value = params[key]
+              if (control.kind === "slider") {
+                const type = control.sliderType ?? "default"
+                const def =
+                  (TOOL_VALUES as Record<string, any>)[key]?.defaultValue ?? 0
+                const num =
+                  typeof value === "number"
+                    ? (value as number)
+                    : Number(value) || def
+                return (
+                  <div key={key} className='gap-2 px-2'>
+                    <AdjustmentLayerSlider
+                      id={key}
+                      value={num}
+                      onChange={(v) => handleParameterChange(key, v)}
+                      type={type}
+                    />
+                  </div>
+                )
+              }
+              if (control.kind === "toggle") {
+                return (
+                  <AdjustmentLayerToggle
+                    key={key}
+                    id={key}
+                    value={(value as number) ?? 0}
+                    onChange={(v) => handleParameterChange(key, v as any)}
+                  />
+                )
+              }
+              if (control.kind === "color") {
+                const inputValue =
+                  typeof value === "string"
+                    ? (value as string)
+                    : (TOOL_VALUES.solid as any).defaultValue
+                return (
+                  <AdjustmentLayerColor
+                    key={key}
+                    id={key}
+                    value={inputValue}
+                    onChange={(v) => handleParameterChange(key, v as any)}
+                  />
+                )
+              }
+              if (control.kind === "color+slider") {
+                const input =
+                  (value as ToolValueColorType["defaultValue"]) ??
+                  (TOOL_VALUES.recolor as any).defaultValue
+                return (
+                  <AdjustmentLayerColorAndSlider
+                    key={key}
+                    id={key}
+                    value={input}
+                    onChange={(v) => handleParameterChange(key, v as any)}
+                  />
+                )
+              }
+              return null
+            })
+          : Object.entries(params).map(([key, value]) => (
+              <Fragment key={key}>
+                {renderParameterControl(key, value)}
+              </Fragment>
+            ))}
       </div>
     </div>
   )

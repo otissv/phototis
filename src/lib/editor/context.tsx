@@ -166,9 +166,10 @@ export function EditorProvider({
     name: string
   }[]
 }): React.JSX.Element {
+  const documentLayerDimensions = imageDimensions.sort(
+    (a, b) => b.size - a.size
+  )[0] || { width: 800, height: 600, size: 800 * 600, name: "Document" }
 
-  const documentLayerDimensions = imageDimensions.sort((a, b) => b.size- a.size )[0] || { width: 800, height: 600, size: 800 * 600, name: "Document" }
- 
   const [runtime, setRuntime] = React.useState<EditorRuntimeState>(() => {
     const base = createEditorRuntimeState({
       activeTool: { sidebar: "rotate", tool: "rotate" } as ActiveToolModel,
@@ -220,14 +221,14 @@ export function EditorProvider({
     }
 
     const layers = normalizeLayers([...initialLayers, documentLayer])
-    const canonical: CanonicalEditorState = { 
-      ...base.canonical, 
+    const canonical: CanonicalEditorState = {
+      ...base.canonical,
       layers,
       document: {
         ...base.canonical.document,
         width: documentWidth,
         height: documentHeight,
-      }
+      },
     }
     const result = { canonical, ephemeral: base.ephemeral }
     assertInvariants(canonical)
@@ -364,22 +365,27 @@ export function EditorProvider({
   const addImageLayer = React.useCallback(
     (files: File | File[]) => {
       const fileArray = Array.isArray(files) ? files : [files]
-      const imageFiles = fileArray.filter(file => file.type.startsWith("image/"))
-      
+      const imageFiles = fileArray.filter((file) =>
+        file.type.startsWith("image/")
+      )
+
       if (imageFiles.length === 0) {
         console.warn("No valid image files provided")
         return
       }
 
-      const transactionName = imageFiles.length === 1 
-        ? "Add Image Layer" 
-        : `Add ${imageFiles.length} Image Layers`
+      const transactionName =
+        imageFiles.length === 1
+          ? "Add Image Layer"
+          : `Add ${imageFiles.length} Image Layers`
 
       historyRef.current?.beginTransaction(transactionName)
-      
+
       const newLayers: ImageLayer[] = imageFiles.map((file, index) => ({
         id: `layer-${Date.now()}-${index}`,
-        name: file.name || `Layer ${runtime.canonical.layers.order.length + index + 1}`,
+        name:
+          file.name ||
+          `Layer ${runtime.canonical.layers.order.length + index + 1}`,
         visible: true,
         locked: false,
         type: "image",
@@ -391,7 +397,7 @@ export function EditorProvider({
       }))
 
       // Add all layers
-      newLayers.forEach(layer => {
+      newLayers.forEach((layer) => {
         historyRef.current?.push(new AddLayerCommand(layer, "top"))
       })
 
@@ -501,16 +507,28 @@ export function EditorProvider({
   const addAdjustmentLayer = React.useCallback(
     (
       adjustmentType: string,
-      parameters: Record<string, number | { value: number; color: string }>,
+      parameters:
+        | Record<string, number | { value: number; color: string }>
+        | undefined,
       position: "top" | "bottom" | number = "top"
     ) => {
       const h = historyRef.current
       if (!h) return
       h.beginTransaction("Add Adjustment Layer")
       const id = `adjustment-${Date.now()}`
+      let params = parameters
+      try {
+        // Fill defaults from plugin if parameters not provided
+        const {
+          getDefaultParameters,
+        } = require("@/lib/editor/adjustments/registry")
+        if (!params) {
+          params = getDefaultParameters(adjustmentType as any) as any
+        }
+      } catch {}
       const cmd = new AddAdjustmentLayerCommand(
         adjustmentType,
-        parameters,
+        (params ?? {}) as any,
         position,
         id
       )

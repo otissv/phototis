@@ -9,12 +9,13 @@
  * implemented via explicit runtime guards and strongly typed APIs.
  */
 
-import type { BlendMode } from "@/lib/shaders/blend-modes/blend-modes"
+import type { BlendMode } from "@/lib/shaders/blend-modes/types.blend"
 import type {
   ImageEditorToolsState,
   SIDEBAR_TOOLS,
 } from "@/lib/tools/tools-state"
 import type { TOOL_VALUES } from "@/lib/tools/tools"
+import type { AdjustmentTypes } from "./types.adjustment"
 
 /**
  * Canonical types
@@ -56,21 +57,7 @@ export interface ImageLayer extends BaseLayer {
 // Adjustment layer
 export interface AdjustmentLayer extends BaseLayer {
   type: "adjustment"
-  adjustmentType:
-    | "brightness"
-    | "contrast"
-    | "exposure"
-    | "gamma"
-    | "hue"
-    | "saturation"
-    | "temperature"
-    | "recolor"
-    | "vibrance"
-    | "vintage"
-    | "grayscale"
-    | "invert"
-    | "sepia"
-    | "solid"
+  adjustmentType: AdjustmentTypes
   parameters: Record<string, number | { value: number; color: string }>
 }
 
