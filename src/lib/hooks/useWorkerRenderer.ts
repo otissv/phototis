@@ -94,7 +94,6 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
           height: canvas.height,
         }
 
-
         // Set up event listeners
         setupEventListeners()
 
@@ -143,7 +142,6 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
   // Ensure worker canvas matches desired size before rendering
   const ensureCanvasSize = React.useCallback(
     async (width: number, height: number) => {
-
       const current = workerCanvasSizeRef.current
       if (!current || current.width !== width || current.height !== height) {
         await resize(width, height)
@@ -168,6 +166,23 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
   const setupEventListeners = React.useCallback(() => {
     const manager = workerManagerRef.current
     if (!manager) return
+
+    // Remove any existing listeners to avoid duplicate handlers and stale closures
+    const existingProgress = eventListenersRef.current.get("worker-progress")
+    const existingError = eventListenersRef.current.get("worker-error")
+    const existingSuccess = eventListenersRef.current.get("worker-success")
+    if (existingProgress) {
+      window.removeEventListener("worker-progress", existingProgress)
+      eventListenersRef.current.delete("worker-progress")
+    }
+    if (existingError) {
+      window.removeEventListener("worker-error", existingError)
+      eventListenersRef.current.delete("worker-error")
+    }
+    if (existingSuccess) {
+      window.removeEventListener("worker-success", existingSuccess)
+      eventListenersRef.current.delete("worker-success")
+    }
 
     // Progress event listener
     const progressHandler = (event: CustomEvent) => {
@@ -197,15 +212,31 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
     // Success event listener
     const successHandler = (event: CustomEvent) => {
       const { taskId } = event.detail
+      console.log("🎨 [Worker] Success event received:", {
+        taskId,
+        currentTaskId: state.currentTaskId,
+      })
       setState((prev) => {
-        if (taskId !== prev.currentTaskId) return prev
-        return {
-          ...prev,
-          isProcessing: false,
-          currentTaskId: null,
-          progress: 100,
-          error: null,
+        // If this is the current task, mark as completed
+        if (taskId === prev.currentTaskId) {
+          console.log(
+            "🎨 [Worker] Current task completed successfully, setting isProcessing to false"
+          )
+          return {
+            ...prev,
+            isProcessing: false,
+            currentTaskId: null,
+            progress: 100,
+            error: null,
+          }
         }
+
+        // If this is an older task completing, just log it but don't change state
+        console.log("🎨 [Worker] Older task completed:", {
+          taskId,
+          currentTaskId: prev.currentTaskId,
+        })
+        return prev
       })
     }
 
@@ -223,6 +254,21 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
     eventListenersRef.current.set("worker-error", errorListener)
     eventListenersRef.current.set("worker-success", successListener)
   }, [state.currentTaskId])
+
+  // Ensure processing flag resets when the queue goes idle (belt-and-suspenders)
+  React.useEffect(() => {
+    if (
+      state.isProcessing &&
+      state.queueStats.active === 0 &&
+      state.queueStats.queued === 0
+    ) {
+      setState((prev) => ({
+        ...prev,
+        isProcessing: false,
+        currentTaskId: null,
+      }))
+    }
+  }, [state.queueStats.active, state.queueStats.queued, state.isProcessing])
 
   // Render layers using worker
   const versionRef = React.useRef(0)
@@ -295,6 +341,7 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
                 interactive ?? false
               )
 
+              console.log("🎨 [Worker] Starting task:", { taskId })
               setState((prev) => ({
                 ...prev,
                 isProcessing: true,

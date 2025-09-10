@@ -1,22 +1,39 @@
 export type BlendMode =
-  | "normal"
-  | "multiply"
-  | "screen"
-  | "overlay"
-  | "soft-light"
-  | "hard-light"
-  | "color-dodge"
-  | "color-burn"
-  | "darken"
-  | "lighten"
-  | "difference"
-  | "exclusion"
-  | "hue"
-  | "saturation"
-  | "color"
-  | "luminosity"
+// Normal
+|"normal"
+|"dissolve"
+// Darken
+|"darken"
+|"multiply"
+|"color-burn"
+|"linear-burn"
+|"darker-color"
+// Lighten
+|"lighten"
+|"screen"
+|"color-dodge"
+|"linear-dodge"
+|"lighter-color"
+// Contrast
+|"overlay"
+|"soft-light"
+|"hard-light"
+|"vivid-light"
+|"linear-light"
+|"pin-light"
+|"hard-mix"
+// Comparative
+|"difference"
+|"exclusion"
+|"subtract"
+|"divide"
+// Component
+|"hue"
+|"saturation"
+|"color"
+|"luminosity"
 
-export const BLEND_MODE_MAP: Record<BlendMode, number> = {
+export const BLEND_MODE_MAP: Readonly<Record<BlendMode, number>> = {
   normal: 0,
   multiply: 1,
   screen: 2,
@@ -33,26 +50,43 @@ export const BLEND_MODE_MAP: Record<BlendMode, number> = {
   saturation: 13,
   color: 14,
   luminosity: 15,
-}
+} as const
 
-export const BLEND_MODE_NAMES: Record<BlendMode, string> = {
-  normal: "Normal",
-  multiply: "Multiply",
-  screen: "Screen",
-  overlay: "Overlay",
+export const BLEND_MODE_NAMES: Readonly<Record<BlendMode, string>> = {
+  // Normal
+  "normal": "Normal",
+  "dissolve": "Dissolve",
+  // Darken
+  "darken": "Darken",
+  "multiply": "Multiply",
+  "color-burn": "Color Burn",
+  "linear-burn": "Linear Burn",
+  "darker-color": "Darker Color",
+  // Lighten
+  "lighten": "Lighten",
+  "screen": "Screen",
+  "color-dodge": "Color Dodge",
+  "linear-dodge": "Linear Dodge",
+  "lighter-color": "Lighter Color",
+  // Contrast
+  "overlay": "Overlay",
   "soft-light": "Soft Light",
   "hard-light": "Hard Light",
-  "color-dodge": "Color Dodge",
-  "color-burn": "Color Burn",
-  darken: "Darken",
-  lighten: "Lighten",
-  difference: "Difference",
-  exclusion: "Exclusion",
-  hue: "Hue",
-  saturation: "Saturation",
-  color: "Color",
-  luminosity: "Luminosity",
-}
+  "vivid-light": "Vivid Light",
+  "linear-light": "Linear Light",
+  "pin-light": "Pin Light",
+  "hard-mix": "Hard Mix",
+  // Comparative
+  "difference": "Difference",
+  "exclusion": "Exclusion",
+  "subtract": "Subtract",
+  "divide": "Divide",
+  // Component
+  "hue": "Hue",
+  "saturation": "Saturation",
+  "color": "Color",
+  "luminosity": "Luminosity",
+} as const
 
 export const BLEND_MODE_GLSL = `
   // Helper functions for blend modes

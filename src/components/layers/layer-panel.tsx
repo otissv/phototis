@@ -87,8 +87,10 @@ export function LayersPanelInner({
 
       // Convert FileList to Array and filter for image files
       const fileArray = Array.from(files)
-      const imageFiles = fileArray.filter(file => file.type.startsWith("image/"))
-      
+      const imageFiles = fileArray.filter((file) =>
+        file.type.startsWith("image/")
+      )
+
       if (imageFiles.length === 0) {
         console.warn("No valid image files selected")
         return
@@ -238,7 +240,9 @@ export function LayersPanelInner({
                 size='sm'
                 className='h-8 px-2 text-xs'
                 disabled={
-                  isDragActive || isGlobalDragActive || isDocumentLayerSelected
+                  isDragActive ||
+                  isGlobalDragActive.current ||
+                  isDocumentLayerSelected
                 }
               >
                 <span className='whitespace-nowrap'>
@@ -284,7 +288,9 @@ export function LayersPanelInner({
               }
               className=' px-2 py-1 h-8 border-none'
               disabled={
-                isDragActive || isGlobalDragActive || isDocumentLayerSelected
+                isDragActive ||
+                isGlobalDragActive.current ||
+                isDocumentLayerSelected
               }
             />
             <DropdownMenu>
@@ -295,7 +301,7 @@ export function LayersPanelInner({
                   className='size-8 p-0 rounded-sm'
                   disabled={
                     isDragActive ||
-                    isGlobalDragActive ||
+                    isGlobalDragActive.current ||
                     isDocumentLayerSelected
                   }
                 >

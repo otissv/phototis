@@ -1005,11 +1005,48 @@ export class HybridRenderer {
     }
   }
 
+  // Helper method to flatten grouped layers into a single array for rendering
+  private flattenLayersForRendering(layers: Layer[]): Layer[] {
+    const flattened: Layer[] = []
+
+    for (const layer of layers) {
+      if (layer.type === "group") {
+        const groupLayer = layer as any
+
+        // Only skip group children if the group itself is not visible
+        // collapsed is a UI-only state and should not affect rendering
+        if (!groupLayer.visible) {
+          continue
+        }
+
+        // Add group children in order (they're already in the correct z-order)
+        if (Array.isArray(groupLayer.children)) {
+          for (const child of groupLayer.children) {
+            // Recursively flatten nested groups
+            if (child.type === "group") {
+              flattened.push(...this.flattenLayersForRendering([child]))
+            } else {
+              flattened.push(child)
+            }
+          }
+        }
+      } else {
+        // Non-group layers are added directly
+        flattened.push(layer)
+      }
+    }
+
+    return flattened
+  }
+
   // Helper method to get the rendering order (bottom -> top) consistent with layer system
   private getRenderingOrder(layers: Layer[]): Layer[] {
+    // First flatten group layers to get all individual layers
+    const flattenedLayers = this.flattenLayersForRendering(layers)
+
     // The editor provides layers in top-first order (new layers are unshifted)
     // For correct compositing we must render bottom-first, so reverse here.
-    return layers
+    return flattenedLayers
       .filter((layer) => {
         if (!layer.visible) return false
         if (layer.opacity <= 0) return false

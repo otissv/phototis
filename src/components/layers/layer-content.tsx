@@ -90,8 +90,6 @@ export function LayerItemContent({
       const child = groupLayer.children.find((c: any) => c.id === childId)
       if (!child) return
 
-      console.log(`Moving child ${childId} from group ${groupId} to top level`)
-
       // Remove child from group
       const updatedChildren = groupLayer.children.filter(
         (c: any) => c.id !== childId
@@ -106,13 +104,9 @@ export function LayerItemContent({
 
       // If group becomes empty, remove the group entirely
       if (updatedChildren.length === 0) {
-        console.log(`Group ${groupId} is now empty, removing it`)
         history.push(new RemoveLayerCommand(groupId))
       } else {
         // Update group with remaining children
-        console.log(
-          `Updating group ${groupId} with ${updatedChildren.length} remaining children`
-        )
         history.push(
           new UpdateLayerCommand(groupId, { children: updatedChildren } as any)
         )
@@ -199,7 +193,7 @@ export function LayerItemContent({
                   onDoubleClick={() => !isDragActive && setIsEditing(true)}
                   disabled={isDragActive}
                 >
-                  <span className='text-xs whitespace-nowrap truncate'>
+                  <span className='text-xs whitespace-nowrap truncate w-44'>
                     {layer.name}
                   </span>
                 </Button>

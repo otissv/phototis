@@ -73,10 +73,53 @@ export function ImageEditorCanvas({
   const [processing, setProcessing] = React.useState(0)
   const [isElementDragging, setIsElementDragging] = React.useState(false)
 
-  const canonicalLayers = React.useMemo(
+  // Helper function to flatten grouped layers for signature calculation
+  const flattenLayersForSignature = React.useCallback(
+    (layers: EditorLayer[]): EditorLayer[] => {
+      const flattened: EditorLayer[] = []
+
+      for (const layer of layers) {
+        if (layer.type === "group") {
+          const groupLayer = layer as any
+
+          // Only skip group children if the group itself is not visible
+          // collapsed is a UI-only state and should not affect rendering
+          if (!groupLayer.visible) {
+            continue
+          }
+
+          // Add group children in order (they're already in the correct z-order)
+          if (Array.isArray(groupLayer.children)) {
+            for (const child of groupLayer.children) {
+              // Recursively flatten nested groups
+              if (child.type === "group") {
+                flattened.push(...flattenLayersForSignature([child]))
+              } else {
+                flattened.push(child)
+              }
+            }
+          }
+        } else {
+          // Non-group layers are added directly
+          flattened.push(layer)
+        }
+      }
+
+      return flattened
+    },
+    []
+  )
+
+  // Get top-level layers for signature calculation (preserves hierarchical structure)
+  const topLevelLayers = React.useMemo(
     () => getOrderedLayers(),
     [getOrderedLayers]
   )
+
+  // Flatten all layers including nested group children for comprehensive change detection
+  const canonicalLayers = React.useMemo(() => {
+    return flattenLayersForSignature(topLevelLayers)
+  }, [topLevelLayers, flattenLayersForSignature])
 
   // Worker-based rendering system
   // Memoize worker config so hook callbacks remain stable across renders
@@ -121,6 +164,51 @@ export function ImageEditorCanvas({
   React.useEffect(() => {
     isWorkerInitializingRef.current = isWorkerInitializing
   }, [isWorkerInitializing])
+
+  // Local guard to prevent double-queuing while we await queueing a worker task
+  const isQueueingRenderRef = React.useRef(false)
+
+  // Centralized draw trigger system
+  const drawDebounceTimerRef = React.useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null)
+  const drawTriggerReasonsRef = React.useRef<Set<string>>(new Set())
+
+  // Single entry point for all draw triggers
+  const triggerDraw = React.useCallback((reason: string) => {
+    drawTriggerReasonsRef.current.add(reason)
+
+    if (drawDebounceTimerRef.current) {
+      clearTimeout(drawDebounceTimerRef.current)
+    }
+
+    drawDebounceTimerRef.current = setTimeout(() => {
+      drawDebounceTimerRef.current = null
+      const reasons = Array.from(drawTriggerReasonsRef.current)
+      console.log(`🎨 [Draw] Triggered by: ${reasons.join(", ")}`)
+      drawTriggerReasonsRef.current.clear()
+      drawRef.current?.()
+    }, 16) // ~1 frame at 60fps
+  }, [])
+
+  // If a draw is requested while the worker is busy, remember to redraw after it finishes
+  const pendingRenderRef = React.useRef<string | null>(null)
+  const pendingRenderTimerRef = React.useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null)
+
+  // Once the worker is idle again, process any pending render request
+  React.useEffect(() => {
+    if (!isWorkerProcessing && pendingRenderRef.current) {
+      // Clear and trigger a fresh draw with the latest state
+      pendingRenderRef.current = null
+      if (pendingRenderTimerRef.current) {
+        clearTimeout(pendingRenderTimerRef.current)
+        pendingRenderTimerRef.current = null
+      }
+      triggerDraw("pending-render-flush")
+    }
+  }, [isWorkerProcessing, triggerDraw])
 
   // Direct image data cache for WebGL textures
   const imageDataCacheRef = React.useRef<Map<string, ImageData>>(new Map())
@@ -202,7 +290,7 @@ export function ImageEditorCanvas({
       }
       // Trigger redraw when canvas dimensions change since layers are now updated
       // through the standard layer mechanism
-      setTimeout(() => drawRef.current?.(), 0)
+      triggerDraw("canvas-resize")
     }
   }, [
     state.canonical.document.width,
@@ -211,6 +299,7 @@ export function ImageEditorCanvas({
     canvasDimensions.height,
     canvasDimensions.canvasPosition,
     resizeWorker,
+    triggerDraw,
   ])
 
   // Ensure worker canvas is resized once the worker becomes ready
@@ -443,27 +532,22 @@ export function ImageEditorCanvas({
   React.useEffect(() => {
     // Avoid spamming draws during drags; draw loop already handles that case
     if (isDragActive) return
-    const timer = setTimeout(() => {
-      drawRef.current?.()
-    }, 0)
-    return () => clearTimeout(timer)
+    triggerDraw("orientation-tools")
   }, [
     effectiveFilters.flipHorizontal,
     effectiveFilters.flipVertical,
     effectiveFilters.rotate,
     state.canonical.viewport.rotation,
     isDragActive,
+    triggerDraw,
   ])
 
   // Redraw when debounced tool values change (includes adjustment parameters)
   // biome-ignore lint/correctness/useExhaustiveDependencies: we only want to react to debounced tools here
   React.useEffect(() => {
     if (isDragActive) return
-    const timer = setTimeout(() => {
-      drawRef.current?.()
-    }, 0)
-    return () => clearTimeout(timer)
-  }, [debouncedToolsValues, isDragActive])
+    triggerDraw("debounced-tools")
+  }, [debouncedToolsValues, isDragActive, triggerDraw])
 
   // Cleanup animations on unmount
   React.useEffect(() => {
@@ -510,12 +594,26 @@ export function ImageEditorCanvas({
     startRect: { x: number; y: number; width: number; height: number }
   } | null>(null)
 
-  // Create a compact signature representing layers order and relevant props
+  // Create a comprehensive signature representing all layer operations that should trigger rendering
   const layersSignature = React.useMemo(() => {
-    return canonicalLayers
-      .map((l) => {
+    // Create a signature that covers all layer operations:
+    // 1. Top-level layer order (including new layers)
+    // 2. Group structure and children order
+    // 3. Layer properties (visible, opacity, blend mode)
+    // 4. Layer count changes (additions, deletions)
+    // 5. Group properties
+    // 6. Layer type changes
+    const createComprehensiveSignature = (layers: EditorLayer[]): string => {
+      // First, create a signature for the top-level order
+      const topLevelOrder = layers.map((l) => l.id).join(",")
+
+      // Then create detailed signatures for each layer including group structure
+      const layerSignatures = layers.map((l) => {
         let imageSig = "img:0"
         let adjSig = ""
+        let groupSig = ""
+        let childrenSig = ""
+
         if (l.type === "image") {
           const imageLayer = l as any
           if (imageLayer.image) {
@@ -527,7 +625,20 @@ export function ImageEditorCanvas({
           const params = ((l as any).parameters || {}) as Record<string, number>
           const keys = Object.keys(params).sort()
           adjSig = `adj:${keys.map((k) => `${k}:${params[k]}`).join("|")}`
+        } else if (l.type === "group") {
+          const groupLayer = l as any
+          // Include group children order and their properties
+          if (Array.isArray(groupLayer.children)) {
+            const childrenDetails = groupLayer.children
+              .map((child: EditorLayer) => {
+                return `${child.id}:${child.visible ? 1 : 0}:${child.opacity}:${child.blendMode}`
+              })
+              .join(",")
+            childrenSig = `children:${childrenDetails}`
+          }
+          groupSig = `group:${childrenSig}`
         }
+
         // Include orientation signature so flips/rotation changes trigger redraws
         let orientSig = "orient:0:0:0"
         try {
@@ -537,19 +648,29 @@ export function ImageEditorCanvas({
           const rot = typeof f.rotate === "number" ? Math.round(f.rotate) : 0
           orientSig = `orient:${fh}:${fv}:${rot}`
         } catch {}
+
         return [
           l.id,
+          l.type,
           l.visible ? 1 : 0,
           l.locked ? 1 : 0,
           l.opacity,
           l.blendMode,
           imageSig,
           adjSig,
+          groupSig,
           orientSig,
         ].join(":")
       })
-      .join("|")
-  }, [canonicalLayers])
+
+      // Combine top-level order with detailed layer signatures
+      return `order:${topLevelOrder}|layers:${layerSignatures.join("|")}`
+    }
+
+    // Use the comprehensive signature that covers all layer operations
+    // Use topLevelLayers to preserve hierarchical structure for proper group signature calculation
+    return createComprehensiveSignature(topLevelLayers)
+  }, [topLevelLayers])
 
   // Update WebGL viewport when canvas dimensions change
   React.useEffect(() => {
@@ -763,14 +884,10 @@ export function ImageEditorCanvas({
                   },
                 },
               } as any)
-            } 
-            else {
+            } else {
               // // For the first image layer (index 0), set canvas size if not yet initialized
               // // When the first image is loaded, update document size to image dimensions
               // const isFirstImage = dimensions.find(dim => dim.name === layer.name) === 0
-
-              
-
               // try {
               //   if (
               //     isFirstImage &&
@@ -812,9 +929,7 @@ export function ImageEditorCanvas({
 
       if (isWorkerReadyRef.current || hasWebGLReady) {
         // Defer to next tick to ensure refs/maps are fully updated
-        setTimeout(() => {
-          drawRef.current?.()
-        }, 0)
+        triggerDraw("webgl-ready")
       }
     }
 
@@ -1125,6 +1240,10 @@ export function ImageEditorCanvas({
     [createTextureFromImageData]
   )
 
+  console.log("isWorkerProcessingRef.current", isWorkerProcessingRef.current)
+  console.log("isWorkerProcessing (state)", isWorkerProcessing)
+  console.log("pendingRenderRef.current", pendingRenderRef.current)
+
   // Draw function using worker-based rendering for non-blocking GPU operations
   const draw = async () => {
     // Prevent overlapping draws; allow during drags for live preview
@@ -1183,9 +1302,31 @@ export function ImageEditorCanvas({
     try {
       // Use worker-based rendering if available (always queue; manager cancels in-flight)
 
-      if (renderType !== "hybrid" && isWorkerReadyRef.current) {
-        // Avoid spamming the worker: if a task is already processing, skip
-        if (isWorkerProcessingRef.current) {
+      if (renderType === "worker" && isWorkerReadyRef.current) {
+        // Avoid spamming the worker: if a task is already processing or we are in the middle of queueing, skip
+        // Use both ref and state to prevent race conditions
+        if (
+          isWorkerProcessingRef.current ||
+          isWorkerProcessing ||
+          isQueueingRenderRef.current
+        ) {
+          // Debug race condition detection
+          if (isWorkerProcessing && !isWorkerProcessingRef.current) {
+            console.warn(
+              "🚨 Race condition detected: isWorkerProcessing=true but ref=false"
+            )
+          }
+          // Remember that a render was requested while busy; draw right after current task finishes
+          if (pendingRenderRef.current !== layersSignature) {
+            pendingRenderRef.current = layersSignature
+          }
+          // As a safety, flush a coalesced draw after a short timeout even if still busy
+          if (!pendingRenderTimerRef.current) {
+            pendingRenderTimerRef.current = setTimeout(() => {
+              pendingRenderTimerRef.current = null
+              triggerDraw("safety-timeout")
+            }, 250)
+          }
           isDrawingRef.current = false
           return
         }
@@ -1232,6 +1373,8 @@ export function ImageEditorCanvas({
 
         // Queue render task with worker
         try {
+          // Mark that we are queueing so parallel calls won't double-queue
+          isQueueingRenderRef.current = true
           const taskId = await renderLayersWithWorker(
             canonicalLayers,
             renderingToolsValues,
@@ -1249,11 +1392,20 @@ export function ImageEditorCanvas({
               "🎨 [Renderer] Worker task queued successfully:",
               taskId
             )
+            // Any previously pending draw request has been effectively scheduled
+            pendingRenderRef.current = null
+            if (pendingRenderTimerRef.current) {
+              clearTimeout(pendingRenderTimerRef.current)
+              pendingRenderTimerRef.current = null
+            }
             isDrawingRef.current = false
             return
           }
         } catch (error) {
           console.error("Error queuing render task:", error)
+        } finally {
+          // Allow future queueing attempts
+          isQueueingRenderRef.current = false
         }
       }
 
@@ -1489,9 +1641,9 @@ export function ImageEditorCanvas({
       !!textureRef.current
 
     if (isWorkerReadyRef.current || hasWebGLReady) {
-      drawRef.current?.()
+      triggerDraw("worker-ready")
     }
-  }, [isWorkerReady])
+  }, [isWorkerReady, triggerDraw])
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: draw cause infinite loop
   React.useEffect(() => {
@@ -1502,22 +1654,16 @@ export function ImageEditorCanvas({
   React.useEffect(() => {
     if (isDragActive) return
     if (!layersSignature) return
-    const timer = setTimeout(() => {
-      drawRef.current?.()
-    }, 0)
-    return () => clearTimeout(timer)
-  }, [isDragActive, layersSignature])
+    triggerDraw("layer-properties")
+  }, [isDragActive, layersSignature, triggerDraw])
 
   // Force a draw once worker is ready and layers exist (avoid depending on draw to prevent loops)
   React.useEffect(() => {
     if (!isWorkerReady) return
     if (canonicalLayers.length === 0) return
-    const timer = setTimeout(() => {
-      drawRef.current?.()
-    }, 100)
-    return () => clearTimeout(timer)
+    triggerDraw("worker-ready-with-layers")
     // Intentionally exclude draw from deps to avoid re-triggering on worker progress/state updates
-  }, [isWorkerReady, canonicalLayers.length])
+  }, [isWorkerReady, canonicalLayers.length, triggerDraw])
 
   // Drag and drop handlers
   const handleDragOver = React.useCallback(

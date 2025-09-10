@@ -7,7 +7,11 @@ import type { PipelineStage } from "@/lib/shaders/asynchronous-pipeline"
 import type { AsynchronousPipeline } from "@/lib/shaders/asynchronous-pipeline"
 import type { HybridRenderer } from "@/lib/shaders/hybrid-renderer"
 import type { ShaderManager } from "@/lib/shaders"
-import { BLEND_MODE_MAP, type BlendMode } from "@/lib/shaders/blend-modes"
+import {
+  BLEND_MODE_MAP,
+  BLEND_MODE_GLSL,
+  type BlendMode,
+} from "@/lib/shaders/blend-modes"
 import {
   validateImageDimensions,
   validateFilterParameters,
@@ -393,247 +397,8 @@ void main(){\n
   gl_Position = vec4(a_position, 0.0, 1.0);\n
 }`
 
-  // Use the full blend mode GLSL from blend-modes.ts
-  const blendGLSL = `
-  // Helper functions for blend modes
-  vec3 rgb2hsv(vec3 c) {
-    vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
-    vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
-    vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
-    float d = q.x - min(q.w, q.y);
-    float e = 1.0e-10;
-    return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
-  }
-
-  vec3 hsv2rgb(vec3 c) {
-    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
-    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
-    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
-  }
-
-  vec3 rgb2hsl(vec3 c) {
-    float maxc = max(max(c.r, c.g), c.b);
-    float minc = min(min(c.r, c.g), c.b);
-    float delta = maxc - minc;
-    vec3 hsl = vec3(0.0, 0.0, (maxc + minc) / 2.0);
-    
-    if (delta != 0.0) {
-      hsl.y = hsl.z < 0.5 ? delta / (maxc + minc) : delta / (2.0 - maxc - minc);
-      float deltaR = (((maxc - c.r) / 6.0) + (delta / 2.0)) / delta;
-      float deltaG = (((maxc - c.g) / 6.0) + (delta / 2.0)) / delta;
-      float deltaB = (((maxc - c.b) / 6.0) + (delta / 2.0)) / delta;
-      
-      if (c.r == maxc) {
-        hsl.x = deltaB - deltaG;
-      } else if (c.g == maxc) {
-        hsl.x = (1.0 / 3.0) + deltaR - deltaB;
-      } else {
-        hsl.x = (2.0 / 3.0) + deltaG - deltaR;
-      }
-      
-      if (hsl.x < 0.0) hsl.x += 1.0;
-      if (hsl.x > 1.0) hsl.x -= 1.0;
-    }
-    
-    return hsl;
-  }
-
-  vec3 hsl2rgb(vec3 c) {
-    vec3 rgb = clamp(abs(mod(c.x * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
-    return c.z + c.y * (rgb - 0.5) * (1.0 - abs(2.0 * c.z - 1.0));
-  }
-
-  // Blend mode functions with proper alpha handling
-  vec4 blendNormal(vec4 base, vec4 top) {
-    float alpha = top.a + base.a * (1.0 - top.a);
-    if (alpha < 0.001) return vec4(0.0);
-    vec3 result = (top.rgb * top.a + base.rgb * base.a * (1.0 - top.a)) / alpha;
-    return vec4(result, alpha);
-  }
-
-  vec4 blendMultiply(vec4 base, vec4 top) {
-    vec3 result = base.rgb * top.rgb;
-    float alpha = top.a + base.a * (1.0 - top.a);
-    if (alpha < 0.001) return vec4(0.0);
-    vec3 compositedResult = (result * top.a + base.rgb * base.a * (1.0 - top.a)) / alpha;
-    return vec4(compositedResult, alpha);
-  }
-
-  vec4 blendScreen(vec4 base, vec4 top) {
-    vec3 result = 1.0 - (1.0 - base.rgb) * (1.0 - top.rgb);
-    float alpha = top.a + base.a * (1.0 - top.a);
-    if (alpha < 0.001) return vec4(0.0);
-    vec3 compositedResult = (result * top.a + base.rgb * base.a * (1.0 - top.a)) / alpha;
-    return vec4(compositedResult, alpha);
-  }
-
-  vec4 blendOverlay(vec4 base, vec4 top) {
-    vec3 result;
-    for (int i = 0; i < 3; i++) {
-      if (base[i] < 0.5) {
-        result[i] = 2.0 * base[i] * top[i];
-      } else {
-        result[i] = 1.0 - 2.0 * (1.0 - base[i]) * (1.0 - top[i]);
-      }
-    }
-    float alpha = top.a + base.a * (1.0 - top.a);
-    if (alpha < 0.001) return vec4(0.0);
-    vec3 compositedResult = (result * top.a + base.rgb * base.a * (1.0 - top.a)) / alpha;
-    return vec4(compositedResult, alpha);
-  }
-
-  vec4 blendSoftLight(vec4 base, vec4 top) {
-    vec3 result;
-    for (int i = 0; i < 3; i++) {
-      if (top[i] < 0.5) {
-        result[i] = base[i] * (2.0 * top[i] + (1.0 - 2.0 * top[i]) * base[i]);
-      } else {
-        result[i] = base[i] * (1.0 - 2.0 * top[i]) + sqrt(base[i]) * (2.0 * top[i] - 1.0);
-      }
-    }
-    float alpha = top.a + base.a * (1.0 - top.a);
-    if (alpha < 0.001) return vec4(0.0);
-    vec3 compositedResult = (result * top.a + base.rgb * base.a * (1.0 - top.a)) / alpha;
-    return vec4(compositedResult, alpha);
-  }
-
-  vec4 blendHardLight(vec4 base, vec4 top) {
-    vec3 result;
-    for (int i = 0; i < 3; i++) {
-      if (top[i] < 0.5) {
-        result[i] = 2.0 * base[i] * top[i];
-      } else {
-        result[i] = 1.0 - 2.0 * (1.0 - base[i]) * (1.0 - top[i]);
-      }
-    }
-    float alpha = top.a + base.a * (1.0 - top.a);
-    if (alpha < 0.001) return vec4(0.0);
-    vec3 compositedResult = (result * top.a + base.rgb * base.a * (1.0 - top.a)) / alpha;
-    return vec4(compositedResult, alpha);
-  }
-
-  vec4 blendColorDodge(vec4 base, vec4 top) {
-    vec3 result;
-    for (int i = 0; i < 3; i++) {
-      if (top[i] == 1.0) {
-        result[i] = 1.0;
-      } else {
-        result[i] = min(1.0, base[i] / (1.0 - top[i]));
-      }
-    }
-    float alpha = top.a + base.a * (1.0 - top.a);
-    if (alpha < 0.001) return vec4(0.0);
-    vec3 compositedResult = (result * top.a + base.rgb * base.a * (1.0 - top.a)) / alpha;
-    return vec4(compositedResult, alpha);
-  }
-
-  vec4 blendColorBurn(vec4 base, vec4 top) {
-    vec3 result;
-    for (int i = 0; i < 3; i++) {
-      if (top[i] == 0.0) {
-        result[i] = 0.0;
-      } else {
-        result[i] = 1.0 - min(1.0, (1.0 - base[i]) / top[i]);
-      }
-    }
-    float alpha = top.a + base.a * (1.0 - top.a);
-    if (alpha < 0.001) return vec4(0.0);
-    vec3 compositedResult = (result * top.a + base.rgb * base.a * (1.0 - top.a)) / alpha;
-    return vec4(compositedResult, alpha);
-  }
-
-  vec4 blendDarken(vec4 base, vec4 top) {
-    vec3 result = min(base.rgb, top.rgb);
-    float alpha = top.a + base.a * (1.0 - top.a);
-    if (alpha < 0.001) return vec4(0.0);
-    vec3 compositedResult = (result * top.a + base.rgb * base.a * (1.0 - top.a)) / alpha;
-    return vec4(compositedResult, alpha);
-  }
-
-  vec4 blendLighten(vec4 base, vec4 top) {
-    vec3 result = max(base.rgb, top.rgb);
-    float alpha = top.a + base.a * (1.0 - top.a);
-    if (alpha < 0.001) return vec4(0.0);
-    vec3 compositedResult = (result * top.a + base.rgb * base.a * (1.0 - top.a)) / alpha;
-    return vec4(compositedResult, alpha);
-  }
-
-  vec4 blendDifference(vec4 base, vec4 top) {
-    vec3 result = abs(base.rgb - top.rgb);
-    float alpha = top.a + base.a * (1.0 - top.a);
-    if (alpha < 0.001) return vec4(0.0);
-    vec3 compositedResult = (result * top.a + base.rgb * base.a * (1.0 - top.a)) / alpha;
-    return vec4(compositedResult, alpha);
-  }
-
-  vec4 blendExclusion(vec4 base, vec4 top) {
-    vec3 result = base.rgb + top.rgb - 2.0 * base.rgb * top.rgb;
-    float alpha = top.a + base.a * (1.0 - top.a);
-    if (alpha < 0.001) return vec4(0.0);
-    vec3 compositedResult = (result * top.a + base.rgb * base.a * (1.0 - top.a)) / alpha;
-    return vec4(compositedResult, alpha);
-  }
-
-  vec4 blendHue(vec4 base, vec4 top) {
-    vec3 baseHSL = rgb2hsl(base.rgb);
-    vec3 topHSL = rgb2hsl(top.rgb);
-    vec3 result = hsl2rgb(vec3(topHSL.x, baseHSL.y, baseHSL.z));
-    float alpha = top.a + base.a * (1.0 - top.a);
-    if (alpha < 0.001) return vec4(0.0);
-    vec3 compositedResult = (result * top.a + base.rgb * base.a * (1.0 - top.a)) / alpha;
-    return vec4(compositedResult, alpha);
-  }
-
-  vec4 blendSaturation(vec4 base, vec4 top) {
-    vec3 baseHSL = rgb2hsl(base.rgb);
-    vec3 topHSL = rgb2hsl(top.rgb);
-    vec3 result = hsl2rgb(vec3(baseHSL.x, topHSL.y, baseHSL.z));
-    float alpha = top.a + base.a * (1.0 - top.a);
-    if (alpha < 0.001) return vec4(0.0);
-    vec3 compositedResult = (result * top.a + base.rgb * base.a * (1.0 - top.a)) / alpha;
-    return vec4(compositedResult, alpha);
-  }
-
-  vec4 blendColor(vec4 base, vec4 top) {
-    vec3 baseHSL = rgb2hsl(base.rgb);
-    vec3 topHSL = rgb2hsl(top.rgb);
-    vec3 result = hsl2rgb(vec3(topHSL.x, topHSL.y, baseHSL.z));
-    float alpha = top.a + base.a * (1.0 - top.a);
-    if (alpha < 0.001) return vec4(0.0);
-    vec3 compositedResult = (result * top.a + base.rgb * base.a * (1.0 - top.a)) / alpha;
-    return vec4(compositedResult, alpha);
-  }
-
-  vec4 blendLuminosity(vec4 base, vec4 top) {
-    vec3 baseHSL = rgb2hsl(base.rgb);
-    vec3 topHSL = rgb2hsl(top.rgb);
-    vec3 result = hsl2rgb(vec3(baseHSL.x, baseHSL.y, topHSL.z));
-    float alpha = top.a + base.a * (1.0 - top.a);
-    if (alpha < 0.001) return vec4(0.0);
-    vec3 compositedResult = (result * top.a + base.rgb * base.a * (1.0 - top.a)) / alpha;
-    return vec4(compositedResult, alpha);
-  }
-
-  vec4 applyBlendMode(vec4 base, vec4 top, int blendMode) {
-    if (blendMode == 0) return blendNormal(base, top);
-    if (blendMode == 1) return blendMultiply(base, top);
-    if (blendMode == 2) return blendScreen(base, top);
-    if (blendMode == 3) return blendOverlay(base, top);
-    if (blendMode == 4) return blendSoftLight(base, top);
-    if (blendMode == 5) return blendHardLight(base, top);
-    if (blendMode == 6) return blendColorDodge(base, top);
-    if (blendMode == 7) return blendColorBurn(base, top);
-    if (blendMode == 8) return blendDarken(base, top);
-    if (blendMode == 9) return blendLighten(base, top);
-    if (blendMode == 10) return blendDifference(base, top);
-    if (blendMode == 11) return blendExclusion(base, top);
-    if (blendMode == 12) return blendHue(base, top);
-    if (blendMode == 13) return blendSaturation(base, top);
-    if (blendMode == 14) return blendColor(base, top);
-    if (blendMode == 15) return blendLuminosity(base, top);
-    return blendNormal(base, top);
-  }
-  `
+  // Use the blend mode GLSL from blend-modes.ts for consistency
+  const blendGLSL = BLEND_MODE_GLSL
 
   const fs = `#version 300 es\n
 precision highp float;\n
@@ -652,11 +417,31 @@ void main(){\n
   outColor = applyBlendMode(baseColor, topColor, u_blendMode);\n
 }\n`
 
-  compProgram = createProgram(glCtx, vs, fs)
+  try {
+    compProgram = createProgram(glCtx, vs, fs)
+    dbg("compositing:program:created", { success: !!compProgram })
+  } catch (error) {
+    dbg("compositing:program:error", {
+      error: error instanceof Error ? error.message : String(error),
+    })
+    throw error
+  }
   compUBaseLocation = glCtx.getUniformLocation(compProgram, "u_baseTexture")
   compUTopLocation = glCtx.getUniformLocation(compProgram, "u_topTexture")
   compUOpacityLocation = glCtx.getUniformLocation(compProgram, "u_opacity")
   compUBlendModeLocation = glCtx.getUniformLocation(compProgram, "u_blendMode")
+
+  // Debug: Check if all uniforms were found
+  try {
+    dbg("compositing:uniforms", {
+      base: !!compUBaseLocation,
+      top: !!compUTopLocation,
+      opacity: !!compUOpacityLocation,
+      blendMode: !!compUBlendModeLocation,
+      program: !!compProgram,
+      vao: !!compVAO,
+    })
+  } catch {}
 
   compVAO = glCtx.createVertexArray()
   if (!compVAO) throw new Error("Failed to create compositing VAO")
@@ -1010,6 +795,42 @@ function getLayerDims(
   return null
 }
 
+// Flatten grouped layers into a single array for rendering
+// This function recursively processes group layers and their children,
+// respecting the visible state and maintaining proper z-order
+function flattenLayersForRendering(layers: EditorLayer[]): EditorLayer[] {
+  const flattened: EditorLayer[] = []
+
+  for (const layer of layers) {
+    if (layer.type === "group") {
+      const groupLayer = layer as any
+
+      // Only skip group children if the group itself is not visible
+      // collapsed is a UI-only state and should not affect rendering
+      if (!groupLayer.visible) {
+        continue
+      }
+
+      // Add group children in order (they're already in the correct z-order)
+      if (Array.isArray(groupLayer.children)) {
+        for (const child of groupLayer.children) {
+          // Recursively flatten nested groups
+          if (child.type === "group") {
+            flattened.push(...flattenLayersForRendering([child]))
+          } else {
+            flattened.push(child)
+          }
+        }
+      }
+    } else {
+      // Non-group layers are added directly
+      flattened.push(layer)
+    }
+  }
+
+  return flattened
+}
+
 // Render layers with progressive quality
 async function renderLayers(
   layers: EditorLayer[],
@@ -1034,8 +855,12 @@ async function renderLayers(
 
     // Ensure heavy GPU resources are prepared lazily
     await ensureHeavyInit(canvasWidth, canvasHeight)
+
+    // Stage 1: Flatten grouped layers for rendering
+    const flattenedLayers = flattenLayersForRendering(layers)
+
     // Remove cached textures for layers that no longer exist to avoid leaking GPU memory
-    const aliveIds = new Set(layers.map((l) => l.id))
+    const aliveIds = new Set(flattenedLayers.map((l) => l.id))
     for (const [key, tex] of Array.from(textureCache.entries())) {
       if (!aliveIds.has(key)) {
         try {
@@ -1098,11 +923,11 @@ async function renderLayers(
       } catch {}
     }
 
-    // Stage 1: Layer preprocessing and texture preparation
+    // Stage 2: Layer preprocessing and texture preparation
     const layerTextures = new Map<string, WebGLTexture>()
 
     frameCounterRef.value++
-    for (const layer of layers) {
+    for (const layer of flattenedLayers) {
       // Validate layer dimensions
       const layerDim = layerDimensionsMap.get(layer.id)
       if (layerDim) {
@@ -1143,7 +968,7 @@ async function renderLayers(
         const texMap = new Map<string, WebGLTexture>()
         for (const [id, tex] of layerTextures) texMap.set(id, tex)
 
-        const orderedLayers = layers.slice() // renderer orders internally
+        const orderedLayers = flattenedLayers.slice() // renderer orders internally
         hybridRendererInstance.renderLayers(
           orderedLayers as any,
           texMap,
@@ -1168,10 +993,10 @@ async function renderLayers(
       }
     }
 
-    // Stage 2: Individual layer rendering with filters
+    // Stage 3: Individual layer rendering with filters
     const renderedLayers = new Map<string, WebGLTexture>()
 
-    for (const layer of layers) {
+    for (const layer of flattenedLayers) {
       const layerTexture = layerTextures.get(layer.id)
       if (!layerTexture) continue
 
@@ -1214,7 +1039,7 @@ async function renderLayers(
       progress: 60,
     } as ProgressMessage)
 
-    // Stage 3: Layer compositing and blending (shader-based)
+    // Stage 4: Layer compositing and blending (shader-based)
     let finalTexture: WebGLTexture | null = null
     let drewAnyLayer = false
     if (renderedLayers.size > 0) {
@@ -1241,7 +1066,8 @@ async function renderLayers(
           !compProgram ||
           !compVAO ||
           !compUBaseLocation ||
-          !compUTopLocation
+          !compUTopLocation ||
+          !compUBlendModeLocation
         ) {
           // If custom compositing resources fail, attempt HybridRenderer path
           if (USE_HYBRID_RENDERER && hybridRendererInstance) {
@@ -1249,14 +1075,15 @@ async function renderLayers(
             const layerTexMap = new Map<string, WebGLTexture>()
             for (const [id, tex] of renderedLayers) layerTexMap.set(id, tex)
             // Use renderer to compose
-            const orderedLayers = layers.slice().reverse()
+            const orderedLayers = flattenedLayers.slice().reverse()
             hybridRendererInstance.renderLayers(
               orderedLayers,
               layerTexMap,
               toolsValues,
               selectedLayerId,
               canvasWidth,
-              canvasHeight
+              canvasHeight,
+              layerDimensionsMap
             )
             const result = (hybridRendererInstance as any).fboManager?.getFBO?.(
               "result"
@@ -1286,7 +1113,7 @@ async function renderLayers(
         // Ordered draw bottom->top.
         // The editor currently provides layers in top-first order (new layers are unshifted),
         // so convert to bottom->top for correct compositing.
-        const orderedLayers = layers.slice().reverse()
+        const orderedLayers = flattenedLayers.slice().reverse()
         for (const layer of orderedLayers) {
           const tex = renderedLayers.get(layer.id)
           if (layer.visible === false || layer.opacity <= 0) continue
@@ -1458,6 +1285,17 @@ async function renderLayers(
             glCtx.useProgram(compProgram)
             glCtx.bindVertexArray(compVAO)
 
+            // Debug: Verify compositing program is active
+            try {
+              const activeProgram = glCtx.getParameter(glCtx.CURRENT_PROGRAM)
+              dbg("compositing:program", {
+                layerId: layer.id,
+                activeProgram: !!activeProgram,
+                expectedProgram: !!compProgram,
+                match: activeProgram === compProgram,
+              })
+            } catch {}
+
             // Ensure no texture units are bound to the destination texture to avoid feedback
             try {
               unbindTextureFromAllUnits(glCtx, output.tex)
@@ -1560,12 +1398,40 @@ async function renderLayers(
                 Math.max(0, Math.min(1, layer.opacity / 100))
               )
 
-            const mode =
-              (layer as any).blendModeCode ??
-              BLEND_MODE_CODE[layer.blendMode as BlendMode] ??
-              0
-            if (compUBlendModeLocation)
+            // Get blend mode code with proper fallback
+            const blendMode = layer.blendMode as BlendMode
+            const mode = BLEND_MODE_CODE[blendMode] ?? 0
+
+            // Debug logging for blend mode issues
+            try {
+              dbg("blend:mode", {
+                layerId: layer.id,
+                blendMode,
+                mode,
+                hasUniform: !!compUBlendModeLocation,
+                BLEND_MODE_CODE_keys: Object.keys(BLEND_MODE_CODE),
+                BLEND_MODE_CODE_values: Object.values(BLEND_MODE_CODE),
+              })
+            } catch {}
+
+            if (compUBlendModeLocation) {
               glCtx.uniform1i(compUBlendModeLocation, mode)
+              try {
+                dbg("blend:uniform:set", {
+                  layerId: layer.id,
+                  mode,
+                  uniformSet: true,
+                })
+              } catch {}
+            } else {
+              try {
+                dbg("blend:uniform:missing", {
+                  layerId: layer.id,
+                  mode,
+                  uniformSet: false,
+                })
+              } catch {}
+            }
 
             glCtx.drawArrays(glCtx.TRIANGLE_STRIP, 0, 4)
             // Unbind textures after draw to avoid any potential feedback in subsequent passes
@@ -1641,7 +1507,7 @@ async function renderLayers(
       try {
         // Associate token for stale drop and schedule all levels
         const baseTaskId = await asynchronousPipeline.queueRenderTask(
-          layers,
+          flattenedLayers,
           toolsValues,
           selectedLayerId,
           canvasWidth,
@@ -1663,7 +1529,7 @@ async function renderLayers(
       }
     }
 
-    // Stage 4: Final output generation (skip if we already drew to default fb)
+    // Stage 5: Final output generation (skip if we already drew to default fb)
     if (drewAnyLayer) {
       // Already rendered to canvas; just notify success
       postMessage({ type: "success", id: messageId } as SuccessMessage)
