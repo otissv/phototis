@@ -42,26 +42,27 @@ function ImageEditorInner({
 }: ImageEditorProps) {
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null)
   const drawFnRef = React.useRef<() => void>(() => {})
+  const { renderType, setRenderType } = useEditorContext()
 
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(false)
   const [isPanelsOpen, setIsPanelsOpen] = React.useState(false)
-  const [renderType, setRenderType] = React.useState<
-    "default" | "worker" | "hybrid"
-  >(() => {
-    try {
-      if (typeof window !== "undefined") {
-        const stored = window.localStorage.getItem("phototis:renderType")
-        if (
-          stored === "worker" ||
-          stored === "hybrid" ||
-          stored === "default"
-        ) {
-          return stored
-        }
-      }
-    } catch {}
-    return "default"
-  })
+  // const [renderType, setRenderType] = React.useState<
+  //   "default" | "worker" | "hybrid"
+  // >(() => {
+  //   try {
+  //     if (typeof window !== "undefined") {
+  //       const stored = window.localStorage.getItem("phototis:renderType")
+  //       if (
+  //         stored === "worker" ||
+  //         stored === "hybrid" ||
+  //         stored === "default"
+  //       ) {
+  //         return stored
+  //       }
+  //     }
+  //   } catch {}
+  //   return "default"
+  // })
 
   const [selectedSidebar, setSelectedSidebar] =
     React.useState<keyof typeof SIDEBAR_TOOLS>("rotate")
@@ -467,7 +468,6 @@ function ImageEditorInner({
             id='image-editor-canvas'
             canvasRef={canvasRef}
             onDrawReady={handleDrawReady}
-            renderType={renderType}
           />
         </div>
       </div>

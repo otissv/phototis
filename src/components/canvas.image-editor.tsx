@@ -11,6 +11,7 @@ import type { EditorLayer, CanvasPosition } from "@/lib/editor/state"
 import { useEditorContext } from "@/lib/editor/context"
 import { ShaderManager } from "@/lib/shaders"
 import { HybridRenderer } from "@/lib/shaders/hybrid-renderer"
+import { RenderConfig } from "@/lib/shaders/render-config"
 import { useWorkerRenderer } from "@/lib/hooks/useWorkerRenderer"
 import { TaskPriority } from "@/lib/workers/worker-manager"
 import { CanvasStateManager } from "@/lib/canvas-state-manager"
@@ -40,7 +41,6 @@ export interface ImageEditorCanvasProps
   canvasRef?: React.RefObject<HTMLCanvasElement | null>
   onDrawReady?: (draw: () => void) => void
   onImageDrop?: (file: File) => void
-  renderType?: "worker" | "hybrid" | "default"
 }
 
 export function ImageEditorCanvas({
@@ -48,17 +48,14 @@ export function ImageEditorCanvas({
   canvasRef,
   onDrawReady,
   onImageDrop,
-  renderType,
   ...props
 }: ImageEditorCanvasProps) {
   const { history } = useEditorContext()
   const {
     state,
-    documentLayerDimensions,
-    dimensionsDocument,
     getOrderedLayers,
     getSelectedLayerId,
-    getLayerById,
+    renderType,
     updateLayer,
   } = useEditorContext()
 
@@ -353,6 +350,9 @@ export function ImageEditorCanvas({
       `🎨 [WORKER] Initializing worker-based renderer at ${Date.now()}`
     )
     initializingCanvasesRef.current.add(canvas)
+
+    if (renderType !== "worker" && renderType !== "default") return
+
     void initializeWorker(canvas).then((success) => {
       if (success) {
         console.log(
@@ -792,7 +792,6 @@ export function ImageEditorCanvas({
       gl,
       width,
       height,
-      useUnpackFlipY: true,
     })
 
     if (!success) {
@@ -1077,8 +1076,8 @@ export function ImageEditorCanvas({
     }
     glRef.current = gl
 
-    // Disable Y flip at unpack time - we'll handle coordinate conversion in shaders
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false)
+    // Configure WebGL with centralized settings
+    RenderConfig.configureWebGL(gl)
 
     // Initialize Shader Manager
     if (!shaderManager.initialize(gl)) {
@@ -1104,14 +1103,7 @@ export function ImageEditorCanvas({
     )
     positionBufferRef.current = positionBuffer
 
-    const texCoordBuffer = gl.createBuffer()
-    if (!texCoordBuffer) return
-    gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer)
-    gl.bufferData(
-      gl.ARRAY_BUFFER,
-      new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]),
-      gl.STATIC_DRAW
-    )
+    const texCoordBuffer = RenderConfig.createCanvasTexCoordBuffer(gl)
     texCoordBufferRef.current = texCoordBuffer
 
     // Texture Creation and Setup
@@ -1240,6 +1232,29 @@ export function ImageEditorCanvas({
     [createTextureFromImageData]
   )
 
+  // Ensure HybridRenderer is created and initialized (idempotent)
+  const ensureHybridInitialized = React.useCallback((): boolean => {
+    const gl = glRef.current
+    const canvas = canvasRef?.current
+    if (!gl || !canvas) return false
+    const width = canvasDimensions.width
+    const height = canvasDimensions.height
+    if (width <= 0 || height <= 0) return false
+    if (!hybridRendererRef.current) {
+      hybridRendererRef.current = new HybridRenderer()
+      const ok = hybridRendererRef.current.initialize({
+        gl,
+        width,
+        height,
+      })
+      if (!ok) {
+        hybridRendererRef.current = null
+        return false
+      }
+    }
+    return true
+  }, [canvasRef?.current, canvasDimensions.width, canvasDimensions.height])
+
   // Draw function using worker-based rendering for non-blocking GPU operations
   const draw = async () => {
     // Prevent overlapping draws; allow during drags for live preview
@@ -1294,6 +1309,27 @@ export function ImageEditorCanvas({
         }
       }
     }
+
+    // Debug: log computed layer dimensions for hybrid path
+    try {
+      if (renderType === "hybrid") {
+        const dimsArray = Array.from(dimsForRender.entries()).map(
+          ([layerId, d]) => ({ layerId, ...d })
+        )
+        console.log("🎨 [Hybrid][Dims] dimsForRender:", dimsArray)
+        const cachedDims = Array.from(layerDimensionsRef.current.entries()).map(
+          ([id, d]) => ({
+            id,
+            type: d.type,
+            width: d.width,
+            height: d.height,
+            x: d.x,
+            y: d.y,
+          })
+        )
+        console.log("🎨 [Hybrid][Dims] layerDimensionsRef:", cachedDims)
+      }
+    } catch {}
 
     try {
       // Use worker-based rendering if available (always queue; manager cancels in-flight)
@@ -1419,8 +1455,12 @@ export function ImageEditorCanvas({
         return
       }
 
-      // Fallback to hybrid renderer if worker is not available
-      console.log("🎨 [Renderer] Using HYBRID renderer (fallback)")
+      // Use hybrid renderer (either as fallback or primary mode)
+      if (renderType === "hybrid") {
+        console.log("🎨 [Renderer] Using HYBRID renderer")
+      } else {
+        console.log("🎨 [Renderer] Using HYBRID renderer (fallback)")
+      }
       const gl = glRef.current
       const canvas = canvasRef?.current
 
@@ -1445,9 +1485,43 @@ export function ImageEditorCanvas({
       }
 
       if (!hybridRendererRef.current) {
-        console.warn("🎨 [Renderer] Hybrid renderer not initialized")
-        isDrawingRef.current = false
-        return
+        // Attempt on-demand initialization before bailing
+        const ok = ensureHybridInitialized()
+        if (!ok || !hybridRendererRef.current) {
+          try {
+            console.warn("🎨 [Renderer] Hybrid renderer not initialized")
+            console.log("🎨 [Hybrid][State] gl?", !!gl, "canvas?", !!canvas)
+            console.log(
+              "🎨 [Hybrid][State] canvas size:",
+              canvas?.width,
+              "x",
+              canvas?.height
+            )
+            const dimsArray = Array.from(dimsForRender.entries()).map(
+              ([layerId, d]) => ({ layerId, ...d })
+            )
+            console.log(
+              "🎨 [Hybrid][Dims] dimsForRender (pre-init):",
+              dimsArray
+            )
+            const cachedDims = Array.from(
+              layerDimensionsRef.current.entries()
+            ).map(([id, d]) => ({
+              id,
+              type: d.type,
+              width: d.width,
+              height: d.height,
+              x: d.x,
+              y: d.y,
+            }))
+            console.log(
+              "🎨 [Hybrid][Dims] layerDimensionsRef (pre-init):",
+              cachedDims
+            )
+          } catch {}
+          isDrawingRef.current = false
+          return
+        }
       }
 
       // Get canvas dimensions

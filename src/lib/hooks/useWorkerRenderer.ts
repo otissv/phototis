@@ -5,6 +5,7 @@ import React from "react"
 import { WorkerManager, TaskPriority } from "@/lib/workers/worker-manager"
 import type { EditorLayer } from "@/lib/editor/state"
 import type { ImageEditorToolsState } from "@/lib/tools/tools-state"
+import { useEditorContext } from "@/lib/editor/context"
 
 // Worker renderer state
 interface WorkerRendererState {
@@ -30,6 +31,7 @@ interface WorkerRendererConfig {
 }
 
 export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
+  const { renderType } = useEditorContext()
   const [state, setState] = React.useState<WorkerRendererState>({
     isReady: false,
     isInitializing: false,
@@ -152,6 +154,8 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
 
   // Prewarm workers on mount to shorten initialize latency
   React.useEffect(() => {
+    if (renderType === "hybrid") return
+
     const run = async () => {
       try {
         const manager = WorkerManager.getShared()
@@ -160,7 +164,7 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
       } catch {}
     }
     void run()
-  }, [])
+  }, [renderType])
 
   // Set up event listeners for worker communication
   const setupEventListeners = React.useCallback(() => {

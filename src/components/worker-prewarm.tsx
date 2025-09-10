@@ -2,9 +2,13 @@
 
 import React from "react"
 import { WorkerManager } from "@/lib/workers/worker-manager"
+import { useEditorContext } from "@/lib/editor/context"
 
 export function WorkerPrewarm() {
+  const { renderType } = useEditorContext()
   React.useEffect(() => {
+    if (renderType === "hybrid") return
+
     let cancelled = false
     const run = async () => {
       try {
@@ -22,11 +26,13 @@ export function WorkerPrewarm() {
     }
     window.addEventListener("worker-debug", onDbg as EventListener)
 
+    console.log("worker renderer prewarmed")
+
     return () => {
       cancelled = true
       window.removeEventListener("worker-debug", onDbg as EventListener)
     }
-  }, [])
+  }, [renderType])
 
   return null
 }

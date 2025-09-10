@@ -13,27 +13,32 @@ import {
 } from "./compositing-shader"
 import type { ImageEditorToolsState } from "@/lib/tools/tools-state"
 import type { EditorLayer as Layer } from "@/lib/editor/state"
+import { ShaderManager } from "."
+import { RenderConfig } from "./render-config"
 
 export interface HybridRendererOptions {
   width: number
   height: number
   gl: WebGL2RenderingContext
-  /** If true, use UNPACK_FLIP_Y_WEBGL and unflipped texcoords; if false, keep UNPACK off and use flipped texcoords */
-  useUnpackFlipY?: boolean
 }
 
 export class HybridRenderer {
   private gl: WebGL2RenderingContext | null = null
+  private width = 0
+  private height = 0
   private fboManager: FBOManager
-  private layerProgram: WebGLProgram | null = null
   private compositingProgram: WebGLProgram | null = null
+  // NDC position buffer for compositing/fullscreen passes
   private positionBuffer: WebGLBuffer | null = null
   // Separate texcoord buffers: layer sampling vs FBO compositing/adjustments
   private layerTexCoordBuffer: WebGLBuffer | null = null
   private compTexCoordBuffer: WebGLBuffer | null = null
   private layerTexture: WebGLTexture | null = null
   private compositingTexture: WebGLTexture | null = null
-  private useUnpackFlipY = true
+  // Plugin-based shader manager (modular shader system)
+  private shaderManager: ShaderManager | null = null
+  // Position buffer for plugin vertex shader (expects [0..1] quad)
+  private pluginPositionBuffer: WebGLBuffer | null = null
 
   constructor() {
     this.fboManager = new FBOManager()
@@ -42,20 +47,17 @@ export class HybridRenderer {
   initialize(options: HybridRendererOptions): boolean {
     const { gl, width, height } = options
     this.gl = gl
+    this.width = width
+    this.height = height
 
-    const useUnpackFlipY = options.useUnpackFlipY ?? true
-    this.useUnpackFlipY = useUnpackFlipY
-
-    // Set unpack flip policy for this renderer
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, useUnpackFlipY)
+    // Configure WebGL with centralized settings
+    RenderConfig.configureWebGL(gl)
 
     // Debug: Log HybridRenderer initialization
     console.log("HybridRenderer initialized:", {
-      useUnpackFlipY,
-      texcoords: useUnpackFlipY
-        ? [0, 0, 1, 0, 0, 1, 1, 1]
-        : [0, 1, 1, 1, 0, 0, 1, 0],
-      unpackFlipYSetting: gl.getParameter(gl.UNPACK_FLIP_Y_WEBGL),
+      width,
+      height,
+      ...RenderConfig.getDebugInfo(gl),
     })
 
     // Initialize FBO manager
@@ -77,21 +79,19 @@ export class HybridRenderer {
       return false
     }
 
-    // Compile layer rendering program
-    this.layerProgram = this.compileProgram(
-      COMPOSITING_VERTEX_SHADER,
-      LAYER_RENDER_FRAGMENT_SHADER
-    )
+    // Initialize modular ShaderManager for layer rendering via plugins
+    this.shaderManager = new ShaderManager()
+    const shaderInitOk = this.shaderManager.initialize(gl)
 
-    // Compile compositing program
+    // Compile compositing program (blend modes)
     this.compositingProgram = this.compileProgram(
       COMPOSITING_VERTEX_SHADER,
       COMPOSITING_FRAGMENT_SHADER
     )
 
-    if (!this.layerProgram || !this.compositingProgram) {
+    if (!shaderInitOk || !this.compositingProgram) {
       console.error("Failed to compile shader programs:", {
-        layerProgram: !!this.layerProgram,
+        shaderManager: shaderInitOk,
         compositingProgram: !!this.compositingProgram,
       })
       return false
@@ -99,8 +99,8 @@ export class HybridRenderer {
 
     // Create buffers
     this.positionBuffer = gl.createBuffer()
-    this.layerTexCoordBuffer = gl.createBuffer()
-    this.compTexCoordBuffer = gl.createBuffer()
+    this.layerTexCoordBuffer = RenderConfig.createLayerTexCoordBuffer(gl)
+    this.compTexCoordBuffer = RenderConfig.createCompTexCoordBuffer(gl)
 
     if (
       !this.positionBuffer ||
@@ -115,7 +115,7 @@ export class HybridRenderer {
       return false
     }
 
-    // Set up position buffer
+    // Set up position buffer (NDC) for compositing/fullscreen passes
     gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer)
     gl.bufferData(
       gl.ARRAY_BUFFER,
@@ -123,17 +123,20 @@ export class HybridRenderer {
       gl.STATIC_DRAW
     )
 
-    // Texcoords for layer sampling (uploads): if UNPACK=false, use flipped V
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.layerTexCoordBuffer)
-    const layerTexcoords = useUnpackFlipY
-      ? new Float32Array([0, 0, 1, 0, 0, 1, 1, 1])
-      : new Float32Array([0, 1, 1, 1, 0, 0, 1, 0])
-    gl.bufferData(gl.ARRAY_BUFFER, layerTexcoords, gl.STATIC_DRAW)
+    // Set up plugin position buffer ([0..1] quad) for layer rendering via ShaderManager
+    this.pluginPositionBuffer = gl.createBuffer()
+    if (!this.pluginPositionBuffer) {
+      console.error("Failed to create plugin position buffer")
+      return false
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.pluginPositionBuffer)
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]),
+      gl.STATIC_DRAW
+    )
 
-    // Texcoords for FBO sampling (compositing/adjustments): FBOs are upright; use normal V
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.compTexCoordBuffer)
-    const compTexcoords = new Float32Array([0, 0, 1, 0, 0, 1, 1, 1])
-    gl.bufferData(gl.ARRAY_BUFFER, compTexcoords, gl.STATIC_DRAW)
+    // Texcoord buffers are now configured by RenderConfig.create*TexCoordBuffer()
 
     // Create textures
     this.layerTexture = gl.createTexture()
@@ -232,7 +235,7 @@ export class HybridRenderer {
       { width: number; height: number; x: number; y: number }
     >
   ): WebGLTexture | null {
-    if (!this.gl) return null
+    if (!this.gl || !this.shaderManager) return null
 
     // Use the temp FBO for layer rendering
     const tempFBO = this.fboManager.getFBO("temp")
@@ -268,16 +271,17 @@ export class HybridRenderer {
     const layerX = layerDim?.x || 0
     const layerY = layerDim?.y || 0
 
-    // Use the compiled layer program which applies transforms and filters
-    if (!this.layerProgram) return null
-    this.gl.useProgram(this.layerProgram)
+    // Use plugin-based program
+    const program = this.shaderManager.getProgram()
+    if (!program) return null
+    this.gl.useProgram(program)
 
     // Set up attributes from shared buffers
-    const positionLocation = this.gl.getAttribLocation(
-      this.layerProgram,
-      "a_position"
+    const positionLocation = this.gl.getAttribLocation(program, "a_position")
+    this.gl.bindBuffer(
+      this.gl.ARRAY_BUFFER,
+      this.pluginPositionBuffer as WebGLBuffer
     )
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.positionBuffer)
     this.gl.enableVertexAttribArray(positionLocation)
     this.gl.vertexAttribPointer(positionLocation, 2, this.gl.FLOAT, false, 0, 0)
 
@@ -286,10 +290,7 @@ export class HybridRenderer {
       this.gl.ARRAY_BUFFER,
       this.layerTexCoordBuffer as WebGLBuffer
     )
-    const texCoordLocation = this.gl.getAttribLocation(
-      this.layerProgram,
-      "a_texCoord"
-    )
+    const texCoordLocation = this.gl.getAttribLocation(program, "a_texCoord")
     this.gl.enableVertexAttribArray(texCoordLocation)
     this.gl.vertexAttribPointer(texCoordLocation, 2, this.gl.FLOAT, false, 0, 0)
 
@@ -316,7 +317,7 @@ export class HybridRenderer {
         flipVertical: flipV,
         flipHorizontal: flipH,
         rotate: rot,
-        texcoordV: this.useUnpackFlipY ? "normal" : "flipped",
+        texcoordV: "normal",
         orientation: finalOrient,
         unpackFlipY: this.gl.getParameter(this.gl.UNPACK_FLIP_Y_WEBGL),
       })
@@ -325,25 +326,45 @@ export class HybridRenderer {
     // Bind layer texture
     this.gl.activeTexture(this.gl.TEXTURE0)
     this.gl.bindTexture(this.gl.TEXTURE_2D, layerTexture)
-    const samplerLocation = this.gl.getUniformLocation(
-      this.layerProgram,
-      "u_image"
-    )
+    const samplerLocation = this.gl.getUniformLocation(program, "u_image")
     if (samplerLocation) this.gl.uniform1i(samplerLocation, 0)
 
-    // Set all layer-related uniforms (rect, transforms, filters, resolution, opacity)
-    // Apply per-layer opacity only during compositing to avoid double application.
-    // Here we render the layer content at full opacity.
-    this.setLayerUniforms(
-      toolsValues,
-      100,
-      canvasWidth,
-      canvasHeight,
-      layerWidth,
-      layerHeight,
-      layerX,
-      layerY
-    )
+    // Build uniforms for plugin-based program
+    const layerCenterX = layerX + layerWidth / 2
+    const layerCenterY = layerY + layerHeight / 2
+    // Normalize recolor: accept number or { value, color }
+    let recolorAmount = 0
+    let recolorColor: [number, number, number] | null = null
+    const recolorAny: any = (toolsValues as any).recolor
+    if (typeof recolorAny === "number") {
+      recolorAmount = recolorAny
+      recolorColor = [1, 0, 0]
+    } else if (
+      recolorAny &&
+      typeof recolorAny === "object" &&
+      typeof recolorAny.value === "number"
+    ) {
+      recolorAmount = recolorAny.value
+      const hex =
+        typeof recolorAny.color === "string" ? recolorAny.color : "#000000"
+      const rgba = this.hexToRgba01(hex) || [0, 0, 0, 1]
+      recolorColor = [rgba[0], rgba[1], rgba[2]]
+    }
+
+    const uniformsUpdate: Record<string, any> = {
+      ...(toolsValues as any),
+      // enforce numeric recolor amount for plugin uniform
+      recolor: recolorAmount,
+      u_opacity: 100,
+      layerSize: [layerWidth, layerHeight],
+      canvasSize: [canvasWidth, canvasHeight],
+      layerPosition: [layerCenterX, layerCenterY],
+      u_resolution: [canvasWidth, canvasHeight],
+    }
+    if (recolorColor) uniformsUpdate.u_recolorColor = recolorColor
+
+    this.shaderManager.updateUniforms(uniformsUpdate)
+    this.shaderManager.setUniforms(this.gl, program)
 
     // Draw
     this.gl.drawArrays(this.gl.TRIANGLE_STRIP, 0, 4)
@@ -360,7 +381,7 @@ export class HybridRenderer {
     canvasWidth: number,
     canvasHeight: number
   ): WebGLTexture | null {
-    if (!this.gl || !this.layerProgram) return null
+    if (!this.gl || !this.shaderManager) return null
 
     // Use temp FBO as output target
     const tempFBO = this.fboManager.getFBO("temp")
@@ -370,14 +391,16 @@ export class HybridRenderer {
     this.fboManager.bindFBO("temp")
     this.fboManager.clearFBO("temp", 0, 0, 0, 0)
 
-    // Use the same layer program, but sample from the base texture and use full-canvas dims
-    this.gl.useProgram(this.layerProgram)
+    // Use the same plugin-based program, but sample from the base texture and use full-canvas dims
+    const program = this.shaderManager.getProgram()
+    if (!program) return null
+    this.gl.useProgram(program)
 
-    const positionLocation = this.gl.getAttribLocation(
-      this.layerProgram,
-      "a_position"
+    const positionLocation = this.gl.getAttribLocation(program, "a_position")
+    this.gl.bindBuffer(
+      this.gl.ARRAY_BUFFER,
+      this.pluginPositionBuffer as WebGLBuffer
     )
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.positionBuffer)
     this.gl.enableVertexAttribArray(positionLocation)
     this.gl.vertexAttribPointer(positionLocation, 2, this.gl.FLOAT, false, 0, 0)
 
@@ -386,34 +409,52 @@ export class HybridRenderer {
       this.gl.ARRAY_BUFFER,
       this.compTexCoordBuffer as WebGLBuffer
     )
-    const texCoordLocation = this.gl.getAttribLocation(
-      this.layerProgram,
-      "a_texCoord"
-    )
+    const texCoordLocation = this.gl.getAttribLocation(program, "a_texCoord")
     this.gl.enableVertexAttribArray(texCoordLocation)
     this.gl.vertexAttribPointer(texCoordLocation, 2, this.gl.FLOAT, false, 0, 0)
 
     // Bind the accumulated base texture as the image source
     this.gl.activeTexture(this.gl.TEXTURE0)
     this.gl.bindTexture(this.gl.TEXTURE_2D, baseTexture)
-    const samplerLocation = this.gl.getUniformLocation(
-      this.layerProgram,
-      "u_image"
-    )
+    const samplerLocation = this.gl.getUniformLocation(program, "u_image")
     if (samplerLocation) this.gl.uniform1i(samplerLocation, 0)
 
-    // For adjustment rendering, we use full opacity here and composite opacity later
-    // Use full-canvas dimensions and no offsets
-    this.setLayerUniforms(
-      adjustmentTools,
-      100,
-      canvasWidth,
-      canvasHeight,
-      canvasWidth,
-      canvasHeight,
-      0,
-      0
-    )
+    // For adjustment rendering, use full opacity here and composite opacity later
+    // Use full-canvas dimensions and center position
+    const centerX = canvasWidth / 2
+    const centerY = canvasHeight / 2
+    // Normalize recolor for adjustments as well
+    let recolorAmount = 0
+    let recolorColor: [number, number, number] | null = null
+    const recolorAny: any = (adjustmentTools as any).recolor
+    if (typeof recolorAny === "number") {
+      recolorAmount = recolorAny
+      recolorColor = [1, 0, 0]
+    } else if (
+      recolorAny &&
+      typeof recolorAny === "object" &&
+      typeof recolorAny.value === "number"
+    ) {
+      recolorAmount = recolorAny.value
+      const hex =
+        typeof recolorAny.color === "string" ? recolorAny.color : "#000000"
+      const rgba = this.hexToRgba01(hex) || [0, 0, 0, 1]
+      recolorColor = [rgba[0], rgba[1], rgba[2]]
+    }
+
+    const uniformsUpdate: Record<string, any> = {
+      ...(adjustmentTools as any),
+      recolor: recolorAmount,
+      u_opacity: 100,
+      layerSize: [canvasWidth, canvasHeight],
+      canvasSize: [canvasWidth, canvasHeight],
+      layerPosition: [centerX, centerY],
+      u_resolution: [canvasWidth, canvasHeight],
+    }
+    if (recolorColor) uniformsUpdate.u_recolorColor = recolorColor
+
+    this.shaderManager.updateUniforms(uniformsUpdate)
+    this.shaderManager.setUniforms(this.gl, program)
 
     // Debug: Log adjustment orientation/texcoords
     try {
@@ -437,7 +478,7 @@ export class HybridRenderer {
         flipVertical: flipV,
         flipHorizontal: flipH,
         rotate: rot,
-        texcoordV: this.useUnpackFlipY ? "normal" : "flipped",
+        texcoordV: "normal",
         unpackFlipY: this.gl.getParameter(this.gl.UNPACK_FLIP_Y_WEBGL),
         orientation: finalOrient,
       })
@@ -795,192 +836,7 @@ export class HybridRenderer {
     return !hasContent
   }
 
-  private setLayerUniforms(
-    toolsValues: ImageEditorToolsState,
-    opacity: number,
-    canvasWidth: number,
-    canvasHeight: number,
-    layerWidth?: number,
-    layerHeight?: number,
-    layerX?: number,
-    layerY?: number
-  ): void {
-    if (!this.gl || !this.layerProgram) return
-
-    // Canvas coords used in fragment shader are bottom-left origin (via v_texCoord).
-    // Our UI/canvas overlay uses top-left origin for layer positions.
-    // Convert provided top-left based Y to bottom-left based Y so the rendered
-    // texture aligns exactly with the overlay rectangle after crop.
-    const resolvedLayerWidth = layerWidth || canvasWidth
-    const resolvedLayerHeight = layerHeight || canvasHeight
-    const resolvedLayerX = layerX || 0
-    const resolvedLayerYTopLeft = layerY || 0
-    const resolvedLayerYBottomLeft =
-      canvasHeight - (resolvedLayerYTopLeft + resolvedLayerHeight)
-
-    const uniforms = [
-      { name: "u_brightness", value: toolsValues.brightness },
-      { name: "u_contrast", value: toolsValues.contrast },
-      { name: "u_saturation", value: toolsValues.saturation },
-      { name: "u_hue", value: toolsValues.hue },
-      { name: "u_exposure", value: toolsValues.exposure },
-      { name: "u_temperature", value: toolsValues.temperature },
-      { name: "u_gamma", value: toolsValues.gamma },
-      { name: "u_blur", value: toolsValues.blur },
-      { name: "u_blurType", value: toolsValues.blurType },
-      { name: "u_blurDirection", value: toolsValues.blurDirection },
-      { name: "u_blurCenter", value: toolsValues.blurCenter },
-      { name: "u_vintage", value: toolsValues.vintage },
-      { name: "u_invert", value: toolsValues.invert },
-      { name: "u_sepia", value: toolsValues.sepia },
-      { name: "u_grayscale", value: toolsValues.grayscale },
-      // recolor handled below for object/number support
-      { name: "u_vibrance", value: toolsValues.vibrance },
-      { name: "u_noise", value: toolsValues.noise },
-      { name: "u_grain", value: toolsValues.grain },
-      { name: "u_rotate", value: toolsValues.rotate },
-      { name: "u_scale", value: toolsValues.scale },
-      { name: "u_flipHorizontal", value: toolsValues.flipHorizontal },
-      { name: "u_flipVertical", value: toolsValues.flipVertical },
-      { name: "u_opacity", value: opacity },
-      { name: "u_resolution", value: [canvasWidth, canvasHeight] },
-      { name: "u_layerWidth", value: resolvedLayerWidth },
-      { name: "u_layerHeight", value: resolvedLayerHeight },
-      { name: "u_layerX", value: resolvedLayerX },
-      { name: "u_layerY", value: resolvedLayerYBottomLeft },
-    ]
-
-    // Some uniforms are declared as bools in GLSL. Ensure we pass them correctly
-    const boolUniforms = new Set(["u_flipHorizontal", "u_flipVertical"])
-
-    uniforms.forEach(({ name, value }) => {
-      if (!this.gl || !this.layerProgram) return
-      const location = this.gl.getUniformLocation(this.layerProgram, name)
-      if (location === null) return
-
-      if (boolUniforms.has(name)) {
-        // Accept booleans or 0/1 numbers from state
-        const asBool =
-          typeof value === "boolean"
-            ? value
-            : Boolean(Math.round(Number(value)))
-        this.gl.uniform1i(location, asBool ? 1 : 0)
-        return
-      }
-
-      if (typeof value === "number") {
-        this.gl.uniform1f(location, value)
-        return
-      }
-
-      if (Array.isArray(value) && value.length === 2) {
-        this.gl.uniform2f(location, value[0], value[1])
-      }
-    })
-
-    // Handle recolor specially: may be a number or an object { value, color }
-    // Legacy recolor (color + amount)
-    {
-      const recolorAny: any = (toolsValues as any).recolor
-      let recolorAmount = 0
-      let recolorColor: [number, number, number] | null = null
-      if (typeof recolorAny === "number") {
-        recolorAmount = recolorAny
-        recolorColor = [1, 0, 0]
-      } else if (
-        recolorAny &&
-        typeof recolorAny === "object" &&
-        typeof recolorAny.value === "number"
-      ) {
-        recolorAmount = recolorAny.value
-        const hex =
-          typeof recolorAny.color === "string" ? recolorAny.color : "#000000"
-        const rgba = this.hexToRgba01(hex) || [0, 0, 0, 1]
-        recolorColor = [rgba[0], rgba[1], rgba[2]]
-      }
-      const recolorLoc = this.gl.getUniformLocation(
-        this.layerProgram,
-        "u_recolor"
-      )
-      if (recolorLoc) {
-        this.gl.uniform1f(recolorLoc, recolorAmount)
-      }
-      const recolorColorLoc = this.gl.getUniformLocation(
-        this.layerProgram,
-        "u_recolorColor"
-      )
-      if (recolorColorLoc && recolorColor) {
-        this.gl.uniform3f(
-          recolorColorLoc,
-          recolorColor[0],
-          recolorColor[1],
-          recolorColor[2]
-        )
-      }
-    }
-
-    // New HSL-based recolor
-    const recolorHue = (toolsValues as any).recolorHue ?? 0
-    const recolorSat = (toolsValues as any).recolorSaturation ?? 50
-    const recolorLight = (toolsValues as any).recolorLightness ?? 50
-    const recolorPreserve = Boolean((toolsValues as any).recolorPreserveLum)
-    const recolorAmt = (toolsValues as any).recolorAmount ?? 0
-    const uRH = this.gl.getUniformLocation(this.layerProgram, "u_recolorHue")
-    if (uRH) this.gl.uniform1f(uRH, recolorHue)
-    const uRS = this.gl.getUniformLocation(
-      this.layerProgram,
-      "u_recolorSaturation"
-    )
-    if (uRS) this.gl.uniform1f(uRS, recolorSat)
-    const uRL = this.gl.getUniformLocation(
-      this.layerProgram,
-      "u_recolorLightness"
-    )
-    if (uRL) this.gl.uniform1f(uRL, recolorLight)
-    const uRPL = this.gl.getUniformLocation(
-      this.layerProgram,
-      "u_recolorPreserveLum"
-    )
-    if (uRPL) this.gl.uniform1i(uRPL, recolorPreserve ? 1 : 0)
-    const uRA = this.gl.getUniformLocation(this.layerProgram, "u_recolorAmount")
-    if (uRA) this.gl.uniform1f(uRA, recolorAmt)
-
-    // Solid adjustment uniforms (color-only; enable if a color is provided)
-    const solid = (toolsValues as any).solid
-    let solidEnabled = false
-    let solidHex: string | null = null
-    if (typeof solid === "string") {
-      solidHex = solid
-      solidEnabled = true
-    } else if (
-      solid &&
-      typeof solid === "object" &&
-      typeof (solid as any).color === "string"
-    ) {
-      solidHex = (solid as any).color
-      solidEnabled = true
-    }
-    const enabledLoc = this.gl.getUniformLocation(
-      this.layerProgram,
-      "u_solidEnabled"
-    )
-    if (enabledLoc) this.gl.uniform1i(enabledLoc, solidEnabled ? 1 : 0)
-
-    // No per-effect opacity for solid; layer opacity is handled during compositing
-
-    const color = solidHex || "#000000"
-    const rgba = this.hexToRgba01(color) || [0, 0, 0, 1]
-    const colorLoc = this.gl.getUniformLocation(
-      this.layerProgram,
-      "u_solidColor"
-    )
-    if (colorLoc) this.gl.uniform3f(colorLoc, rgba[0], rgba[1], rgba[2])
-    const alphaLoc = this.gl.getUniformLocation(
-      this.layerProgram,
-      "u_solidAlpha"
-    )
-    if (alphaLoc) this.gl.uniform1f(alphaLoc, rgba[3])
-  }
+  // Legacy: replaced by ShaderManager in this class. Keeping method removed.
 
   private hexToRgba01(hex: string): [number, number, number, number] | null {
     const m = hex.replace(/^#/, "").toLowerCase()
@@ -1179,7 +1035,7 @@ export class HybridRenderer {
       { width: number; height: number; x: number; y: number }
     >
   ): void {
-    if (!this.gl || !this.layerProgram || !this.compositingProgram) {
+    if (!this.gl || !this.shaderManager || !this.compositingProgram) {
       return
     }
 
@@ -1452,9 +1308,9 @@ export class HybridRenderer {
     if (!this.gl) return
 
     // Clean up programs
-    if (this.layerProgram) {
-      this.gl.deleteProgram(this.layerProgram)
-      this.layerProgram = null
+    if (this.shaderManager) {
+      this.shaderManager.cleanup()
+      this.shaderManager = null
     }
     if (this.compositingProgram) {
       this.gl.deleteProgram(this.compositingProgram)

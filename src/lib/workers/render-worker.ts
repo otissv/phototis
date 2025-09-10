@@ -7,6 +7,7 @@ import type { PipelineStage } from "@/lib/shaders/asynchronous-pipeline"
 import type { AsynchronousPipeline } from "@/lib/shaders/asynchronous-pipeline"
 import type { HybridRenderer } from "@/lib/shaders/hybrid-renderer"
 import type { ShaderManager } from "@/lib/shaders"
+import { RenderConfig } from "@/lib/shaders/render-config"
 import {
   BLEND_MODE_MAP,
   BLEND_MODE_GLSL,
@@ -623,8 +624,8 @@ function initializeWebGL(
 
     // Configure WebGL
     gl.viewport(0, 0, width, height)
-    // Do not flip on unpack; we flip V in all our texcoord buffers for consistency
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false)
+    // Configure WebGL with centralized settings
+    RenderConfig.configureWebGL(gl)
     dbg("gl:configured")
 
     // Debug: confirm OffscreenCanvas size vs requested
@@ -684,19 +685,14 @@ async function ensureHeavyInit(width: number, height: number): Promise<void> {
     glCtx.STATIC_DRAW
   )
   // Texcoord buffer
-  layerTexCoordBuffer = glCtx.createBuffer()
-  if (!layerTexCoordBuffer)
-    throw new Error("Failed to create layer texcoord buffer")
-  glCtx.bindBuffer(glCtx.ARRAY_BUFFER, layerTexCoordBuffer)
-  const layerTexCoords = new Float32Array([0, 1, 1, 1, 0, 0, 1, 0])
-  glCtx.bufferData(glCtx.ARRAY_BUFFER, layerTexCoords, glCtx.STATIC_DRAW)
+  layerTexCoordBuffer = RenderConfig.createLayerTexCoordBuffer(glCtx)
 
   // Debug: Log layer rendering texture coordinates
   try {
     dbg("layer:texcoords", {
-      coords: Array.from(layerTexCoords),
+      coords: Array.from(RenderConfig.LAYER_TEXCOORDS),
       description:
-        "layer rendering texture coordinates (flipped V to compensate for vertex shader Y-flip)",
+        "layer rendering texture coordinates (normal V, UNPACK_FLIP_Y_WEBGL=false)",
       unpackFlipY: glCtx.getParameter(glCtx.UNPACK_FLIP_Y_WEBGL),
     })
   } catch {}
@@ -709,7 +705,6 @@ async function ensureHeavyInit(width: number, height: number): Promise<void> {
     gl: glCtx,
     width,
     height,
-    useUnpackFlipY: false,
   })
 
   // Initialize asynchronous pipeline
@@ -793,7 +788,6 @@ async function ensureHeavyInit(width: number, height: number): Promise<void> {
     gl: glCtx,
     width,
     height,
-    useUnpackFlipY: false,
   })
   dbg("heavy:init:done")
   heavyInitDone = true
@@ -1579,7 +1573,7 @@ async function renderLayers(
             try {
               dbg("compose:draw", {
                 texcoordBuffer: "compTexCoordBuffer (normal V)",
-                texcoords: [0, 0, 1, 0, 0, 1, 1, 1],
+                texcoords: Array.from(RenderConfig.COMP_TEXCOORDS),
                 unpackFlipY: glCtx.getParameter(glCtx.UNPACK_FLIP_Y_WEBGL),
                 renderingPath: "compositing",
               })
@@ -1914,7 +1908,7 @@ async function renderLayerWithFilters(
     glCtx.enableVertexAttribArray(aPosLoc)
     glCtx.vertexAttribPointer(aPosLoc, 2, glCtx.FLOAT, false, 0, 0)
     const aTexLoc = glCtx.getAttribLocation(program, "a_texCoord")
-    // Layer rendering samples uploaded bitmaps with UNPACK_FLIP_Y_WEBGL=false; use flipped-V texcoords.
+    // Layer rendering samples uploaded bitmaps with UNPACK_FLIP_Y_WEBGL=false; use normal-V texcoords.
     glCtx.bindBuffer(glCtx.ARRAY_BUFFER, layerTexCoordBuffer as WebGLBuffer)
     glCtx.enableVertexAttribArray(aTexLoc)
     glCtx.vertexAttribPointer(aTexLoc, 2, glCtx.FLOAT, false, 0, 0)
@@ -2004,8 +1998,8 @@ async function renderLayerWithFilters(
         scale: validatedParameters.scale,
         renderingPath: "shaderManager (with Y-flip transformation)",
         vertexShader: "VertexShaderPlugin with coordinate system conversion",
-        texcoordBuffer: "layerTexCoordBuffer (flipped V)",
-        texcoords: [0, 1, 1, 1, 0, 0, 1, 0],
+        texcoordBuffer: "layerTexCoordBuffer (normal V)",
+        texcoords: Array.from(RenderConfig.LAYER_TEXCOORDS),
         unpackFlipY: glCtx.getParameter(glCtx.UNPACK_FLIP_Y_WEBGL),
       })
     } catch {}
@@ -2080,7 +2074,7 @@ async function renderAdjustmentFromBase(
     try {
       dbg("adjustment:uniforms", {
         texcoordBuffer: "blitTexCoordBuffer (normal V)",
-        texcoords: [0, 0, 1, 0, 0, 1, 1, 1],
+        texcoords: Array.from(RenderConfig.COMP_TEXCOORDS),
         unpackFlipY: glCtx.getParameter(glCtx.UNPACK_FLIP_Y_WEBGL),
         renderingPath: "renderAdjustmentFromBase",
       })
@@ -2312,7 +2306,6 @@ self.onmessage = async (event: MessageEvent) => {
                 gl: gl as WebGL2RenderingContext,
                 width,
                 height,
-                useUnpackFlipY: false,
               })
             } catch {}
           }
@@ -2322,7 +2315,6 @@ self.onmessage = async (event: MessageEvent) => {
                 gl: gl as WebGL2RenderingContext,
                 width,
                 height,
-                useUnpackFlipY: false,
               })
             } catch {}
           }

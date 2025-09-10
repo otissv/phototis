@@ -48,6 +48,7 @@ export type EditorContextValue = {
     size: number
     name: string
   }
+  renderType: "default" | "worker" | "hybrid"
   history: {
     begin: (name: string) => void
     push: (command: Command) => void
@@ -125,6 +126,7 @@ export type EditorContextValue = {
   setLayerName: (layerId: LayerId, name: string) => void
   setMaxBytes?: (bytes: number) => void
   setOpacity: (layerId: LayerId, opacity: number) => void
+  setRenderType: (renderType: "default" | "worker" | "hybrid") => void
   setThumbnailProvider?: (
     provider: (() => Promise<string | null> | string | null) | null
   ) => void
@@ -233,6 +235,23 @@ export function EditorProvider({
     const result = { canonical, ephemeral: base.ephemeral }
     assertInvariants(canonical)
     return result
+  })
+  const [renderType, setRenderType] = React.useState<
+    "default" | "worker" | "hybrid"
+  >(() => {
+    try {
+      if (typeof window !== "undefined") {
+        const stored = window.localStorage.getItem("phototis:renderType")
+        if (
+          stored === "worker" ||
+          stored === "hybrid" ||
+          stored === "default"
+        ) {
+          return stored
+        }
+      }
+    } catch {}
+    return "default"
   })
 
   // Keep a live ref of the latest canonical state to avoid stale closures in HistoryManager
@@ -696,6 +715,7 @@ export function EditorProvider({
     () => ({
       state: runtime,
       documentLayerDimensions,
+      renderType,
       history: {
         begin: (name: string) => historyRef.current?.beginTransaction(name),
         push: (cmd: Command) => historyRef.current?.push(cmd),
@@ -735,9 +755,10 @@ export function EditorProvider({
       addAdjustmentLayer,
       addEmptyLayer,
       addImageLayer,
+      createGroupLayer,
+      dimensionsDocument,
       duplicateLayer,
       flipDocument,
-      dimensionsDocument,
       getLayerById,
       getOrderedLayers,
       getSelectedLayer,
@@ -755,24 +776,26 @@ export function EditorProvider({
       setEphemeral,
       setLayerName,
       setOpacity,
+      setRenderType,
       setZoomPercent,
+      toggleGroupCollapse,
       toggleLock,
       toggleVisibility,
+      ungroupLayer,
       updateAdjustmentParameters,
       updateLayer,
-      createGroupLayer,
-      ungroupLayer,
-      toggleGroupCollapse,
     }),
     [
-      runtime,
       documentLayerDimensions,
+      runtime,
+      renderType,
       addAdjustmentLayer,
       addEmptyLayer,
       addImageLayer,
+      createGroupLayer,
+      dimensionsDocument,
       duplicateLayer,
       flipDocument,
-      dimensionsDocument,
       getLayerById,
       getOrderedLayers,
       getSelectedLayer,
@@ -786,18 +809,17 @@ export function EditorProvider({
       setActiveTool,
       setBlendMode,
       setCanonical,
-
       setEphemeral,
       setLayerName,
       setOpacity,
       setZoomPercent,
+      toggleGroupCollapse,
       toggleLock,
       toggleVisibility,
+      ungroupLayer,
       updateAdjustmentParameters,
       updateLayer,
-      createGroupLayer,
-      ungroupLayer,
-      toggleGroupCollapse,
+      setRenderType,
     ]
   )
 
