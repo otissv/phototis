@@ -450,21 +450,30 @@ export class HybridRenderer {
       Boolean((toolsValues as any).flipHorizontal),
       Boolean((toolsValues as any).flipVertical)
     )
-    const copyOut = this.passGraph.runSingle(
+    const placedOut = this.passGraph.runSingle(
       {
-        shaderName: "copy",
-        uniforms: { u_transform, u_colorSpace: this.colorSpaceFlag },
+        shaderName: "layer.render",
+        uniforms: {
+          u_transform,
+          u_colorSpace: this.colorSpaceFlag,
+          u_layerSize: [layerWidth, layerHeight],
+          u_canvasSize: [canvasWidth, canvasHeight],
+          // Center position in canvas pixels (top-left origin)
+          u_layerPosition: [layerX + layerWidth / 2, layerY + layerHeight / 2],
+        },
         channels: { u_texture: layerTexture },
         targetFboName: "temp",
       },
       canvasWidth,
       canvasHeight,
       {
+        // Vertex expects [0..1] quad in a_position -> use pluginPositionBuffer
         position: this.pluginPositionBuffer as WebGLBuffer,
+        // Sampling uploaded bitmap -> use layer texcoords (flipped V policy)
         texcoord: this.layerTexCoordBuffer as WebGLBuffer,
       }
     )
-    if (!copyOut) return null
+    if (!placedOut) return null
 
     // Attributes bound within pass-graph execution
 
@@ -536,7 +545,7 @@ export class HybridRenderer {
     // Uniforms pushed through pass graph when needed
 
     // Draw
-    return copyOut
+    return placedOut
   }
 
   // Render an adjustment layer by applying its parameters to the current accumulated texture

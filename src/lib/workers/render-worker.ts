@@ -1240,6 +1240,14 @@ async function renderLayers(
             Boolean(p.flipVertical)
           )
           const baseUniforms = { u_colorSpace: docColorSpaceFlag, u_transform }
+          // Resolve layer dimensions for placement
+          const dimEntry = layerDimensionsMap.get(layer.id) as
+            | { x: number; y: number; width: number; height: number }
+            | undefined
+          const lw = dimEntry?.width ?? canvasWidth
+          const lh = dimEntry?.height ?? canvasHeight
+          const lx = dimEntry?.x ?? 0
+          const ly = dimEntry?.y ?? 0
           // Try to consume IPC-sent graph for this layer
           try {
             const lastMsg: any = (self as any).__lastMessageData
@@ -1275,11 +1283,36 @@ async function renderLayers(
               }
             }
           } catch {}
+          // First, place uploaded bitmap into an FBO with correct orientation
+          {
+            const out0 = passGraphPipeline.runSingle(
+              {
+                shaderName: "layer.render",
+                uniforms: {
+                  ...baseUniforms,
+                  u_layerSize: [lw, lh],
+                  u_canvasSize: [canvasWidth, canvasHeight],
+                  u_layerPosition: [lx + lw / 2, ly + lh / 2],
+                },
+                channels: { u_texture: renderedTexture },
+                targetFboName: "temp",
+              },
+              canvasWidth,
+              canvasHeight,
+              {
+                position: layerPositionBuffer as WebGLBuffer,
+                texcoord: layerTexCoordBuffer as WebGLBuffer,
+              }
+            )
+            if (out0) renderedTexture = out0
+          }
+
           if (Number(p.blur || 0) > 0) {
             layerPasses.push({
               shaderName: "blur.separable",
               passId: "h",
               uniforms: { ...baseUniforms, u_blur: Number(p.blur) },
+              inputs: ["layer.render"],
             })
             layerPasses.push({
               shaderName: "blur.separable",
@@ -1307,12 +1340,10 @@ async function renderLayers(
                 u_noise: Number(p.noise || 0),
                 u_grain: Number(p.grain || 0),
               },
-              inputs: layerPasses.length
-                ? [
-                    layerPasses[layerPasses.length - 1].passId ||
-                      layerPasses[layerPasses.length - 1].shaderName,
-                  ]
-                : undefined,
+              inputs: [
+                layerPasses[layerPasses.length - 1].passId ||
+                  layerPasses[layerPasses.length - 1].shaderName,
+              ],
             })
           }
           layerPasses.push({
@@ -1327,35 +1358,20 @@ async function renderLayers(
               u_gamma: Number(p.gamma || 1),
               u_opacity: 100,
             },
-            inputs: layerPasses.length
-              ? [
-                  layerPasses[layerPasses.length - 1].passId ||
-                    layerPasses[layerPasses.length - 1].shaderName,
-                ]
-              : undefined,
+            inputs: [
+              layerPasses[layerPasses.length - 1].passId ||
+                layerPasses[layerPasses.length - 1].shaderName,
+            ],
           })
 
           if (layerPasses.length) {
-            if (!layerPasses[0].channels) {
-              ;(layerPasses[0] as any).channels = {}
-            }
-            ;(layerPasses[0] as any).channels.u_texture = renderedTexture
+            // Source for the first pass comes from oriented layer texture
+            ;(layerPasses[0] as any).channels = { u_texture: renderedTexture }
             const out = passGraphPipeline.runDAG(
               layerPasses,
               canvasWidth,
               canvasHeight,
-              { position: pgPositionBuffer, texcoord: pgCompTexcoordBuffer }
-            )
-            if (out) renderedTexture = out
-          } else {
-            const out = passGraphPipeline.runSingle(
-              {
-                shaderName: "copy",
-                channels: { u_texture: layerTexture },
-                targetFboName: "temp",
-              },
-              canvasWidth,
-              canvasHeight,
+              // All passes after layer.render sample FBO outputs → comp texcoords
               { position: pgPositionBuffer, texcoord: pgCompTexcoordBuffer }
             )
             if (out) renderedTexture = out
