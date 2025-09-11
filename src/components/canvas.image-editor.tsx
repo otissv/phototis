@@ -9,17 +9,18 @@ import type { ImageEditorToolsState } from "@/lib/tools/tools-state"
 import { initialToolsState } from "@/lib/tools/tools-state"
 import type { EditorLayer, CanvasPosition } from "@/lib/editor/state"
 import { useEditorContext } from "@/lib/editor/context"
-import { ShaderManager } from "@/lib/shaders"
+// Legacy ShaderManager removed; hybrid/worker use v2 pass-graph
+import { ShaderManagerV2 } from "@/lib/shaders/v2/manager"
+import { GlobalShaderRegistryV2 } from "@/lib/shaders/v2/registry"
 import { HybridRenderer } from "@/lib/shaders/hybrid-renderer"
 import { RenderConfig } from "@/lib/shaders/render-config"
 import { useWorkerRenderer } from "@/lib/hooks/useWorkerRenderer"
-import { TaskPriority } from "@/lib/workers/worker-manager"
+import { TaskPriority, WorkerManager } from "@/lib/workers/worker-manager"
 import { CanvasStateManager } from "@/lib/canvas-state-manager"
 import { SetViewportCommand } from "@/lib/editor/commands"
 import { useCrop } from "./tools/crop.tools"
 
-// Shader manager instance
-const shaderManager = new ShaderManager()
+// Legacy shader manager removed
 
 export interface LayerDimensions {
   layerId: string
@@ -1065,18 +1066,7 @@ export function ImageEditorCanvas({
     // Configure WebGL with centralized settings
     RenderConfig.configureWebGL(gl)
 
-    // Initialize Shader Manager
-    if (!shaderManager.initialize(gl)) {
-      console.error("Failed to initialize shader manager")
-      return
-    }
-
-    const program = shaderManager.getProgram()
-    if (!program) {
-      console.error("Failed to get shader program")
-      return
-    }
-    programRef.current = program
+    // No legacy shader program needed; renderer manages its own programs
 
     // Buffer Creation and Setup
     const positionBuffer = gl.createBuffer()
@@ -1105,7 +1095,6 @@ export function ImageEditorCanvas({
     // Cleanup Function
     return () => {
       if (glRef.current) {
-        shaderManager.cleanup()
         if (positionBufferRef.current) {
           gl.deleteBuffer(positionBufferRef.current)
           positionBufferRef.current = null
@@ -1396,6 +1385,20 @@ export function ImageEditorCanvas({
 
         // Ensure worker canvas matches current canvas size before first render
         await ensureCanvasSize(canvasWidth, canvasHeight)
+
+        // Prepare for worker mode: warm shaders
+        try {
+          const manager = WorkerManager.getShared()
+          await manager.prepareWorkerShaders({
+            shaderNames: ["compositor", "adjustments.basic", "copy"],
+          })
+        } catch {}
+
+        // Call ShaderManagerV2.prepareForMode('worker') to follow handshake
+        try {
+          const sm2 = new ShaderManagerV2(GlobalShaderRegistryV2)
+          sm2.prepareForMode("worker", canonicalLayers)
+        } catch {}
 
         // Queue render task with worker
         try {

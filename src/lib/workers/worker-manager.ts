@@ -214,6 +214,46 @@ export class WorkerManager {
         },
       })
 
+      // Sync shader registry (v2) to worker after init
+      try {
+        const { GlobalShaderRegistryV2 } = await import(
+          "@/lib/shaders/v2/registry"
+        )
+        const version = GlobalShaderRegistryV2.getVersion()
+        // Send full descriptors for dynamic plugin support
+        const descriptors = GlobalShaderRegistryV2.getAll().map((d) => ({
+          name: d.name,
+          version: d.version,
+          sources: d.sources
+            ? {
+                vertex: d.sources.vertex || null,
+                fragment: d.sources.fragment || null,
+              }
+            : undefined,
+          defines: d.defines || undefined,
+          uniforms: d.uniforms || undefined,
+          channels: d.channels || undefined,
+          variants: d.variants || undefined,
+          defaults: d.defaults || undefined,
+          ui: d.ui || undefined,
+          policies: d.policies || undefined,
+          passes:
+            d.passes?.map((p) => ({
+              id: p.id,
+              vertexSource: p.vertexSource || null,
+              fragmentSource: p.fragmentSource,
+              defines: p.defines || undefined,
+              uniforms: p.uniforms || undefined,
+              channels: p.channels || undefined,
+              inputs: p.inputs || undefined,
+            })) || undefined,
+        }))
+        await this.sendMessage(worker, {
+          type: "shader:sync-registry",
+          data: { version, descriptors },
+        })
+      } catch {}
+
       // After transfer, the OffscreenCanvas is no longer available in main thread
       // The worker now owns the canvas
       this.offscreenCanvas = null
@@ -300,6 +340,93 @@ export class WorkerManager {
         }
       }, this.config.taskTimeout)
     })
+  }
+
+  // Prepare worker for mode switch with shader warmup hint
+  async prepareWorkerShaders(
+    hints: {
+      shaderNames: string[]
+      variantKeys?: string[]
+      variants?: Record<string, string[]>
+    } = {
+      shaderNames: [],
+    }
+  ): Promise<boolean> {
+    try {
+      if (!this.renderWorker) return false
+      // Pre-compute common heavy variants (e.g., blur types/kernels/passes)
+      const enriched = this.buildPrewarmVariants(hints)
+      return await this.sendMessage(this.renderWorker, {
+        type: "shader:prepare",
+        data: enriched,
+      })
+    } catch {
+      return false
+    }
+  }
+
+  // Build and cache prewarm variants for heavy shaders
+  private buildPrewarmVariants(hints: {
+    shaderNames: string[]
+    variantKeys?: string[]
+    variants?: Record<string, string[]>
+  }): {
+    shaderNames: string[]
+    variantKeys?: string[]
+    variants?: Record<string, string[]>
+  } {
+    const names = Array.from(new Set(hints.shaderNames || []))
+    const variants: Record<string, string[]> = { ...(hints.variants || {}) }
+    const flat = new Set(hints.variantKeys || [])
+
+    // Example variant scheme for blur.separable: type-{gauss|box|motion|zoom}-pass-{h|v}-kern-{3|5|9}
+    if (names.includes("blur.separable")) {
+      const types = ["gauss", "box", "motion", "zoom"]
+      const passes = ["h", "v"]
+      const kernels = ["3", "5", "9", "13"]
+      const list: string[] = []
+      for (const t of types) {
+        for (const p of passes) {
+          for (const k of kernels) {
+            list.push(`type-${t}-pass-${p}-kern-${k}`)
+          }
+        }
+      }
+      const prev = new Set(variants["blur.separable"] || [])
+      for (const v of list) prev.add(v)
+      variants["blur.separable"] = Array.from(prev)
+    }
+
+    // Vintage/effects variants (example): strength-{low|med|high}
+    if (names.includes("effects.vintage")) {
+      const list = ["strength-low", "strength-med", "strength-high"]
+      const prev = new Set(variants["effects.vintage"] || [])
+      for (const v of list) prev.add(v)
+      variants["effects.vintage"] = Array.from(prev)
+    }
+
+    // Allow flat variantKeys to apply to all requested shaders
+    if (flat.size) {
+      for (const n of names) {
+        const prev = new Set(variants[n] || [])
+        for (const v of flat) prev.add(v)
+        variants[n] = Array.from(prev)
+      }
+    }
+
+    return { shaderNames: names, variantKeys: Array.from(flat), variants }
+  }
+
+  // Notify worker of GL context loss to rebuild shader caches
+  async notifyContextLoss(): Promise<boolean> {
+    try {
+      if (!this.renderWorker) return false
+      return await this.sendMessage(this.renderWorker, {
+        type: "shader:context-loss",
+      })
+    } catch {
+      return false
+    }
   }
 
   // Handle messages from workers
@@ -428,7 +555,9 @@ export class WorkerManager {
     >,
     priority: TaskPriority = TaskPriority.HIGH,
     token?: { signature?: string; version?: number },
-    interactive?: boolean
+    interactive?: boolean,
+    colorSpace?: number,
+    graph?: unknown
   ): Promise<string> {
     const taskId = this.generateMessageId()
 
@@ -464,6 +593,9 @@ export class WorkerManager {
           version: token?.version ?? 0,
         },
         interactive: !!interactive,
+        // Optional enriched graph and colorSpace flags
+        graph,
+        colorSpace: typeof colorSpace === "number" ? colorSpace : 0,
       },
       timestamp: Date.now(),
       retryCount: 0,

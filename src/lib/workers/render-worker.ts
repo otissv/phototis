@@ -4,9 +4,12 @@
 import type { EditorLayer } from "@/lib/editor/state"
 import type { ImageEditorToolsState } from "@/lib/tools/tools-state"
 import type { PipelineStage } from "@/lib/shaders/asynchronous-pipeline"
-import type { AsynchronousPipeline } from "@/lib/shaders/asynchronous-pipeline"
 import type { HybridRenderer } from "@/lib/shaders/hybrid-renderer"
-import type { ShaderManager } from "@/lib/shaders"
+import { ShaderManagerV2 } from "@/lib/shaders/v2/manager"
+import { GlobalShaderRegistryV2 } from "@/lib/shaders/v2/registry"
+import { registerBuiltinShaders } from "@/lib/shaders/v2/builtins"
+import { FBOManager } from "@/lib/shaders/fbo-manager"
+import { WorkerPassGraphPipeline } from "@/lib/shaders/v2/pipeline.worker"
 import { RenderConfig } from "@/lib/shaders/render-config"
 import {
   BLEND_MODE_MAP,
@@ -52,6 +55,8 @@ interface RenderMessage extends WorkerMessage {
     ][]
     token?: { signature?: string; version?: number }
     interactive?: boolean
+    colorSpace?: number
+    graph?: any
   }
 }
 
@@ -93,9 +98,39 @@ interface SuccessMessage {
 
 // WebGL context and resources
 let gl: WebGL2RenderingContext | null = null
+let shaderManagerV2: ShaderManagerV2 | null = null
+let shaderRegistryVersion = 0
+let passGraphPipeline: WorkerPassGraphPipeline | null = null
+let fboManagerPG: FBOManager | null = null
+let pgPositionBuffer: WebGLBuffer | null = null
+let pgCompTexcoordBuffer: WebGLBuffer | null = null
+let docColorSpaceFlag = 0 // 0: sRGB, 1: linear, 2: display-p3 (placeholder)
+const maskTextures: Map<string, WebGLTexture> = new Map()
+
+function computeTransformMat3(
+  scale: number,
+  rotateDeg: number,
+  flipH: boolean,
+  flipV: boolean,
+  translateX = 0,
+  translateY = 0
+): number[] {
+  const r = (rotateDeg * Math.PI) / 180
+  const cs = Math.cos(r)
+  const sn = Math.sin(r)
+  const sx = scale * (flipH ? -1 : 1)
+  const sy = scale * (flipV ? -1 : 1)
+  const m00 = cs * sx
+  const m01 = -sn * sy
+  const m02 = translateX
+  const m10 = sn * sx
+  const m11 = cs * sy
+  const m12 = translateY
+  return [m00, m01, m02, m10, m11, m12, 0, 0, 1]
+}
 let canvas: OffscreenCanvas | null = null
-let asynchronousPipeline: AsynchronousPipeline | null = null
-let shaderManager: ShaderManager | null = null
+let asynchronousPipeline: any | null = null
+const shaderManager: any | null = null // Legacy - will be removed
 let hybridRendererInstance: HybridRenderer | null = null
 // Enable pipeline path; progressive rendering will render when final texture ready
 // Temporarily disable pipeline and hybrid renderer paths to debug first-frame strip issue
@@ -638,6 +673,39 @@ function initializeWebGL(
       })
     } catch {}
 
+    // Initialize v2 shader manager in worker mode (after GL is ready)
+    try {
+      registerBuiltinShaders(GlobalShaderRegistryV2)
+      shaderManagerV2 = new ShaderManagerV2(GlobalShaderRegistryV2)
+      shaderManagerV2.initialize(gl as WebGL2RenderingContext, "worker")
+      shaderRegistryVersion = GlobalShaderRegistryV2.getVersion()
+      // Build pass-graph essentials
+      fboManagerPG = new FBOManager()
+      fboManagerPG.initialize(gl as WebGL2RenderingContext)
+      passGraphPipeline = new WorkerPassGraphPipeline(
+        gl as WebGL2RenderingContext,
+        fboManagerPG,
+        shaderManagerV2
+      )
+      // Simple position and comp texcoord buffers
+      pgPositionBuffer = (gl as WebGL2RenderingContext).createBuffer()
+      if (pgPositionBuffer) {
+        ;(gl as WebGL2RenderingContext).bindBuffer(
+          (gl as WebGL2RenderingContext).ARRAY_BUFFER,
+          pgPositionBuffer
+        )
+        ;(gl as WebGL2RenderingContext).bufferData(
+          (gl as WebGL2RenderingContext).ARRAY_BUFFER,
+          new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]),
+          (gl as WebGL2RenderingContext).STATIC_DRAW
+        )
+      }
+      pgCompTexcoordBuffer = RenderConfig.createCompTexCoordBuffer(
+        gl as WebGL2RenderingContext
+      )
+      dbg("shader:v2:init", { version: shaderRegistryVersion })
+    } catch {}
+
     dbg("initialize:complete")
     return true
   } catch (error) {
@@ -655,8 +723,7 @@ async function ensureHeavyInit(width: number, height: number): Promise<void> {
   // Lazy-load heavy modules at first render to avoid blocking initialize
   dbg("heavy:init:start")
   const t0 = Date.now()
-  const [shadersMod, hybridMod, pipelineMod] = await Promise.all([
-    import("@/lib/shaders"),
+  const [hybridMod, pipelineMod] = await Promise.all([
     import("@/lib/shaders/hybrid-renderer"),
     import("@/lib/shaders/asynchronous-pipeline"),
   ])
@@ -665,10 +732,10 @@ async function ensureHeavyInit(width: number, height: number): Promise<void> {
   initBlitResources(glCtx)
   initCompositingResources(glCtx)
 
-  // Initialize shared shader manager for layer filters
-  const ShaderManagerCtor = shadersMod.ShaderManager
-  shaderManager = new ShaderManagerCtor()
-  shaderManager.initialize(glCtx)
+  // Initialize v2 shader manager for layer filters
+  shaderManagerV2 = new ShaderManagerV2(GlobalShaderRegistryV2)
+  shaderManagerV2.initialize(glCtx, "worker")
+  registerBuiltinShaders()
   // Build VAO for layer rendering
   layerVAO = glCtx.createVertexArray()
   if (!layerVAO) throw new Error("Failed to create layer VAO")
@@ -708,7 +775,7 @@ async function ensureHeavyInit(width: number, height: number): Promise<void> {
   })
 
   // Initialize asynchronous pipeline
-  const AsynchronousPipelineCtor = pipelineMod.AsynchronousPipeline
+  const AsynchronousPipelineCtor = pipelineMod.AsynchronousPipeline as any
   asynchronousPipeline = new AsynchronousPipelineCtor({
     enableProgressiveRendering: true,
     maxConcurrentStages: 2,
@@ -901,6 +968,13 @@ async function renderLayers(
     // Convert layerDimensions array to Map for easier access
     const layerDimensionsMap = new Map(layerDimensions)
 
+    // Update color space flag if provided in message data
+    try {
+      const m: any = (self as any).__lastMessageData
+      if (m && typeof m.colorSpace === "number")
+        docColorSpaceFlag = m.colorSpace
+    } catch {}
+
     // Validate canvas dimensions
     const canvasDim = validateImageDimensions(canvasWidth, canvasHeight)
 
@@ -973,6 +1047,84 @@ async function renderLayers(
           console.warn(`Failed to load texture for layer ${layer.id}:`, error)
         }
       }
+      // Load mask texture if available on layer (supports ImageBitmap, Blob/File, ArrayBuffer)
+      try {
+        const anyLayer: any = layer as any
+        const mask = anyLayer?.mask
+        if (mask?.image) {
+          const key = `${layer.id}:mask`
+          if (!maskTextures.has(key)) {
+            const glCtx = gl as WebGL2RenderingContext
+            const tex = glCtx.createTexture()
+            if (tex) {
+              glCtx.bindTexture(glCtx.TEXTURE_2D, tex)
+              glCtx.texParameteri(
+                glCtx.TEXTURE_2D,
+                glCtx.TEXTURE_WRAP_S,
+                glCtx.CLAMP_TO_EDGE
+              )
+              glCtx.texParameteri(
+                glCtx.TEXTURE_2D,
+                glCtx.TEXTURE_WRAP_T,
+                glCtx.CLAMP_TO_EDGE
+              )
+              glCtx.texParameteri(
+                glCtx.TEXTURE_2D,
+                glCtx.TEXTURE_MIN_FILTER,
+                glCtx.LINEAR
+              )
+              glCtx.texParameteri(
+                glCtx.TEXTURE_2D,
+                glCtx.TEXTURE_MAG_FILTER,
+                glCtx.LINEAR
+              )
+              let bitmap: ImageBitmap | null = null
+              try {
+                const src: any = mask.image
+                const isBitmapLike =
+                  src &&
+                  typeof src === "object" &&
+                  "width" in src &&
+                  "height" in src
+                const isBlobLike =
+                  src &&
+                  typeof src.size === "number" &&
+                  typeof src.type === "string"
+                const isArrayBuffer =
+                  src && (src as ArrayBuffer).byteLength !== undefined
+                if (isBitmapLike) {
+                  bitmap = src as ImageBitmap
+                } else if (isBlobLike) {
+                  bitmap = await createImageBitmap(src as Blob, {
+                    imageOrientation: "from-image",
+                  })
+                } else if (isArrayBuffer) {
+                  const blob = new Blob([src as ArrayBuffer])
+                  bitmap = await createImageBitmap(blob, {
+                    imageOrientation: "from-image",
+                  })
+                }
+              } catch {}
+              if (bitmap) {
+                glCtx.texImage2D(
+                  glCtx.TEXTURE_2D,
+                  0,
+                  glCtx.RGBA,
+                  glCtx.RGBA,
+                  glCtx.UNSIGNED_BYTE,
+                  bitmap
+                )
+                try {
+                  if (typeof (bitmap as any).close === "function")
+                    (bitmap as any).close()
+                } catch {}
+              }
+              maskTextures.set(key, tex)
+              glCtx.bindTexture(glCtx.TEXTURE_2D, null)
+            }
+          }
+        }
+      } catch {}
     }
 
     postMessage({
@@ -1076,15 +1228,139 @@ async function renderLayers(
           })
         } catch {}
 
-        // Render layer with filters
-        const renderedTexture = await renderLayerWithFilters(
-          layer,
-          layerTexture,
-          validatedToolsValues,
-          canvasWidth,
-          canvasHeight,
-          layerDimensions
-        )
+        // Render layer via v2 pass-graph (IPC-provided or built per layer)
+        let renderedTexture: WebGLTexture | null = layerTexture
+        if (passGraphPipeline && pgPositionBuffer && pgCompTexcoordBuffer) {
+          const p: any = validatedToolsValues
+          let layerPasses: any[] = []
+          const u_transform = computeTransformMat3(
+            Number(p.scale || 1),
+            Number(p.rotate || 0),
+            Boolean(p.flipHorizontal),
+            Boolean(p.flipVertical)
+          )
+          const baseUniforms = { u_colorSpace: docColorSpaceFlag, u_transform }
+          // Try to consume IPC-sent graph for this layer
+          try {
+            const lastMsg: any = (self as any).__lastMessageData
+            const graph = lastMsg?.graph
+            if (Array.isArray(graph)) {
+              const entry = graph.find((g: any) => g && g.layerId === layer.id)
+              if (entry && Array.isArray(entry.passes)) {
+                layerPasses = entry.passes.map((pp: any) => ({
+                  shaderName: String(pp.shaderName || ""),
+                  passId: pp.passId ? String(pp.passId) : undefined,
+                  variantKey: pp.variantKey ? String(pp.variantKey) : undefined,
+                  uniforms: { ...baseUniforms, ...(pp.uniforms || {}) },
+                  inputs: Array.isArray(pp.inputs)
+                    ? pp.inputs.slice()
+                    : undefined,
+                }))
+                // Ensure linearize first and encode last
+                if (layerPasses.length) {
+                  if (layerPasses[0].shaderName !== "color.linearize")
+                    layerPasses.unshift({
+                      shaderName: "color.linearize",
+                      uniforms: { ...baseUniforms },
+                    })
+                  if (
+                    layerPasses[layerPasses.length - 1].shaderName !==
+                    "color.encode"
+                  )
+                    layerPasses.push({
+                      shaderName: "color.encode",
+                      uniforms: { ...baseUniforms },
+                    })
+                }
+              }
+            }
+          } catch {}
+          if (Number(p.blur || 0) > 0) {
+            layerPasses.push({
+              shaderName: "blur.separable",
+              passId: "h",
+              uniforms: { ...baseUniforms, u_blur: Number(p.blur) },
+            })
+            layerPasses.push({
+              shaderName: "blur.separable",
+              passId: "v",
+              uniforms: { ...baseUniforms, u_blur: Number(p.blur) },
+              inputs: ["h"],
+            })
+          }
+          if (
+            Number(p.vintage || 0) > 0 ||
+            Number(p.sepia || 0) > 0 ||
+            Number(p.grayscale || 0) > 0 ||
+            Number(p.invert || 0) > 0
+          ) {
+            layerPasses.push({
+              shaderName: "effects.vintage",
+              uniforms: {
+                ...baseUniforms,
+                u_vintage: Number(p.vintage || 0),
+                u_invert: Number(p.invert || 0),
+                u_sepia: Number(p.sepia || 0),
+                u_grayscale: Number(p.grayscale || 0),
+                u_recolor: Number(p.recolor || 0),
+                u_vibrance: Number(p.vibrance || 0),
+                u_noise: Number(p.noise || 0),
+                u_grain: Number(p.grain || 0),
+              },
+              inputs: layerPasses.length
+                ? [
+                    layerPasses[layerPasses.length - 1].passId ||
+                      layerPasses[layerPasses.length - 1].shaderName,
+                  ]
+                : undefined,
+            })
+          }
+          layerPasses.push({
+            shaderName: "adjustments.basic",
+            uniforms: {
+              ...baseUniforms,
+              u_brightness: Number(p.brightness || 100),
+              u_contrast: Number(p.contrast || 100),
+              u_saturation: Number(p.saturation || 100),
+              u_hue: Number(p.hue || 0),
+              u_exposure: Number(p.exposure || 0),
+              u_gamma: Number(p.gamma || 1),
+              u_opacity: 100,
+            },
+            inputs: layerPasses.length
+              ? [
+                  layerPasses[layerPasses.length - 1].passId ||
+                    layerPasses[layerPasses.length - 1].shaderName,
+                ]
+              : undefined,
+          })
+
+          if (layerPasses.length) {
+            if (!layerPasses[0].channels) {
+              ;(layerPasses[0] as any).channels = {}
+            }
+            ;(layerPasses[0] as any).channels.u_texture = renderedTexture
+            const out = passGraphPipeline.runDAG(
+              layerPasses,
+              canvasWidth,
+              canvasHeight,
+              { position: pgPositionBuffer, texcoord: pgCompTexcoordBuffer }
+            )
+            if (out) renderedTexture = out
+          } else {
+            const out = passGraphPipeline.runSingle(
+              {
+                shaderName: "copy",
+                channels: { u_texture: layerTexture },
+                targetFboName: "temp",
+              },
+              canvasWidth,
+              canvasHeight,
+              { position: pgPositionBuffer, texcoord: pgCompTexcoordBuffer }
+            )
+            if (out) renderedTexture = out
+          }
+        }
 
         if (renderedTexture) {
           renderedLayers.set(layer.id, renderedTexture)
@@ -1891,7 +2167,7 @@ async function renderLayerWithFilters(
     [string, { width: number; height: number; x: number; y: number }]
   >
 ): Promise<WebGLTexture | null> {
-  if (!gl || !shaderManager) return null
+  if (!gl || !shaderManager) return null // Legacy function - using v2 system now
 
   try {
     const glCtx = gl as WebGL2RenderingContext
@@ -2032,7 +2308,7 @@ async function renderAdjustmentFromBase(
   canvasWidth: number,
   canvasHeight: number
 ): Promise<WebGLTexture | null> {
-  if (!gl || !shaderManager) return null
+  if (!gl || !shaderManager) return null // Legacy function - using v2 system now
 
   try {
     const glCtx = gl as WebGL2RenderingContext
@@ -2107,13 +2383,43 @@ async function compositeLayers(
   canvasWidth: number,
   canvasHeight: number
 ): Promise<WebGLTexture | null> {
-  if (!gl) return null
+  if (!gl || !passGraphPipeline || !pgPositionBuffer || !pgCompTexcoordBuffer)
+    return null
 
   try {
-    // For now, just return the first layer texture
-    // TODO: Implement actual layer compositing using shaders
-
-    return layerTextures[0]?.[1] || null
+    if (layerTextures.length === 0) return null
+    let acc: WebGLTexture | null = null
+    for (let i = 0; i < layerTextures.length; i++) {
+      const [layerId, tex] = layerTextures[i]
+      if (!acc) {
+        acc = tex
+        continue
+      }
+      // Mask plumbing: lookup mask on the current layer if provided and bind
+      const maskTex: WebGLTexture | null =
+        maskTextures.get(`${layerId}:mask`) || null
+      const out = passGraphPipeline.runSingle(
+        {
+          shaderName: "compositor",
+          uniforms: {
+            u_blendMode: 0,
+            u_opacity: 100,
+            u_hasMask: maskTex ? 1 : 0,
+            // Default mask params when layer metadata not available here
+            u_maskParams: [0, 0, 1, 0],
+          },
+          channels: maskTex
+            ? { u_baseTexture: acc, u_topTexture: tex, u_maskTexture: maskTex }
+            : { u_baseTexture: acc, u_topTexture: tex },
+          targetFboName: "result",
+        },
+        canvasWidth,
+        canvasHeight,
+        { position: pgPositionBuffer, texcoord: pgCompTexcoordBuffer }
+      )
+      if (out) acc = out
+    }
+    return acc
   } catch (error) {
     console.error("Failed to composite layers:", error)
     return null
@@ -2220,9 +2526,91 @@ async function renderToCanvas(
 // Message handler
 self.onmessage = async (event: MessageEvent) => {
   const message: WorkerMessage = event.data
+  try {
+    ;(self as any).__lastMessageData = (message as any).data
+  } catch {}
 
   try {
     switch (message.type) {
+      case "shader:sync-registry": {
+        // Receive v2 shader registry payload (full descriptors) and replace registry
+        try {
+          const data = (message as any).data || {}
+          const descriptors = Array.isArray(data.descriptors)
+            ? (data.descriptors as any[])
+            : []
+          if (descriptors.length) {
+            try {
+              ;(GlobalShaderRegistryV2 as any).replaceAll(descriptors)
+            } catch {}
+          }
+          if (typeof data.version === "number")
+            shaderRegistryVersion = data.version
+          postMessage({ type: "success", id: message.id } as SuccessMessage)
+        } catch {}
+        break
+      }
+      case "shader:prepare": {
+        // Pre-warm requested shaders/passes (with optional variant keys)
+        try {
+          const payload = (message as any).data || { shaderNames: [] }
+          if (shaderManagerV2 && gl) {
+            try {
+              registerBuiltinShaders(GlobalShaderRegistryV2)
+            } catch {}
+            shaderManagerV2.prepareForMode("worker", null)
+            const names: string[] = Array.isArray(payload.shaderNames)
+              ? payload.shaderNames
+              : []
+            const variantsMap: Record<string, string[]> =
+              (payload.variants as Record<string, string[]>) || {}
+            const flatVariantKeys: string[] = Array.isArray(payload.variantKeys)
+              ? (payload.variantKeys as string[])
+              : []
+            const rt = shaderManagerV2.getActiveRuntime()
+            for (const n of names) {
+              const s = shaderManagerV2.getRegistry().get(n)
+              if (!s) continue
+              const variantList = variantsMap[n] ||
+                flatVariantKeys || [undefined as any]
+              const uniqueVariants = Array.from(new Set(variantList))
+              for (const v of uniqueVariants) {
+                if (s.passes && s.passes.length > 0) {
+                  for (const p of s.passes) {
+                    rt.getOrCompileProgram({
+                      shader: s,
+                      variantKey: v,
+                      passId: p.id,
+                    })
+                  }
+                } else {
+                  rt.getOrCompileProgram({ shader: s, variantKey: v })
+                }
+              }
+            }
+          }
+          postMessage({ type: "success", id: message.id } as SuccessMessage)
+        } catch {}
+        break
+      }
+      case "shader:context-loss": {
+        try {
+          if (shaderManagerV2 && gl) {
+            shaderManagerV2.cleanup("worker")
+            shaderManagerV2.initialize(gl as WebGL2RenderingContext, "worker")
+            registerBuiltinShaders(GlobalShaderRegistryV2)
+            shaderManagerV2.prepareForMode("worker", null)
+          }
+          postMessage({ type: "success", id: message.id } as SuccessMessage)
+        } catch {
+          postMessage({
+            type: "error",
+            id: message.id,
+            error: "context-loss-rebuild-failed",
+          } as ErrorMessage)
+        }
+        break
+      }
       case "initialize": {
         const initMessage = message as InitializeMessage
 

@@ -21,6 +21,9 @@ export function useWebGLDownload(
         const width = gl.drawingBufferWidth
         const height = gl.drawingBufferHeight
 
+        // Ensure we're reading from the main canvas (default framebuffer)
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+
         const pixels = new Uint8Array(width * height * 4)
         gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels)
 

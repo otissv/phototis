@@ -6,15 +6,16 @@ import {
 } from "./fbo-manager"
 import { BLEND_MODE_MAP } from "./blend-modes/blend-modes"
 import type { BlendMode } from "./blend-modes/types.blend"
-import {
-  COMPOSITING_VERTEX_SHADER,
-  COMPOSITING_FRAGMENT_SHADER,
-  LAYER_RENDER_FRAGMENT_SHADER,
-} from "./compositing-shader"
+import { LAYER_RENDER_FRAGMENT_SHADER } from "./compositing-shader"
 import type { ImageEditorToolsState } from "@/lib/tools/tools-state"
 import type { EditorLayer as Layer } from "@/lib/editor/state"
-import { ShaderManager } from "."
+// Legacy ShaderManager removed in v2 migration
 import { RenderConfig } from "./render-config"
+
+import { ShaderManagerV2 } from "./v2/manager"
+import { GlobalShaderRegistryV2 } from "./v2/registry"
+import { registerBuiltinShaders } from "./v2/builtins"
+import { HybridPassGraphPipeline } from "./v2/pipeline.hybrid"
 
 export interface HybridRendererOptions {
   width: number
@@ -35,13 +36,167 @@ export class HybridRenderer {
   private compTexCoordBuffer: WebGLBuffer | null = null
   private layerTexture: WebGLTexture | null = null
   private compositingTexture: WebGLTexture | null = null
-  // Plugin-based shader manager (modular shader system)
-  private shaderManager: ShaderManager | null = null
+  private maskTextures: Map<string, WebGLTexture> = new Map()
+  private pendingMaskDecodes: Set<string> = new Set()
+  // Legacy plugin-based shader manager removed; using v2 ShaderManagerV2
+  private shaderManager: null = null
   // Position buffer for plugin vertex shader (expects [0..1] quad)
   private pluginPositionBuffer: WebGLBuffer | null = null
 
   constructor() {
     this.fboManager = new FBOManager()
+  }
+
+  private shaderManagerV2: ShaderManagerV2 | null = null
+  private passGraph: HybridPassGraphPipeline | null = null
+  private colorSpaceFlag = 0 // 0=srgb,1=linear,2=display-p3
+
+  private computeTransformMat3(
+    scale: number,
+    rotateDeg: number,
+    flipH: boolean,
+    flipV: boolean,
+    translateX = 0,
+    translateY = 0
+  ): number[] {
+    const r = (rotateDeg * Math.PI) / 180
+    const cs = Math.cos(r)
+    const sn = Math.sin(r)
+    const sx = scale * (flipH ? -1 : 1)
+    const sy = scale * (flipV ? -1 : 1)
+    const m00 = cs * sx
+    const m01 = -sn * sy
+    const m02 = translateX
+    const m10 = sn * sx
+    const m11 = cs * sy
+    const m12 = translateY
+    return [m00, m01, m02, m10, m11, m12, 0, 0, 1]
+  }
+
+  private getOrCreateMaskTexture(layer: any): WebGLTexture | null {
+    const id = layer?.id
+    if (!id || !this.gl) return null
+    const key = `${id}:mask`
+    const existing = this.maskTextures.get(key)
+    if (existing) return existing
+    const mask = layer?.mask
+    if (!mask || !mask.image) return null
+    // If we have an ImageBitmap, we can upload synchronously
+    if (
+      typeof ImageBitmap !== "undefined" &&
+      mask.image instanceof ImageBitmap
+    ) {
+      const tex = this.gl.createTexture()
+      if (!tex) return null
+      this.gl.bindTexture(this.gl.TEXTURE_2D, tex)
+      this.gl.texParameteri(
+        this.gl.TEXTURE_2D,
+        this.gl.TEXTURE_WRAP_S,
+        this.gl.CLAMP_TO_EDGE
+      )
+      this.gl.texParameteri(
+        this.gl.TEXTURE_2D,
+        this.gl.TEXTURE_WRAP_T,
+        this.gl.CLAMP_TO_EDGE
+      )
+      this.gl.texParameteri(
+        this.gl.TEXTURE_2D,
+        this.gl.TEXTURE_MIN_FILTER,
+        this.gl.LINEAR
+      )
+      this.gl.texParameteri(
+        this.gl.TEXTURE_2D,
+        this.gl.TEXTURE_MAG_FILTER,
+        this.gl.LINEAR
+      )
+      try {
+        this.gl.texImage2D(
+          this.gl.TEXTURE_2D,
+          0,
+          this.gl.RGBA,
+          this.gl.RGBA,
+          this.gl.UNSIGNED_BYTE,
+          mask.image as ImageBitmap
+        )
+      } catch {}
+      this.gl.bindTexture(this.gl.TEXTURE_2D, null)
+      this.maskTextures.set(key, tex)
+      return tex
+    }
+    // Otherwise, request async decode/upload for Blob/File/ArrayBuffer
+    this.requestMaskDecode(layer)
+    return null
+  }
+
+  private async requestMaskDecode(layer: any): Promise<void> {
+    const id = layer?.id
+    if (!id || !this.gl) return
+    const key = `${id}:mask`
+    if (this.pendingMaskDecodes.has(key)) return
+    this.pendingMaskDecodes.add(key)
+    try {
+      const mask = layer?.mask
+      const src: any = mask?.image
+      if (!src) return
+      let bitmap: ImageBitmap | null = null
+      try {
+        const isBlobLike =
+          src && typeof src.size === "number" && typeof src.type === "string"
+        const isArrayBuffer =
+          src && (src as ArrayBuffer).byteLength !== undefined
+        if (isBlobLike) {
+          bitmap = await createImageBitmap(src as Blob, {
+            imageOrientation: "from-image",
+          })
+        } else if (isArrayBuffer) {
+          const blob = new Blob([src as ArrayBuffer])
+          bitmap = await createImageBitmap(blob, {
+            imageOrientation: "from-image",
+          })
+        }
+      } catch {}
+      if (!bitmap) return
+      const tex = this.gl.createTexture()
+      if (!tex) return
+      this.gl.bindTexture(this.gl.TEXTURE_2D, tex)
+      this.gl.texParameteri(
+        this.gl.TEXTURE_2D,
+        this.gl.TEXTURE_WRAP_S,
+        this.gl.CLAMP_TO_EDGE
+      )
+      this.gl.texParameteri(
+        this.gl.TEXTURE_2D,
+        this.gl.TEXTURE_WRAP_T,
+        this.gl.CLAMP_TO_EDGE
+      )
+      this.gl.texParameteri(
+        this.gl.TEXTURE_2D,
+        this.gl.TEXTURE_MIN_FILTER,
+        this.gl.LINEAR
+      )
+      this.gl.texParameteri(
+        this.gl.TEXTURE_2D,
+        this.gl.TEXTURE_MAG_FILTER,
+        this.gl.LINEAR
+      )
+      try {
+        this.gl.texImage2D(
+          this.gl.TEXTURE_2D,
+          0,
+          this.gl.RGBA,
+          this.gl.RGBA,
+          this.gl.UNSIGNED_BYTE,
+          bitmap
+        )
+      } catch {}
+      this.gl.bindTexture(this.gl.TEXTURE_2D, null)
+      try {
+        if (typeof (bitmap as any).close === "function") (bitmap as any).close()
+      } catch {}
+      this.maskTextures.set(key, tex)
+    } finally {
+      this.pendingMaskDecodes.delete(`${layer?.id}:mask`)
+    }
   }
 
   initialize(options: HybridRendererOptions): boolean {
@@ -79,23 +234,35 @@ export class HybridRenderer {
       return false
     }
 
-    // Initialize modular ShaderManager for layer rendering via plugins
-    this.shaderManager = new ShaderManager()
-    const shaderInitOk = this.shaderManager.initialize(gl)
+    // Legacy ShaderManager no longer used for new pipeline
+    this.shaderManager = null
 
-    // Compile compositing program (blend modes)
-    this.compositingProgram = this.compileProgram(
-      COMPOSITING_VERTEX_SHADER,
-      COMPOSITING_FRAGMENT_SHADER
-    )
+    // Initialize v2 shader manager and register builtins
+    this.shaderManagerV2 = new ShaderManagerV2(GlobalShaderRegistryV2)
+    this.shaderManagerV2.initialize(this.gl as WebGL2RenderingContext, "hybrid")
+    registerBuiltinShaders()
 
-    if (!shaderInitOk || !this.compositingProgram) {
-      console.error("Failed to compile shader programs:", {
-        shaderManager: shaderInitOk,
-        compositingProgram: !!this.compositingProgram,
-      })
+    // Compile compositing program using v2 compositor shader
+    const compositorShader = this.shaderManagerV2.getShader("compositor")
+    if (!compositorShader) {
+      console.error("Failed to get compositor shader from v2 system")
       return false
     }
+
+    const rt = this.shaderManagerV2.getActiveRuntime()
+    const handle = rt.getOrCompileProgram({ shader: compositorShader })
+    if (!handle) {
+      console.error("Failed to compile compositor shader")
+      return false
+    }
+
+    this.compositingProgram = handle.program
+
+    this.passGraph = new HybridPassGraphPipeline(
+      gl,
+      this.fboManager,
+      this.shaderManagerV2
+    )
 
     // Create buffers
     this.positionBuffer = gl.createBuffer()
@@ -167,6 +334,10 @@ export class HybridRenderer {
     return true
   }
 
+  setColorSpace(flag: number): void {
+    this.colorSpaceFlag = flag
+  }
+
   private compileProgram(
     vertexSource: string,
     fragmentSource: string
@@ -235,7 +406,7 @@ export class HybridRenderer {
       { width: number; height: number; x: number; y: number }
     >
   ): WebGLTexture | null {
-    if (!this.gl || !this.shaderManager) return null
+    if (!this.gl || !this.shaderManagerV2) return null
 
     // Use the temp FBO for layer rendering
     const tempFBO = this.fboManager.getFBO("temp")
@@ -271,28 +442,31 @@ export class HybridRenderer {
     const layerX = layerDim?.x || 0
     const layerY = layerDim?.y || 0
 
-    // Use plugin-based program
-    const program = this.shaderManager.getProgram()
-    if (!program) return null
-    this.gl.useProgram(program)
-
-    // Set up attributes from shared buffers
-    const positionLocation = this.gl.getAttribLocation(program, "a_position")
-    this.gl.bindBuffer(
-      this.gl.ARRAY_BUFFER,
-      this.pluginPositionBuffer as WebGLBuffer
+    // Use v2 pipeline instead of legacy program (render layer content via copy shader)
+    if (!this.shaderManagerV2 || !this.passGraph) return null
+    const u_transform = this.computeTransformMat3(
+      Number((toolsValues as any).scale || 1),
+      Number((toolsValues as any).rotate || 0),
+      Boolean((toolsValues as any).flipHorizontal),
+      Boolean((toolsValues as any).flipVertical)
     )
-    this.gl.enableVertexAttribArray(positionLocation)
-    this.gl.vertexAttribPointer(positionLocation, 2, this.gl.FLOAT, false, 0, 0)
-
-    // Layer rendering samples uploaded bitmaps
-    this.gl.bindBuffer(
-      this.gl.ARRAY_BUFFER,
-      this.layerTexCoordBuffer as WebGLBuffer
+    const copyOut = this.passGraph.runSingle(
+      {
+        shaderName: "copy",
+        uniforms: { u_transform, u_colorSpace: this.colorSpaceFlag },
+        channels: { u_texture: layerTexture },
+        targetFboName: "temp",
+      },
+      canvasWidth,
+      canvasHeight,
+      {
+        position: this.pluginPositionBuffer as WebGLBuffer,
+        texcoord: this.layerTexCoordBuffer as WebGLBuffer,
+      }
     )
-    const texCoordLocation = this.gl.getAttribLocation(program, "a_texCoord")
-    this.gl.enableVertexAttribArray(texCoordLocation)
-    this.gl.vertexAttribPointer(texCoordLocation, 2, this.gl.FLOAT, false, 0, 0)
+    if (!copyOut) return null
+
+    // Attributes bound within pass-graph execution
 
     // Debug: Log layer orientation and texcoords
     try {
@@ -323,11 +497,7 @@ export class HybridRenderer {
       })
     } catch {}
 
-    // Bind layer texture
-    this.gl.activeTexture(this.gl.TEXTURE0)
-    this.gl.bindTexture(this.gl.TEXTURE_2D, layerTexture)
-    const samplerLocation = this.gl.getUniformLocation(program, "u_image")
-    if (samplerLocation) this.gl.uniform1i(samplerLocation, 0)
+    // No direct GL bind; sampling chained via pass graph
 
     // Build uniforms for plugin-based program
     const layerCenterX = layerX + layerWidth / 2
@@ -363,14 +533,10 @@ export class HybridRenderer {
     }
     if (recolorColor) uniformsUpdate.u_recolorColor = recolorColor
 
-    this.shaderManager.updateUniforms(uniformsUpdate)
-    this.shaderManager.setUniforms(this.gl, program)
+    // Uniforms pushed through pass graph when needed
 
     // Draw
-    this.gl.drawArrays(this.gl.TRIANGLE_STRIP, 0, 4)
-
-    // Return the rendered texture from the temp FBO
-    return tempFBO.texture
+    return copyOut
   }
 
   // Render an adjustment layer by applying its parameters to the current accumulated texture
@@ -381,113 +547,36 @@ export class HybridRenderer {
     canvasWidth: number,
     canvasHeight: number
   ): WebGLTexture | null {
-    if (!this.gl || !this.shaderManager) return null
+    if (!this.gl || !this.shaderManagerV2 || !this.passGraph) return null
 
-    // Use temp FBO as output target
-    const tempFBO = this.fboManager.getFBO("temp")
-    if (!tempFBO) return null
-
-    // Bind temp FBO and clear
-    this.fboManager.bindFBO("temp")
-    this.fboManager.clearFBO("temp", 0, 0, 0, 0)
-
-    // Use the same plugin-based program, but sample from the base texture and use full-canvas dims
-    const program = this.shaderManager.getProgram()
-    if (!program) return null
-    this.gl.useProgram(program)
-
-    const positionLocation = this.gl.getAttribLocation(program, "a_position")
-    this.gl.bindBuffer(
-      this.gl.ARRAY_BUFFER,
-      this.pluginPositionBuffer as WebGLBuffer
-    )
-    this.gl.enableVertexAttribArray(positionLocation)
-    this.gl.vertexAttribPointer(positionLocation, 2, this.gl.FLOAT, false, 0, 0)
-
-    // Adjustment samples accumulated base texture from FBO; use comp texcoords
-    this.gl.bindBuffer(
-      this.gl.ARRAY_BUFFER,
-      this.compTexCoordBuffer as WebGLBuffer
-    )
-    const texCoordLocation = this.gl.getAttribLocation(program, "a_texCoord")
-    this.gl.enableVertexAttribArray(texCoordLocation)
-    this.gl.vertexAttribPointer(texCoordLocation, 2, this.gl.FLOAT, false, 0, 0)
-
-    // Bind the accumulated base texture as the image source
-    this.gl.activeTexture(this.gl.TEXTURE0)
-    this.gl.bindTexture(this.gl.TEXTURE_2D, baseTexture)
-    const samplerLocation = this.gl.getUniformLocation(program, "u_image")
-    if (samplerLocation) this.gl.uniform1i(samplerLocation, 0)
-
-    // For adjustment rendering, use full opacity here and composite opacity later
-    // Use full-canvas dimensions and center position
-    const centerX = canvasWidth / 2
-    const centerY = canvasHeight / 2
-    // Normalize recolor for adjustments as well
-    let recolorAmount = 0
-    let recolorColor: [number, number, number] | null = null
-    const recolorAny: any = (adjustmentTools as any).recolor
-    if (typeof recolorAny === "number") {
-      recolorAmount = recolorAny
-      recolorColor = [1, 0, 0]
-    } else if (
-      recolorAny &&
-      typeof recolorAny === "object" &&
-      typeof recolorAny.value === "number"
-    ) {
-      recolorAmount = recolorAny.value
-      const hex =
-        typeof recolorAny.color === "string" ? recolorAny.color : "#000000"
-      const rgba = this.hexToRgba01(hex) || [0, 0, 0, 1]
-      recolorColor = [rgba[0], rgba[1], rgba[2]]
-    }
-
-    const uniformsUpdate: Record<string, any> = {
+    const sx = Number((adjustmentTools as any).scale || 1)
+    const rot = Number((adjustmentTools as any).rotate || 0)
+    const flipH = Boolean((adjustmentTools as any).flipHorizontal)
+    const flipV = Boolean((adjustmentTools as any).flipVertical)
+    const u_transform = this.computeTransformMat3(sx, rot, flipH, flipV)
+    const uniforms: Record<string, unknown> = {
       ...(adjustmentTools as any),
-      recolor: recolorAmount,
       u_opacity: 100,
-      layerSize: [canvasWidth, canvasHeight],
-      canvasSize: [canvasWidth, canvasHeight],
-      layerPosition: [centerX, centerY],
-      u_resolution: [canvasWidth, canvasHeight],
+      u_colorSpace: 0,
+      u_transform,
     }
-    if (recolorColor) uniformsUpdate.u_recolorColor = recolorColor
 
-    this.shaderManager.updateUniforms(uniformsUpdate)
-    this.shaderManager.setUniforms(this.gl, program)
-
-    // Debug: Log adjustment orientation/texcoords
-    try {
-      const rotRaw = Number((adjustmentTools as any).rotate || 0)
-      const rot = ((rotRaw % 360) + 360) % 360
-      const flipV = Boolean((adjustmentTools as any).flipVertical)
-      const flipH = Boolean((adjustmentTools as any).flipHorizontal)
-      const near = (a: number, b: number, tol = 0.5) => Math.abs(a - b) <= tol
-      let baseOrient: "upright" | "upsideDown" | "rotated90" | "rotated270" =
-        "upright"
-      if (near(rot, 90)) baseOrient = "rotated90"
-      else if (near(rot, 270)) baseOrient = "rotated270"
-      else if (near(rot, 180)) baseOrient = "upsideDown"
-      let finalOrient = baseOrient
-      if (baseOrient === "upright" || baseOrient === "upsideDown") {
-        if (flipV) {
-          finalOrient = baseOrient === "upright" ? "upsideDown" : "upright"
-        }
+    const tex = this.passGraph.runSingle(
+      {
+        shaderName: "adjustments.basic",
+        uniforms,
+        channels: { u_texture: baseTexture },
+        targetFboName: "temp",
+      },
+      canvasWidth,
+      canvasHeight,
+      {
+        position: this.pluginPositionBuffer as WebGLBuffer,
+        texcoord: this.compTexCoordBuffer as WebGLBuffer,
       }
-      console.log("HybridRenderer adjustment:orientation", {
-        flipVertical: flipV,
-        flipHorizontal: flipH,
-        rotate: rot,
-        texcoordV: "normal",
-        unpackFlipY: this.gl.getParameter(this.gl.UNPACK_FLIP_Y_WEBGL),
-        orientation: finalOrient,
-      })
-    } catch {}
+    )
 
-    // Draw fullscreen quad
-    this.gl.drawArrays(this.gl.TRIANGLE_STRIP, 0, 4)
-
-    return tempFBO.texture
+    return tex
   }
 
   compositeLayers(
@@ -498,87 +587,27 @@ export class HybridRenderer {
     canvasWidth: number,
     canvasHeight: number
   ): WebGLTexture | null {
-    if (!this.gl || !this.compositingProgram) return null
+    if (!this.gl || !this.passGraph || !this.shaderManagerV2) return null
 
-    // Bind result FBO for compositing
-    this.fboManager.bindFBO("result")
-    this.fboManager.clearFBO("result", 0, 0, 0, 0)
-
-    // Use compositing program
-    this.gl.useProgram(this.compositingProgram)
-
-    // Set up attributes
-    const positionLocation = this.gl.getAttribLocation(
-      this.compositingProgram,
-      "a_position"
+    const tex = this.passGraph.runSingle(
+      {
+        shaderName: "compositor",
+        uniforms: {
+          u_blendMode: BLEND_MODE_MAP[blendMode],
+          u_opacity: opacity,
+        },
+        channels: { u_baseTexture: baseTexture, u_topTexture: topTexture },
+        targetFboName: "result",
+      },
+      canvasWidth,
+      canvasHeight,
+      {
+        position: this.positionBuffer as WebGLBuffer,
+        texcoord: this.compTexCoordBuffer as WebGLBuffer,
+      }
     )
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.positionBuffer)
-    this.gl.enableVertexAttribArray(positionLocation)
-    this.gl.vertexAttribPointer(positionLocation, 2, this.gl.FLOAT, false, 0, 0)
 
-    // Compositing samples FBOs; use comp texcoords
-    this.gl.bindBuffer(
-      this.gl.ARRAY_BUFFER,
-      this.compTexCoordBuffer as WebGLBuffer
-    )
-    const texCoordLocation = this.gl.getAttribLocation(
-      this.compositingProgram,
-      "a_texCoord"
-    )
-    this.gl.enableVertexAttribArray(texCoordLocation)
-    this.gl.vertexAttribPointer(texCoordLocation, 2, this.gl.FLOAT, false, 0, 0)
-
-    // Set uniforms
-    const blendModeLocation = this.gl.getUniformLocation(
-      this.compositingProgram,
-      "u_blendMode"
-    )
-    if (blendModeLocation) {
-      this.gl.uniform1i(blendModeLocation, BLEND_MODE_MAP[blendMode])
-    }
-
-    const opacityLocation = this.gl.getUniformLocation(
-      this.compositingProgram,
-      "u_opacity"
-    )
-    if (opacityLocation) {
-      this.gl.uniform1f(opacityLocation, opacity)
-    }
-
-    const resolutionLocation = this.gl.getUniformLocation(
-      this.compositingProgram,
-      "u_resolution"
-    )
-    if (resolutionLocation) {
-      this.gl.uniform2f(resolutionLocation, canvasWidth, canvasHeight)
-    }
-
-    // Bind textures
-    this.gl.activeTexture(this.gl.TEXTURE0)
-    this.gl.bindTexture(this.gl.TEXTURE_2D, baseTexture)
-    const baseSamplerLocation = this.gl.getUniformLocation(
-      this.compositingProgram,
-      "u_baseTexture"
-    )
-    if (baseSamplerLocation) this.gl.uniform1i(baseSamplerLocation, 0)
-
-    this.gl.activeTexture(this.gl.TEXTURE1)
-    this.gl.bindTexture(this.gl.TEXTURE_2D, topTexture)
-    const topSamplerLocation = this.gl.getUniformLocation(
-      this.compositingProgram,
-      "u_topTexture"
-    )
-    if (topSamplerLocation) this.gl.uniform1i(topSamplerLocation, 1)
-
-    // Draw
-    this.gl.drawArrays(this.gl.TRIANGLE_STRIP, 0, 4)
-
-    // Return the composited texture
-    const resultFBO = this.fboManager.getFBO("result")
-    if (resultFBO) {
-      return resultFBO.texture
-    }
-    return null
+    return tex
   }
 
   // Helper method to copy a texture to a specific FBO
@@ -682,7 +711,8 @@ export class HybridRenderer {
     blendMode: BlendMode,
     opacity: number,
     canvasWidth: number,
-    canvasHeight: number
+    canvasHeight: number,
+    currentLayer?: any
   ): WebGLTexture | null {
     if (!this.gl || !this.compositingProgram) return null
 
@@ -781,6 +811,45 @@ export class HybridRenderer {
     )
     if (topSamplerLocation) this.gl.uniform1i(topSamplerLocation, 1)
 
+    // Optional mask from current layer
+    const maskTex = this.getOrCreateMaskTexture(currentLayer)
+    const hasMaskLoc = this.gl.getUniformLocation(
+      this.compositingProgram,
+      "u_hasMask"
+    )
+    if (hasMaskLoc) this.gl.uniform1f(hasMaskLoc, maskTex ? 1 : 0)
+    if (maskTex) {
+      this.gl.activeTexture(this.gl.TEXTURE2)
+      this.gl.bindTexture(this.gl.TEXTURE_2D, maskTex)
+      const maskLoc = this.gl.getUniformLocation(
+        this.compositingProgram,
+        "u_maskTexture"
+      )
+      if (maskLoc) this.gl.uniform1i(maskLoc, 2)
+      // Bind mask parameters if available: invert, feather, opacity, mode
+      try {
+        const m = (currentLayer as any)?.mask || {}
+        const invert = m.invert ? 1 : 0
+        const feather = typeof m.feather === "number" ? m.feather : 0
+        const mOpacity = typeof m.opacity === "number" ? m.opacity : 1
+        const modeStr = String(m.mode || "add")
+        const mode =
+          modeStr === "subtract"
+            ? 1
+            : modeStr === "intersect"
+              ? 2
+              : modeStr === "difference"
+                ? 3
+                : 0
+        const maskParamsLoc = this.gl.getUniformLocation(
+          this.compositingProgram,
+          "u_maskParams"
+        )
+        if (maskParamsLoc)
+          this.gl.uniform4f(maskParamsLoc, invert, feather, mOpacity, mode)
+      } catch {}
+    }
+
     // Draw
     this.gl.drawArrays(this.gl.TRIANGLE_STRIP, 0, 4)
 
@@ -791,49 +860,12 @@ export class HybridRenderer {
     return null
   }
 
-  // Helper method to check if an FBO is empty (all pixels are transparent)
-  private isFBOEmpty(fbo: FBO): boolean {
-    if (!this.gl) return true
-
-    // Create a temporary framebuffer to read from the FBO texture
-    const tempFramebuffer = this.gl.createFramebuffer()
-    if (!tempFramebuffer) return true
-
-    this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, tempFramebuffer)
-    this.gl.framebufferTexture2D(
-      this.gl.FRAMEBUFFER,
-      this.gl.COLOR_ATTACHMENT0,
-      this.gl.TEXTURE_2D,
-      fbo.texture,
-      0
-    )
-
-    // Read multiple pixels to check for content
-    const pixels = new Uint8Array(16) // 4 pixels (2x2)
-    this.gl.readPixels(
-      Math.floor(fbo.width / 2) - 1,
-      Math.floor(fbo.height / 2) - 1,
-      2,
-      2,
-      this.gl.RGBA,
-      this.gl.UNSIGNED_BYTE,
-      pixels
-    )
-
-    // Clean up
-    this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, null)
-    this.gl.deleteFramebuffer(tempFramebuffer)
-
-    // Check if any pixel has non-zero alpha
-    let hasContent = false
-    for (let i = 3; i < pixels.length; i += 4) {
-      if (pixels[i] > 0) {
-        hasContent = true
-        break
-      }
-    }
-
-    return !hasContent
+  // Helper method to check if an FBO is empty (heuristic):
+  // Avoid readPixels on FP16 FBOs; rely on tracked usage instead.
+  private isFBOEmpty(_fbo: FBO): boolean {
+    // Heuristic disabled: we now trust compositing path to produce output when layers exist
+    // and avoid costly/incompatible readbacks on FP16 targets.
+    return false
   }
 
   // Legacy: replaced by ShaderManager in this class. Keeping method removed.
@@ -883,20 +915,20 @@ export class HybridRenderer {
     this.gl.clearColor(0, 0, 0, 0)
     this.gl.clear(this.gl.COLOR_BUFFER_BIT)
 
-    // Create a simple shader program for direct display
+    // Create a simple WebGL2 shader program for direct display
     const vertexShader = this.gl.createShader(this.gl.VERTEX_SHADER)
     if (!vertexShader) return
     this.gl.shaderSource(
       vertexShader,
-      `
-      attribute vec2 a_position;
-      attribute vec2 a_texCoord;
-      varying vec2 v_texCoord;
-      void main() {
-        gl_Position = vec4(a_position, 0.0, 1.0);
-        v_texCoord = a_texCoord;
-      }
-    `
+      `#version 300 es
+in vec2 a_position;
+in vec2 a_texCoord;
+out vec2 v_texCoord;
+void main() {
+  gl_Position = vec4(a_position, 0.0, 1.0);
+  v_texCoord = a_texCoord;
+}
+`
     )
     this.gl.compileShader(vertexShader)
 
@@ -904,14 +936,15 @@ export class HybridRenderer {
     if (!fragmentShader) return
     this.gl.shaderSource(
       fragmentShader,
-      `
-      precision highp float;
-      uniform sampler2D u_image;
-      varying vec2 v_texCoord;
-      void main() {
-        gl_FragColor = texture2D(u_image, v_texCoord);
-      }
-    `
+      `#version 300 es
+precision highp float;
+uniform sampler2D u_image;
+in vec2 v_texCoord;
+out vec4 outColor;
+void main() {
+  outColor = texture(u_image, v_texCoord);
+}
+`
     )
     this.gl.compileShader(fragmentShader)
 
@@ -1035,7 +1068,7 @@ export class HybridRenderer {
       { width: number; height: number; x: number; y: number }
     >
   ): void {
-    if (!this.gl || !this.shaderManager || !this.compositingProgram) {
+    if (!this.gl || !this.shaderManagerV2 || !this.compositingProgram) {
       return
     }
 
@@ -1204,7 +1237,8 @@ export class HybridRenderer {
             layer.blendMode,
             layer.opacity,
             canvasWidth,
-            canvasHeight
+            canvasHeight,
+            layer
           )
 
           if (compositedTexture) {
@@ -1308,10 +1342,7 @@ export class HybridRenderer {
     if (!this.gl) return
 
     // Clean up programs
-    if (this.shaderManager) {
-      this.shaderManager.cleanup()
-      this.shaderManager = null
-    }
+    // No legacy shader manager
     if (this.compositingProgram) {
       this.gl.deleteProgram(this.compositingProgram)
       this.compositingProgram = null

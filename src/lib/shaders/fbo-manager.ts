@@ -28,6 +28,9 @@ export class FBOManager {
   private layerFbos: Map<string, LayerFBO> = new Map()
   private currentFBO: FBO | null = null
   private fboPool: Map<string, FBO[]> = new Map() // FBO pooling for memory efficiency
+  private preferFP16 = false
+  private extColorBufferFloat: any | null = null
+  private extTextureHalfFloat: any | null = null
 
   initialize(gl: WebGL2RenderingContext): void {
     this.gl = gl
@@ -35,6 +38,53 @@ export class FBOManager {
     this.layerFbos.clear()
     this.currentFBO = null
     this.fboPool.clear()
+    // Detect FP16 renderability
+    try {
+      this.extColorBufferFloat = gl.getExtension("EXT_color_buffer_float")
+      // WebGL2 supports HALF_FLOAT via EXT_color_buffer_float; RGBA16F internal format
+      this.extTextureHalfFloat = this.extColorBufferFloat
+      // Probe by creating a tiny FP16 FBO
+      const testTex = gl.createTexture()
+      const testFb = gl.createFramebuffer()
+      if (testTex && testFb) {
+        gl.bindTexture(gl.TEXTURE_2D, testTex)
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
+        gl.texImage2D(
+          gl.TEXTURE_2D,
+          0,
+          (gl as any).RGBA16F || 0x881a,
+          2,
+          2,
+          0,
+          gl.RGBA,
+          (gl as any).HALF_FLOAT || 0x140b,
+          null
+        )
+        gl.bindFramebuffer(gl.FRAMEBUFFER, testFb)
+        gl.framebufferTexture2D(
+          gl.FRAMEBUFFER,
+          gl.COLOR_ATTACHMENT0,
+          gl.TEXTURE_2D,
+          testTex,
+          0
+        )
+        const ok =
+          gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE
+        this.preferFP16 = !!ok
+      }
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+      gl.bindTexture(gl.TEXTURE_2D, null)
+      if (testTex) gl.deleteTexture(testTex)
+      if (testFb) gl.deleteFramebuffer(testFb)
+    } catch {
+      this.preferFP16 = false
+    }
+  }
+
+  // Expose whether FP16 internal textures are being used for FBOs
+  isUsingFP16(): boolean {
+    return this.preferFP16
   }
 
   // Calculate transformed bounds for a layer
@@ -181,17 +231,34 @@ export class FBOManager {
 
     // Bind texture and set parameters
     this.gl.bindTexture(this.gl.TEXTURE_2D, texture)
-    this.gl.texImage2D(
-      this.gl.TEXTURE_2D,
-      0,
-      this.gl.RGBA,
-      width,
-      height,
-      0,
-      this.gl.RGBA,
-      this.gl.UNSIGNED_BYTE,
-      null
-    )
+    if (this.preferFP16) {
+      // Use RGBA16F/HALF_FLOAT when supported
+      const RGBA16F = (this.gl as any).RGBA16F || 0x881a
+      const HALF_FLOAT = (this.gl as any).HALF_FLOAT || 0x140b
+      this.gl.texImage2D(
+        this.gl.TEXTURE_2D,
+        0,
+        RGBA16F,
+        width,
+        height,
+        0,
+        this.gl.RGBA,
+        HALF_FLOAT,
+        null
+      )
+    } else {
+      this.gl.texImage2D(
+        this.gl.TEXTURE_2D,
+        0,
+        this.gl.RGBA,
+        width,
+        height,
+        0,
+        this.gl.RGBA,
+        this.gl.UNSIGNED_BYTE,
+        null
+      )
+    }
     this.gl.texParameteri(
       this.gl.TEXTURE_2D,
       this.gl.TEXTURE_MIN_FILTER,

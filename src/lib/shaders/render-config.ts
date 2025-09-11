@@ -14,8 +14,8 @@ export namespace RenderConfig {
   /** Global UNPACK_FLIP_Y_WEBGL setting - always false */
   export const UNPACK_FLIP_Y_WEBGL = false
 
-  /** Texture coordinates for layer sampling (uploaded images) - normal V */
-  export const LAYER_TEXCOORDS = new Float32Array([0, 0, 1, 0, 0, 1, 1, 1])
+  /** Texture coordinates for layer sampling (uploaded images) - flipped V */
+  export const LAYER_TEXCOORDS = new Float32Array([0, 1, 1, 1, 0, 0, 1, 0])
 
   /** Texture coordinates for FBO sampling (compositing/adjustments) - normal V */
   export const COMP_TEXCOORDS = new Float32Array([0, 0, 1, 0, 0, 1, 1, 1])
@@ -81,7 +81,7 @@ export namespace RenderConfig {
       layerTexcoords: Array.from(LAYER_TEXCOORDS),
       compTexcoords: Array.from(COMP_TEXCOORDS),
       canvasTexcoords: Array.from(CANVAS_TEXCOORDS),
-      policy: "UNPACK=false, all texcoords normal-V",
+      policy: "UNPACK=false, layer texcoords flipped-V, comp/canvas normal-V",
     }
   }
 }

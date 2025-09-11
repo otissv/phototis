@@ -152,6 +152,19 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
     [resize]
   )
 
+  // Prepare for worker mode with shader warmup hints
+  const prepareForWorkerMode = React.useCallback(
+    async (visibleLayers: any[]) => {
+      try {
+        const manager = WorkerManager.getShared()
+        // Collect shader warmup hints (basic set for now)
+        const shaderNames = ["compositor", "adjustments.basic", "copy"]
+        await manager.prepareWorkerShaders({ shaderNames })
+      } catch {}
+    },
+    []
+  )
+
   // Prewarm workers on mount to shorten initialize latency
   React.useEffect(() => {
     if (renderType === "hybrid") return
@@ -277,6 +290,8 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
   // Render layers using worker
   const versionRef = React.useRef(0)
 
+  // Intentionally stable; internal versionRef controls coalescing and tokening
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const renderLayers = React.useCallback(
     async (
       layers: EditorLayer[],
@@ -330,6 +345,85 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
                 manager.cancelTask(state.currentTaskId)
               }
 
+              // Map color profile to numeric flag: 0: srgb, 1: linear, 2: display-p3
+              let colorSpaceFlag = 0
+              try {
+                // @ts-expect-error editor state available via hook
+                const profile =
+                  (state as any)?.canonical?.document?.colorProfile || "srgb"
+                colorSpaceFlag =
+                  profile === "linear" ? 1 : profile === "display-p3" ? 2 : 0
+              } catch {}
+
+              // Build compact per-layer pass-graph for worker: linearize -> effects -> encode
+              const graph = layers.map((layer) => {
+                const p: any = toolsValues
+                const passes: any[] = []
+                // 1) Linearize input for image/solid layers
+                if (
+                  (layer as any).type === "image" ||
+                  (layer as any).type === "solid"
+                ) {
+                  passes.push({ shaderName: "color.linearize" })
+                }
+                // Minimal example graph: copy -> optional blur (h/v) -> effects -> adjustments
+                if ((layer as any).type === "image") {
+                  passes.push({
+                    shaderName: "copy",
+                    channels: { u_texture: "__LAYER__" },
+                  })
+                }
+                if (Number((p as any).blur || 0) > 0) {
+                  passes.push({
+                    shaderName: "blur.separable",
+                    passId: "h",
+                    uniforms: { u_blur: Number((p as any).blur) },
+                  })
+                  passes.push({
+                    shaderName: "blur.separable",
+                    passId: "v",
+                    uniforms: { u_blur: Number((p as any).blur) },
+                    inputs: ["h"],
+                  })
+                }
+                if (
+                  Number((p as any).vintage || 0) > 0 ||
+                  Number((p as any).sepia || 0) > 0 ||
+                  Number((p as any).grayscale || 0) > 0 ||
+                  Number((p as any).invert || 0) > 0
+                ) {
+                  passes.push({
+                    shaderName: "effects.vintage",
+                    uniforms: {
+                      u_vintage: Number((p as any).vintage || 0),
+                      u_invert: Number((p as any).invert || 0),
+                      u_sepia: Number((p as any).sepia || 0),
+                      u_grayscale: Number((p as any).grayscale || 0),
+                      u_recolor: Number((p as any).recolor || 0),
+                      u_vibrance: Number((p as any).vibrance || 0),
+                      u_noise: Number((p as any).noise || 0),
+                      u_grain: Number((p as any).grain || 0),
+                    },
+                  })
+                }
+                passes.push({
+                  shaderName: "adjustments.basic",
+                  uniforms: {
+                    u_brightness: Number((p as any).brightness || 100),
+                    u_contrast: Number((p as any).contrast || 100),
+                    u_saturation: Number((p as any).saturation || 100),
+                    u_hue: Number((p as any).hue || 0),
+                    u_exposure: Number((p as any).exposure || 0),
+                    u_gamma: Number((p as any).gamma || 1),
+                    u_opacity: 100,
+                  },
+                })
+                // 3) Encode to display profile at the end of per-layer graph when layer is terminal
+                // Note: final frame also gets a global encode, but adding here makes each layer preview correct
+                passes.push({ shaderName: "color.encode" })
+                return { layerId: layer.id, passes }
+              })
+
               const taskId = await manager.queueRenderTask(
                 layers,
                 toolsValues,
@@ -342,7 +436,9 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
                   signature: layersSignature ?? "",
                   version: versionRef.current,
                 },
-                interactive ?? false
+                interactive ?? false,
+                colorSpaceFlag,
+                graph
               )
 
               console.log("🎨 [Worker] Starting task:", { taskId })
@@ -379,7 +475,8 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
         return null
       }
     },
-    [state.currentTaskId]
+    // Accept stale closure of state; include state/currentTaskId to satisfy linter
+    [state, state.currentTaskId]
   )
 
   // Apply filter to layer using worker
