@@ -946,11 +946,23 @@ async function renderLayers(
     // Ensure heavy GPU resources are prepared lazily
     await ensureHeavyInit(canvasWidth, canvasHeight)
 
-    // Stage 1: Flatten grouped layers for rendering
-    const flattenedLayers = flattenLayersForRendering(layers)
+    // Stage 1: Collect all layer IDs (including group children) for texture cleanup
+    const allLayerIds = new Set<string>()
+    const collectLayerIds = (layers: EditorLayer[]) => {
+      for (const layer of layers) {
+        allLayerIds.add(layer.id)
+        if (layer.type === "group") {
+          const groupLayer = layer as any
+          if (Array.isArray(groupLayer.children)) {
+            collectLayerIds(groupLayer.children)
+          }
+        }
+      }
+    }
+    collectLayerIds(layers)
 
     // Remove cached textures for layers that no longer exist to avoid leaking GPU memory
-    const aliveIds = new Set(flattenedLayers.map((l) => l.id))
+    const aliveIds = allLayerIds
     for (const [key, tex] of Array.from(textureCache.entries())) {
       if (!aliveIds.has(key)) {
         try {
@@ -1024,108 +1036,120 @@ async function renderLayers(
     const layerTextures = new Map<string, WebGLTexture>()
 
     frameCounterRef.value++
-    for (const layer of flattenedLayers) {
-      // Validate layer dimensions
-      const layerDim = layerDimensionsMap.get(layer.id)
-      if (layerDim) {
-        const v = validateImageDimensions(layerDim.width, layerDim.height)
-        if (!v.isValid) {
-          console.warn(`Skipping layer ${layer.id} with invalid dimensions`)
-          continue
-        }
-      }
 
-      // Load and validate layer texture
-      if (layer.type === "image" && layer.image) {
-        try {
-          const texture = await loadLayerTexture(layer)
-          if (texture) {
-            layerTextures.set(layer.id, texture)
-            lastUsedFrame.set(layer.id, frameCounterRef.value)
+    // Load textures recursively for all layers including group children
+    const loadTexturesRecursively = async (layers: EditorLayer[]) => {
+      for (const layer of layers) {
+        // Validate layer dimensions
+        const layerDim = layerDimensionsMap.get(layer.id)
+        if (layerDim) {
+          const v = validateImageDimensions(layerDim.width, layerDim.height)
+          if (!v.isValid) {
+            console.warn(`Skipping layer ${layer.id} with invalid dimensions`)
+            continue
           }
-        } catch (error) {
-          console.warn(`Failed to load texture for layer ${layer.id}:`, error)
         }
-      }
-      // Load mask texture if available on layer (supports ImageBitmap, Blob/File, ArrayBuffer)
-      try {
-        const anyLayer: any = layer as any
-        const mask = anyLayer?.mask
-        if (mask?.image) {
-          const key = `${layer.id}:mask`
-          if (!maskTextures.has(key)) {
-            const glCtx = gl as WebGL2RenderingContext
-            const tex = glCtx.createTexture()
-            if (tex) {
-              glCtx.bindTexture(glCtx.TEXTURE_2D, tex)
-              glCtx.texParameteri(
-                glCtx.TEXTURE_2D,
-                glCtx.TEXTURE_WRAP_S,
-                glCtx.CLAMP_TO_EDGE
-              )
-              glCtx.texParameteri(
-                glCtx.TEXTURE_2D,
-                glCtx.TEXTURE_WRAP_T,
-                glCtx.CLAMP_TO_EDGE
-              )
-              glCtx.texParameteri(
-                glCtx.TEXTURE_2D,
-                glCtx.TEXTURE_MIN_FILTER,
-                glCtx.LINEAR
-              )
-              glCtx.texParameteri(
-                glCtx.TEXTURE_2D,
-                glCtx.TEXTURE_MAG_FILTER,
-                glCtx.LINEAR
-              )
-              let bitmap: ImageBitmap | null = null
-              try {
-                const src: any = mask.image
-                const isBitmapLike =
-                  src &&
-                  typeof src === "object" &&
-                  "width" in src &&
-                  "height" in src
-                const isBlobLike =
-                  src &&
-                  typeof src.size === "number" &&
-                  typeof src.type === "string"
-                const isArrayBuffer =
-                  src && (src as ArrayBuffer).byteLength !== undefined
-                if (isBitmapLike) {
-                  bitmap = src as ImageBitmap
-                } else if (isBlobLike) {
-                  bitmap = await createImageBitmap(src as Blob, {
-                    imageOrientation: "from-image",
-                  })
-                } else if (isArrayBuffer) {
-                  const blob = new Blob([src as ArrayBuffer])
-                  bitmap = await createImageBitmap(blob, {
-                    imageOrientation: "from-image",
-                  })
-                }
-              } catch {}
-              if (bitmap) {
-                glCtx.texImage2D(
+
+        // Load and validate layer texture
+        if (layer.type === "image" && layer.image) {
+          try {
+            const texture = await loadLayerTexture(layer)
+            if (texture) {
+              layerTextures.set(layer.id, texture)
+              lastUsedFrame.set(layer.id, frameCounterRef.value)
+            }
+          } catch (error) {
+            console.warn(`Failed to load texture for layer ${layer.id}:`, error)
+          }
+        } else if (layer.type === "group") {
+          // Recursively load textures for group children
+          const groupLayer = layer as any
+          if (Array.isArray(groupLayer.children)) {
+            await loadTexturesRecursively(groupLayer.children)
+          }
+        }
+        // Load mask texture if available on layer (supports ImageBitmap, Blob/File, ArrayBuffer)
+        try {
+          const anyLayer: any = layer as any
+          const mask = anyLayer?.mask
+          if (mask?.image) {
+            const key = `${layer.id}:mask`
+            if (!maskTextures.has(key)) {
+              const glCtx = gl as WebGL2RenderingContext
+              const tex = glCtx.createTexture()
+              if (tex) {
+                glCtx.bindTexture(glCtx.TEXTURE_2D, tex)
+                glCtx.texParameteri(
                   glCtx.TEXTURE_2D,
-                  0,
-                  glCtx.RGBA,
-                  glCtx.RGBA,
-                  glCtx.UNSIGNED_BYTE,
-                  bitmap
+                  glCtx.TEXTURE_WRAP_S,
+                  glCtx.CLAMP_TO_EDGE
                 )
+                glCtx.texParameteri(
+                  glCtx.TEXTURE_2D,
+                  glCtx.TEXTURE_WRAP_T,
+                  glCtx.CLAMP_TO_EDGE
+                )
+                glCtx.texParameteri(
+                  glCtx.TEXTURE_2D,
+                  glCtx.TEXTURE_MIN_FILTER,
+                  glCtx.LINEAR
+                )
+                glCtx.texParameteri(
+                  glCtx.TEXTURE_2D,
+                  glCtx.TEXTURE_MAG_FILTER,
+                  glCtx.LINEAR
+                )
+                let bitmap: ImageBitmap | null = null
                 try {
-                  if (typeof (bitmap as any).close === "function")
-                    (bitmap as any).close()
+                  const src: any = mask.image
+                  const isBitmapLike =
+                    src &&
+                    typeof src === "object" &&
+                    "width" in src &&
+                    "height" in src
+                  const isBlobLike =
+                    src &&
+                    typeof src.size === "number" &&
+                    typeof src.type === "string"
+                  const isArrayBuffer =
+                    src && (src as ArrayBuffer).byteLength !== undefined
+                  if (isBitmapLike) {
+                    bitmap = src as ImageBitmap
+                  } else if (isBlobLike) {
+                    bitmap = await createImageBitmap(src as Blob, {
+                      imageOrientation: "from-image",
+                    })
+                  } else if (isArrayBuffer) {
+                    const blob = new Blob([src as ArrayBuffer])
+                    bitmap = await createImageBitmap(blob, {
+                      imageOrientation: "from-image",
+                    })
+                  }
                 } catch {}
+                if (bitmap) {
+                  glCtx.texImage2D(
+                    glCtx.TEXTURE_2D,
+                    0,
+                    glCtx.RGBA,
+                    glCtx.RGBA,
+                    glCtx.UNSIGNED_BYTE,
+                    bitmap
+                  )
+                  try {
+                    if (typeof (bitmap as any).close === "function")
+                      (bitmap as any).close()
+                  } catch {}
+                }
+                maskTextures.set(key, tex)
+                glCtx.bindTexture(glCtx.TEXTURE_2D, null)
               }
-              maskTextures.set(key, tex)
-              glCtx.bindTexture(glCtx.TEXTURE_2D, null)
             }
           }
-        }
-      } catch {}
+        } catch {}
+      }
     }
+
+    await loadTexturesRecursively(layers)
 
     postMessage({
       type: "progress",
@@ -1143,9 +1167,9 @@ async function renderLayers(
         const texMap = new Map<string, WebGLTexture>()
         for (const [id, tex] of layerTextures) texMap.set(id, tex)
 
-        const orderedLayers = flattenedLayers.slice() // renderer orders internally
+        // Pass original layer structure to let hybrid renderer handle groups
         hybridRendererInstance.renderLayers(
-          orderedLayers as any,
+          layers as any,
           texMap,
           toolsValues,
           selectedLayerId,
@@ -1174,9 +1198,9 @@ async function renderLayers(
     // Debug: Log layer rendering start
     try {
       dbg("layers:render-start", {
-        totalLayers: flattenedLayers.length,
-        layerIds: flattenedLayers.map((l) => l.id),
-        layerOrder: flattenedLayers.map((l, i) => ({
+        totalLayers: layers.length,
+        layerIds: layers.map((l) => l.id),
+        layerOrder: layers.map((l, i) => ({
           index: i,
           id: l.id,
           type: (l as any).type,
@@ -1186,219 +1210,231 @@ async function renderLayers(
       })
     } catch {}
 
-    for (const layer of flattenedLayers) {
-      const layerTexture = layerTextures.get(layer.id)
-      if (!layerTexture) continue
+    // Render layers recursively including group children
+    const renderLayersRecursively = async (layers: EditorLayer[]) => {
+      for (const layer of layers) {
+        const layerTexture = layerTextures.get(layer.id)
+        if (!layerTexture) continue
 
-      // Validate filter parameters
-      const layerToolsValues =
-        layer.id === selectedLayerId
-          ? toolsValues
-          : layer.type === "image"
-            ? layer.filters
-            : toolsValues
-      try {
-        dbg("layer:tools-source", {
-          layerId: layer.id,
-          source:
-            layer.id === selectedLayerId
-              ? "selected-global"
-              : layer.type === "image"
-                ? "layer.filters"
-                : "global",
-          flipH: Boolean((layerToolsValues as any)?.flipHorizontal),
-          flipV: Boolean((layerToolsValues as any)?.flipVertical),
-          rotate: Number((layerToolsValues as any)?.rotate || 0),
-        })
-      } catch {}
-
-      const { validatedParameters: validatedToolsValues } =
-        validateFilterParameters(layerToolsValues)
-
-      try {
-        // Debug: Log individual layer rendering
+        // Validate filter parameters
+        const layerToolsValues =
+          layer.id === selectedLayerId
+            ? toolsValues
+            : layer.type === "image"
+              ? layer.filters
+              : toolsValues
         try {
-          dbg("layer:render-start", {
+          dbg("layer:tools-source", {
             layerId: layer.id,
-            hasTexture: !!layerTexture,
-            layerType: (layer as any).type,
-            layerIndex: flattenedLayers.indexOf(layer),
-            layerOpacity: layer.opacity,
-            layerVisible: layer.visible,
+            source:
+              layer.id === selectedLayerId
+                ? "selected-global"
+                : layer.type === "image"
+                  ? "layer.filters"
+                  : "global",
+            flipH: Boolean((layerToolsValues as any)?.flipHorizontal),
+            flipV: Boolean((layerToolsValues as any)?.flipVertical),
+            rotate: Number((layerToolsValues as any)?.rotate || 0),
           })
         } catch {}
 
-        // Render layer via v2 pass-graph (IPC-provided or built per layer)
-        let renderedTexture: WebGLTexture | null = layerTexture
-        if (passGraphPipeline && pgPositionBuffer && pgCompTexcoordBuffer) {
-          const p: any = validatedToolsValues
-          let layerPasses: any[] = []
-          const u_transform = computeTransformMat3(
-            Number(p.scale || 1),
-            Number(p.rotate || 0),
-            Boolean(p.flipHorizontal),
-            Boolean(p.flipVertical)
-          )
-          const baseUniforms = { u_colorSpace: docColorSpaceFlag, u_transform }
-          // Resolve layer dimensions for placement
-          const dimEntry = layerDimensionsMap.get(layer.id) as
-            | { x: number; y: number; width: number; height: number }
-            | undefined
-          const lw = dimEntry?.width ?? canvasWidth
-          const lh = dimEntry?.height ?? canvasHeight
-          const lx = dimEntry?.x ?? 0
-          const ly = dimEntry?.y ?? 0
-          // Try to consume IPC-sent graph for this layer
+        const { validatedParameters: validatedToolsValues } =
+          validateFilterParameters(layerToolsValues)
+
+        try {
+          // Debug: Log individual layer rendering
           try {
-            const lastMsg: any = (self as any).__lastMessageData
-            const graph = lastMsg?.graph
-            if (Array.isArray(graph)) {
-              const entry = graph.find((g: any) => g && g.layerId === layer.id)
-              if (entry && Array.isArray(entry.passes)) {
-                layerPasses = entry.passes.map((pp: any) => ({
-                  shaderName: String(pp.shaderName || ""),
-                  passId: pp.passId ? String(pp.passId) : undefined,
-                  variantKey: pp.variantKey ? String(pp.variantKey) : undefined,
-                  uniforms: { ...baseUniforms, ...(pp.uniforms || {}) },
-                  inputs: Array.isArray(pp.inputs)
-                    ? pp.inputs.slice()
-                    : undefined,
-                }))
-                // Ensure linearize first and encode last
-                if (layerPasses.length) {
-                  if (layerPasses[0].shaderName !== "color.linearize")
-                    layerPasses.unshift({
-                      shaderName: "color.linearize",
-                      uniforms: { ...baseUniforms },
-                    })
-                  if (
-                    layerPasses[layerPasses.length - 1].shaderName !==
-                    "color.encode"
-                  )
-                    layerPasses.push({
-                      shaderName: "color.encode",
-                      uniforms: { ...baseUniforms },
-                    })
+            dbg("layer:render-start", {
+              layerId: layer.id,
+              hasTexture: !!layerTexture,
+              layerType: (layer as any).type,
+              layerIndex: layers.indexOf(layer),
+              layerOpacity: layer.opacity,
+              layerVisible: layer.visible,
+            })
+          } catch {}
+
+          // Render layer via v2 pass-graph (IPC-provided or built per layer)
+          let renderedTexture: WebGLTexture | null = layerTexture
+          if (passGraphPipeline && pgPositionBuffer && pgCompTexcoordBuffer) {
+            const p: any = validatedToolsValues
+            let layerPasses: any[] = []
+            const u_transform = computeTransformMat3(
+              Number(p.scale || 1),
+              Number(p.rotate || 0),
+              Boolean(p.flipHorizontal),
+              Boolean(p.flipVertical)
+            )
+            const baseUniforms = {
+              u_colorSpace: docColorSpaceFlag,
+              u_transform,
+            }
+            // Resolve layer dimensions for placement
+            const dimEntry = layerDimensionsMap.get(layer.id) as
+              | { x: number; y: number; width: number; height: number }
+              | undefined
+            const lw = dimEntry?.width ?? canvasWidth
+            const lh = dimEntry?.height ?? canvasHeight
+            const lx = dimEntry?.x ?? 0
+            const ly = dimEntry?.y ?? 0
+            // Try to consume IPC-sent graph for this layer
+            try {
+              const lastMsg: any = (self as any).__lastMessageData
+              const graph = lastMsg?.graph
+              if (Array.isArray(graph)) {
+                const entry = graph.find(
+                  (g: any) => g && g.layerId === layer.id
+                )
+                if (entry && Array.isArray(entry.passes)) {
+                  layerPasses = entry.passes.map((pp: any) => ({
+                    shaderName: String(pp.shaderName || ""),
+                    passId: pp.passId ? String(pp.passId) : undefined,
+                    variantKey: pp.variantKey
+                      ? String(pp.variantKey)
+                      : undefined,
+                    uniforms: { ...baseUniforms, ...(pp.uniforms || {}) },
+                    inputs: Array.isArray(pp.inputs)
+                      ? pp.inputs.slice()
+                      : undefined,
+                  }))
+                  // Ensure linearize first and encode last
+                  if (layerPasses.length) {
+                    if (layerPasses[0].shaderName !== "color.linearize")
+                      layerPasses.unshift({
+                        shaderName: "color.linearize",
+                        uniforms: { ...baseUniforms },
+                      })
+                    if (
+                      layerPasses[layerPasses.length - 1].shaderName !==
+                      "color.encode"
+                    )
+                      layerPasses.push({
+                        shaderName: "color.encode",
+                        uniforms: { ...baseUniforms },
+                      })
+                  }
                 }
               }
+            } catch {}
+            // First, place uploaded bitmap into an FBO with correct orientation
+            {
+              const out0 = passGraphPipeline.runSingle(
+                {
+                  shaderName: "layer.render",
+                  uniforms: {
+                    ...baseUniforms,
+                    u_layerSize: [lw, lh],
+                    u_canvasSize: [canvasWidth, canvasHeight],
+                    u_layerPosition: [lx + lw / 2, ly + lh / 2],
+                  },
+                  channels: { u_texture: renderedTexture },
+                  targetFboName: "temp",
+                },
+                canvasWidth,
+                canvasHeight,
+                {
+                  position: layerPositionBuffer as WebGLBuffer,
+                  texcoord: layerTexCoordBuffer as WebGLBuffer,
+                }
+              )
+              if (out0) renderedTexture = out0
             }
-          } catch {}
-          // First, place uploaded bitmap into an FBO with correct orientation
-          {
-            const out0 = passGraphPipeline.runSingle(
-              {
-                shaderName: "layer.render",
+
+            if (Number(p.blur || 0) > 0) {
+              layerPasses.push({
+                shaderName: "blur.separable",
+                passId: "h",
+                uniforms: { ...baseUniforms, u_blur: Number(p.blur) },
+                inputs: ["layer.render"],
+              })
+              layerPasses.push({
+                shaderName: "blur.separable",
+                passId: "v",
+                uniforms: { ...baseUniforms, u_blur: Number(p.blur) },
+                inputs: ["h"],
+              })
+            }
+            if (
+              Number(p.vintage || 0) > 0 ||
+              Number(p.sepia || 0) > 0 ||
+              Number(p.grayscale || 0) > 0 ||
+              Number(p.invert || 0) > 0
+            ) {
+              layerPasses.push({
+                shaderName: "effects.vintage",
                 uniforms: {
                   ...baseUniforms,
-                  u_layerSize: [lw, lh],
-                  u_canvasSize: [canvasWidth, canvasHeight],
-                  u_layerPosition: [lx + lw / 2, ly + lh / 2],
+                  u_vintage: Number(p.vintage || 0),
+                  u_invert: Number(p.invert || 0),
+                  u_sepia: Number(p.sepia || 0),
+                  u_grayscale: Number(p.grayscale || 0),
+                  u_recolor: Number(p.recolor || 0),
+                  u_vibrance: Number(p.vibrance || 0),
+                  u_noise: Number(p.noise || 0),
+                  u_grain: Number(p.grain || 0),
                 },
-                channels: { u_texture: renderedTexture },
-                targetFboName: "temp",
-              },
-              canvasWidth,
-              canvasHeight,
-              {
-                position: layerPositionBuffer as WebGLBuffer,
-                texcoord: layerTexCoordBuffer as WebGLBuffer,
-              }
-            )
-            if (out0) renderedTexture = out0
-          }
-
-          if (Number(p.blur || 0) > 0) {
+                inputs: [
+                  layerPasses[layerPasses.length - 1].passId ||
+                    layerPasses[layerPasses.length - 1].shaderName,
+                ],
+              })
+            }
             layerPasses.push({
-              shaderName: "blur.separable",
-              passId: "h",
-              uniforms: { ...baseUniforms, u_blur: Number(p.blur) },
-              inputs: ["layer.render"],
-            })
-            layerPasses.push({
-              shaderName: "blur.separable",
-              passId: "v",
-              uniforms: { ...baseUniforms, u_blur: Number(p.blur) },
-              inputs: ["h"],
-            })
-          }
-          if (
-            Number(p.vintage || 0) > 0 ||
-            Number(p.sepia || 0) > 0 ||
-            Number(p.grayscale || 0) > 0 ||
-            Number(p.invert || 0) > 0
-          ) {
-            layerPasses.push({
-              shaderName: "effects.vintage",
+              shaderName: "adjustments.basic",
               uniforms: {
                 ...baseUniforms,
-                u_vintage: Number(p.vintage || 0),
-                u_invert: Number(p.invert || 0),
-                u_sepia: Number(p.sepia || 0),
-                u_grayscale: Number(p.grayscale || 0),
-                u_recolor: Number(p.recolor || 0),
-                u_vibrance: Number(p.vibrance || 0),
-                u_noise: Number(p.noise || 0),
-                u_grain: Number(p.grain || 0),
+                u_brightness: Number(p.brightness || 100),
+                u_contrast: Number(p.contrast || 100),
+                u_saturation: Number(p.saturation || 100),
+                u_hue: Number(p.hue || 0),
+                u_exposure: Number(p.exposure || 0),
+                u_gamma: Number(p.gamma || 1),
+                u_opacity: 100,
               },
               inputs: [
                 layerPasses[layerPasses.length - 1].passId ||
                   layerPasses[layerPasses.length - 1].shaderName,
               ],
             })
-          }
-          layerPasses.push({
-            shaderName: "adjustments.basic",
-            uniforms: {
-              ...baseUniforms,
-              u_brightness: Number(p.brightness || 100),
-              u_contrast: Number(p.contrast || 100),
-              u_saturation: Number(p.saturation || 100),
-              u_hue: Number(p.hue || 0),
-              u_exposure: Number(p.exposure || 0),
-              u_gamma: Number(p.gamma || 1),
-              u_opacity: 100,
-            },
-            inputs: [
-              layerPasses[layerPasses.length - 1].passId ||
-                layerPasses[layerPasses.length - 1].shaderName,
-            ],
-          })
 
-          if (layerPasses.length) {
-            // Source for the first pass comes from oriented layer texture
-            ;(layerPasses[0] as any).channels = { u_texture: renderedTexture }
-            const out = passGraphPipeline.runDAG(
-              layerPasses,
-              canvasWidth,
-              canvasHeight,
-              // All passes after layer.render sample FBO outputs → comp texcoords
-              { position: pgPositionBuffer, texcoord: pgCompTexcoordBuffer }
-            )
-            if (out) renderedTexture = out
+            if (layerPasses.length) {
+              // Source for the first pass comes from oriented layer texture
+              ;(layerPasses[0] as any).channels = { u_texture: renderedTexture }
+              const out = passGraphPipeline.runDAG(
+                layerPasses,
+                canvasWidth,
+                canvasHeight,
+                // All passes after layer.render sample FBO outputs → comp texcoords
+                { position: pgPositionBuffer, texcoord: pgCompTexcoordBuffer }
+              )
+              if (out) renderedTexture = out
+            }
           }
-        }
 
-        if (renderedTexture) {
-          renderedLayers.set(layer.id, renderedTexture)
+          if (renderedTexture) {
+            renderedLayers.set(layer.id, renderedTexture)
+            try {
+              dbg("layer:render-success", {
+                layerId: layer.id,
+                hasRenderedTexture: !!renderedTexture,
+                layerIndex: layers.indexOf(layer),
+              })
+            } catch {}
+          }
+        } catch (error) {
+          console.warn(`Failed to render layer ${layer.id}:`, error)
           try {
-            dbg("layer:render-success", {
+            dbg("layer:render-error", {
               layerId: layer.id,
-              hasRenderedTexture: !!renderedTexture,
-              layerIndex: flattenedLayers.indexOf(layer),
+              error: error instanceof Error ? error.message : String(error),
+              layerIndex: layers.indexOf(layer),
             })
           } catch {}
         }
-      } catch (error) {
-        console.warn(`Failed to render layer ${layer.id}:`, error)
-        try {
-          dbg("layer:render-error", {
-            layerId: layer.id,
-            error: error instanceof Error ? error.message : String(error),
-            layerIndex: flattenedLayers.indexOf(layer),
-          })
-        } catch {}
       }
     }
+
+    await renderLayersRecursively(layers)
 
     try {
       dbg("layers:rendered", { count: renderedLayers.size })
@@ -1450,10 +1486,9 @@ async function renderLayers(
             // Build textures map for hybrid renderer
             const layerTexMap = new Map<string, WebGLTexture>()
             for (const [id, tex] of renderedLayers) layerTexMap.set(id, tex)
-            // Use renderer to compose
-            const orderedLayers = flattenedLayers.slice().reverse()
+            // Use renderer to compose (let hybrid renderer handle groups)
             hybridRendererInstance.renderLayers(
-              orderedLayers,
+              layers as any,
               layerTexMap,
               toolsValues,
               selectedLayerId,
@@ -1489,7 +1524,7 @@ async function renderLayers(
         // Ordered draw bottom->top.
         // The editor currently provides layers in top-first order (new layers are unshifted),
         // so convert to bottom->top for correct compositing.
-        const orderedLayers = flattenedLayers.slice().reverse()
+        const orderedLayers = layers.slice().reverse()
 
         // Debug: Log compositing order
         try {
@@ -1843,7 +1878,8 @@ async function renderLayers(
             } catch {}
 
             if (compUBlendModeLocation) {
-              glCtx.uniform1i(compUBlendModeLocation, mode)
+              // Worker compositor also expects float uniform
+              glCtx.uniform1f(compUBlendModeLocation, mode)
               try {
                 dbg("blend:uniform:set", {
                   layerId: layer.id,
@@ -1951,7 +1987,7 @@ async function renderLayers(
       try {
         // Associate token for stale drop and schedule all levels
         const baseTaskId = await asynchronousPipeline.queueRenderTask(
-          flattenedLayers,
+          layers,
           toolsValues,
           selectedLayerId,
           canvasWidth,

@@ -1517,9 +1517,8 @@ export function ImageEditorCanvas({
       const canvasWidth = canvas.width
       const canvasHeight = canvas.height
 
-      // Pass all layers to the hybrid renderer and let it handle the ordering
-      // The hybrid renderer will filter visible layers and sort them properly
-      const allLayersToRender = canonicalLayers
+      // Pass top-level layers (preserve groups). Renderer will precomp groups
+      const allLayersToRender = topLevelLayers
 
       // If no layers are available, just clear the canvas and return
       if (allLayersToRender.length === 0) {
@@ -1553,25 +1552,34 @@ export function ImageEditorCanvas({
       const layerTextures = new Map<string, WebGLTexture>()
 
       // Load textures for layers that have content (the hybrid renderer will filter visible ones)
-      for (const layer of allLayersToRender) {
-        if (
-          layer.type === "image" &&
-          (layer as any).isEmpty &&
-          !(layer as any).image
-        ) {
-          continue
-        }
+      // This includes group children which need textures for group precomposition
+      const loadTexturesRecursively = async (layers: EditorLayer[]) => {
+        for (const layer of layers) {
+          if (layer.type === "image") {
+            if ((layer as any).isEmpty && !(layer as any).image) {
+              continue
+            }
 
-        const layerTexture = await loadLayerTexture(layer)
-        if (layerTexture) {
-          layerTextures.set(layer.id, layerTexture)
-        } else {
-          // Fallback to main texture if layer texture fails to load
-          if (textureRef.current) {
-            layerTextures.set(layer.id, textureRef.current)
+            const layerTexture = await loadLayerTexture(layer)
+            if (layerTexture) {
+              layerTextures.set(layer.id, layerTexture)
+            } else {
+              // Fallback to main texture if layer texture fails to load
+              if (textureRef.current) {
+                layerTextures.set(layer.id, textureRef.current)
+              }
+            }
+          } else if (layer.type === "group") {
+            // Recursively load textures for group children
+            const groupLayer = layer as any
+            if (Array.isArray(groupLayer.children)) {
+              await loadTexturesRecursively(groupLayer.children)
+            }
           }
         }
       }
+
+      await loadTexturesRecursively(allLayersToRender)
 
       // Use hybrid renderer to render all layers with proper compositing
       if (

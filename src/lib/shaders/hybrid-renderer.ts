@@ -782,7 +782,11 @@ export class HybridRenderer {
       "u_blendMode"
     )
     if (blendModeLocation) {
-      this.gl.uniform1i(blendModeLocation, BLEND_MODE_MAP[blendMode])
+      // v2 compositor expects float, cast to int in shader
+      this.gl.uniform1f(
+        blendModeLocation,
+        BLEND_MODE_MAP[blendMode] as unknown as number
+      )
     }
 
     const opacityLocation = this.gl.getUniformLocation(
@@ -1116,10 +1120,13 @@ void main() {
     ): ImageEditorToolsState =>
       ({ ...(DEFAULT_TOOLS as any), ...(tv || {}) }) as ImageEditorToolsState
 
-    // Get layers in proper rendering order (bottom to top)
-    const visibleLayers = this.getRenderingOrder(layers)
+    // Respect groups: handle precomp at render-time; order bottom->top
+    const orderedLayers = layers
+      .filter((l) => l.visible && l.opacity > 0)
+      .slice()
+      .reverse()
 
-    if (visibleLayers.length === 0) {
+    if (orderedLayers.length === 0) {
       // Clear all FBOs when no layers are visible
       this.fboManager.clearFBO("ping", 0, 0, 0, 0)
       this.fboManager.clearFBO("pong", 0, 0, 0, 0)
@@ -1132,8 +1139,7 @@ void main() {
     let accumulatedTexture: WebGLTexture | null = null
     let usePing = true // Track which FBO to use for output
 
-    for (let i = 0; i < visibleLayers.length; i++) {
-      const layer = visibleLayers[i] as any
+    for (const layer of orderedLayers as any[]) {
       const type = layer?.type
 
       if (type === "image") {
@@ -1254,6 +1260,125 @@ void main() {
             accumulatedTexture = compositedTexture
             usePing = !usePing
           }
+        }
+      } else if (type === "group") {
+        // Precompose group into temp FBO, then composite as a single layer
+        // Children should draw bottom->top to match PS/AE
+        const groupChildren: Layer[] = Array.isArray(layer.children)
+          ? (layer.children as Layer[])
+          : []
+        const childrenOrdered = groupChildren.slice().reverse()
+        if (groupChildren.length === 0) continue
+        // Render children recursively into dedicated group ping/pong to avoid conflicts
+        const grpPing = `grp:${(layer as any).id}:ping`
+        const grpPong = `grp:${(layer as any).id}:pong`
+        const grpTemp = `grp:${(layer as any).id}:temp`
+        // Ensure FBOs exist
+        this.fboManager.createFBO(canvasWidth, canvasHeight, grpPing)
+        this.fboManager.createFBO(canvasWidth, canvasHeight, grpPong)
+        this.fboManager.createFBO(canvasWidth, canvasHeight, grpTemp)
+        let groupAccum: WebGLTexture | null = null
+        let grpUsePing = true
+        // Render children bottom->top
+        for (const child of childrenOrdered) {
+          if (!child.visible || child.opacity <= 0) continue
+          if (child.type === "image") {
+            const childTex = layerTextures.get(child.id)
+            if (!childTex) continue
+            const childRendered = this.renderLayer(
+              child as any,
+              childTex,
+              withDefaults(undefined),
+              canvasWidth,
+              canvasHeight,
+              layerDimensions
+            )
+            if (!childRendered) continue
+            if (!groupAccum) {
+              this.copyTextureToFBO(childRendered, grpPing)
+              groupAccum =
+                this.fboManager.getFBO(grpPing)?.texture || childRendered
+              grpUsePing = true
+            } else {
+              const outFbo = grpUsePing ? grpPing : grpPong
+              const inFbo = grpUsePing ? grpPong : grpPing
+              const inObj = this.fboManager.getFBO(inFbo)
+              if (!inObj || inObj.texture !== groupAccum) {
+                this.copyTextureToFBO(groupAccum, inFbo)
+              }
+              const composed = this.compositeLayersWithPingPong(
+                inFbo,
+                childRendered,
+                outFbo,
+                child.blendMode,
+                child.opacity,
+                canvasWidth,
+                canvasHeight
+              )
+              if (composed) {
+                groupAccum = composed
+                grpUsePing = !grpUsePing
+              }
+            }
+          } else if (child.type === "adjustment") {
+            if (!groupAccum) continue
+            const adjParams = (child as any).parameters || {}
+            const adjTexture = this.renderAdjustmentToTexture(
+              groupAccum,
+              withDefaults(adjParams),
+              canvasWidth,
+              canvasHeight
+            )
+            if (!adjTexture) continue
+            const outFbo = grpUsePing ? grpPing : grpPong
+            const inFbo = grpUsePing ? grpPong : grpPing
+            const inObj = this.fboManager.getFBO(inFbo)
+            if (!inObj || inObj.texture !== groupAccum) {
+              this.copyTextureToFBO(groupAccum, inFbo)
+            }
+            const composed = this.compositeLayersWithPingPong(
+              inFbo,
+              adjTexture,
+              outFbo,
+              child.blendMode,
+              child.opacity,
+              canvasWidth,
+              canvasHeight
+            )
+            if (composed) {
+              groupAccum = composed
+              grpUsePing = !grpUsePing
+            }
+          }
+        }
+        if (!groupAccum) continue
+        // Now composite the group as a single layer over the accumulated result
+        if (accumulatedTexture === null) {
+          this.copyTextureToFBO(groupAccum, "ping")
+          accumulatedTexture =
+            this.fboManager.getFBO("ping")?.texture || groupAccum
+          usePing = true
+        } else {
+          const outFbo = usePing ? "ping" : "pong"
+          const inFbo = usePing ? "pong" : "ping"
+          const inObj = this.fboManager.getFBO(inFbo)
+          if (!inObj || inObj.texture !== accumulatedTexture) {
+            this.copyTextureToFBO(accumulatedTexture, inFbo)
+          }
+          const composed = this.compositeLayersWithPingPong(
+            inFbo,
+            groupAccum,
+            outFbo,
+            layer.blendMode,
+            layer.opacity,
+            canvasWidth,
+            canvasHeight
+          )
+          if (composed) {
+            accumulatedTexture = composed
+            usePing = !usePing
+          }
+          // restore pre-group state marker (no separate stack needed since we use local vars)
         }
       } else if (type === "adjustment") {
         // Adjustment layers operate on the accumulated result below them
