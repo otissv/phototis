@@ -73,8 +73,34 @@ export function GroupChildItem({
       const currentChildren = Array.isArray(parent.children)
         ? parent.children
         : []
-      const nextChildren = currentChildren.map((c: any) =>
-        c.id === child.id ? { ...c, ...patch, id: c.id } : c
+
+      console.log(`[GroupChild] Updating child ${child.id} with patch:`, patch)
+      console.log(
+        `[GroupChild] Current children:`,
+        currentChildren.map((c: any) => ({ id: c.id, opacity: c.opacity }))
+      )
+
+      const nextChildren = currentChildren.map((c: any) => {
+        if (c.id === child.id) {
+          // Only update the specific child with the patch, preserving all other properties
+          const updated = { ...c, ...patch }
+          console.log(`[GroupChild] Updated child ${c.id}:`, {
+            id: updated.id,
+            opacity: updated.opacity,
+          })
+          return updated
+        }
+        // Return other children unchanged
+        console.log(`[GroupChild] Keeping child ${c.id} unchanged:`, {
+          id: c.id,
+          opacity: c.opacity,
+        })
+        return c
+      })
+
+      console.log(
+        `[GroupChild] Final children:`,
+        nextChildren.map((c: any) => ({ id: c.id, opacity: c.opacity }))
       )
       updateLayer(parent.id, { children: nextChildren } as any)
     },
@@ -94,6 +120,49 @@ export function GroupChildItem({
       updateLayer(parent.id, { children: nextChildren } as any)
     }
   }, [groupLayer, child, updateLayer, removeLayer])
+
+  const handleDuplicateChild = React.useCallback(() => {
+    // For group children, we need to duplicate the child and add it to the group
+    const parent = groupLayer as any
+    const currentChildren = Array.isArray(parent.children)
+      ? parent.children
+      : []
+
+    // Create a duplicate of the child
+    const duplicatedChild = {
+      ...child,
+      id: `layer-${Date.now()}`,
+      name: `${child.name} (Copy)`,
+    }
+
+    // Add the duplicated child to the group
+    const nextChildren = [...currentChildren, duplicatedChild]
+    updateLayer(parent.id, { children: nextChildren } as any)
+  }, [groupLayer, child, updateLayer])
+
+  const handleToggleChildVisibility = React.useCallback(() => {
+    // Group children are stored within the group's children array, not in the main layers.byId
+    // So we need to update the child within the group's children array
+    handleUpdateChild({ visible: !child.visible })
+  }, [child.visible, handleUpdateChild])
+
+  const handleToggleChildLock = React.useCallback(() => {
+    // Group children are stored within the group's children array, not in the main layers.byId
+    // So we need to update the child within the group's children array
+    handleUpdateChild({ locked: !child.locked })
+  }, [child.locked, handleUpdateChild])
+
+  const handleChildOpacityChange = React.useCallback(
+    (opacity: number) => {
+      // Group children are stored within the group's children array, not in the main layers.byId
+      // So we need to update the child within the group's children array
+      console.log(
+        `[GroupChild] Changing opacity for child ${child.id} to ${opacity}`
+      )
+      handleUpdateChild({ opacity })
+    },
+    [handleUpdateChild, child.id]
+  )
 
   const [{ isDragging }, drag] = useDrag<
     DragItem,
@@ -224,16 +293,12 @@ export function GroupChildItem({
           isSelected={isSelected}
           layer={child}
           onDelete={handleDeleteChild}
-          onDuplicate={() => {}}
+          onDuplicate={handleDuplicateChild}
           onSelect={onSelect}
-          onToggleVisibility={() =>
-            handleUpdateChild({ visible: !(child as any).visible })
-          }
-          onToggleLock={() =>
-            handleUpdateChild({ locked: !(child as any).locked })
-          }
+          onToggleVisibility={handleToggleChildVisibility}
+          onToggleLock={handleToggleChildLock}
           onNameChange={(name) => handleUpdateChild({ name })}
-          onOpacityChange={() => {}}
+          onOpacityChange={handleChildOpacityChange}
           onMoveLayer={onMoveChild}
           type='group-layer'
           parentGroupId={groupLayer.id}

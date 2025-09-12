@@ -18,10 +18,8 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/ui/dropdown-menu"
-import {
-  BLEND_MODE_NAMES,
-  type BlendMode,
-} from "@/lib/shaders/blend-modes/blend-modes"
+import { BLEND_MODE_NAMES } from "@/lib/shaders/blend-modes/blend-modes"
+import type { BlendMode } from "@/lib/shaders/blend-modes/types.blend"
 import { useEditorContext } from "@/lib/editor/context"
 import { TOOL_VALUES } from "@/lib/tools/tools"
 
@@ -73,6 +71,7 @@ export function LayersPanelInner({
     toggleLock,
     toggleVisibility,
     ungroupLayer,
+    updateLayer,
     state,
   } = useEditorContext()
 
@@ -156,9 +155,53 @@ export function LayersPanelInner({
       } else if (opacity > 100) {
         value = 100
       }
-      setOpacity(layerId, value)
+
+      // Get fresh layers data to avoid stale closure issues
+      const currentLayers = getOrderedLayers()
+
+      // Check if this is a group child by searching within groups
+      let isGroupChild = false
+      let parentGroupId: string | null = null
+
+      for (const mainLayer of currentLayers) {
+        if (mainLayer.type === "group") {
+          const groupLayer = mainLayer as any
+          if (groupLayer.children && Array.isArray(groupLayer.children)) {
+            const childLayer = groupLayer.children.find(
+              (child: any) => child.id === layerId
+            )
+            if (childLayer) {
+              isGroupChild = true
+              parentGroupId = mainLayer.id
+              break
+            }
+          }
+        }
+      }
+
+      if (isGroupChild && parentGroupId) {
+        // Update the child within the group
+        console.log(
+          `[LayerPanel] Changing opacity for group child ${layerId} to ${value}`
+        )
+        const parentGroup = currentLayers.find(
+          (l) => l.id === parentGroupId
+        ) as any
+        if (parentGroup?.children) {
+          const updatedChildren = parentGroup.children.map((child: any) =>
+            child.id === layerId ? { ...child, opacity: value } : child
+          )
+          updateLayer(parentGroupId, { children: updatedChildren } as any)
+        }
+      } else {
+        // Update the layer normally
+        console.log(
+          `[LayerPanel] Changing opacity for top-level layer ${layerId} to ${value}`
+        )
+        setOpacity(layerId, value)
+      }
     },
-    [setOpacity, isDragActive]
+    [setOpacity, isDragActive, getOrderedLayers, updateLayer]
   )
 
   const handleMoveLayer = React.useCallback(
@@ -224,7 +267,28 @@ export function LayersPanelInner({
   )
 
   const currentLayer = React.useMemo(() => {
-    return layers.find((layer) => layer.id === selectedLayerId)
+    // First, try to find the layer in the main layers array
+    let layer = layers.find((layer) => layer.id === selectedLayerId)
+
+    // If not found, search within group children
+    if (!layer) {
+      for (const mainLayer of layers) {
+        if (mainLayer.type === "group") {
+          const groupLayer = mainLayer as any
+          if (groupLayer.children && Array.isArray(groupLayer.children)) {
+            const childLayer = groupLayer.children.find(
+              (child: any) => child.id === selectedLayerId
+            )
+            if (childLayer) {
+              layer = childLayer
+              break
+            }
+          }
+        }
+      }
+    }
+
+    return layer
   }, [layers, selectedLayerId])
 
   const isDocumentLayerSelected = selectedLayerId === "document"
