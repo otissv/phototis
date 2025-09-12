@@ -18,18 +18,20 @@ export interface GroupChildrenContainerProps {
   isSelected: boolean
   onMoveChild: (fromIndex: number, toIndex: number) => void
   onMoveChildToTopLevel: (childId: string) => void
+  onSelect: (layerId: string) => void
 }
 
 export function GroupChildrenContainer({
   groupLayer,
   isSelected,
   onMoveChild,
+  onSelect,
 }: GroupChildrenContainerProps) {
   const groupLayerTyped = groupLayer as any
   const children = groupLayerTyped.children || []
 
   return (
-    <div className=''>
+    <div>
       {children.map((child: EditorLayer, index: number) => (
         <GroupChildItem
           key={child.id}
@@ -38,6 +40,7 @@ export function GroupChildrenContainer({
           groupLayer={groupLayer}
           isSelected={isSelected}
           onMoveChild={onMoveChild}
+          onSelect={onSelect}
         />
       ))}
     </div>
@@ -50,6 +53,7 @@ export interface GroupChildItemProps {
   groupLayer: EditorLayer
   isSelected: boolean
   onMoveChild: (fromIndex: number, toIndex: number) => void
+  onSelect: (layerId: string) => void
 }
 
 export function GroupChildItem({
@@ -58,6 +62,7 @@ export function GroupChildItem({
   groupLayer,
   isSelected,
   onMoveChild,
+  onSelect,
 }: GroupChildItemProps) {
   const { dropHandled } = React.useContext(LayerContext)
   const { updateLayer, removeLayer, reorderLayer } = useEditorContext()
@@ -214,12 +219,13 @@ export function GroupChildItem({
         )}
       >
         <DraggableLayerItem
-          layer={child}
+          id={child.id}
           index={index}
-          isSelected={false}
-          onSelect={() => {}}
+          isSelected={isSelected}
+          layer={child}
           onDelete={handleDeleteChild}
           onDuplicate={() => {}}
+          onSelect={onSelect}
           onToggleVisibility={() =>
             handleUpdateChild({ visible: !(child as any).visible })
           }

@@ -21,13 +21,14 @@ export interface DragItem {
   isOverMiddle?: boolean
 }
 
-export interface DraggableLayerItemProps {
+export interface DraggableLayerItemProps
+  extends Prettify<Omit<React.ComponentProps<"div">, "onSelect">> {
   layer: EditorLayer
   index: number
   isSelected: boolean
   type: "layer" | "group-layer"
   parentGroupId?: string
-  onSelect: () => void
+  onSelect: (layerId: string) => void
   onDelete: () => void
   onDuplicate: () => void
   onToggleVisibility: () => void
@@ -55,6 +56,7 @@ export function DraggableLayerItem({
   onUngroup,
   onToggleGroupCollapse,
   type = "layer",
+  ...props
 }: DraggableLayerItemProps) {
   const { isGlobalDragActive, dropHandled } = React.useContext(LayerContext)
   const {
@@ -336,9 +338,16 @@ export function DraggableLayerItem({
     }
   }, [isDragging, history])
 
+  const handleSelect = (e: React.MouseEvent | React.KeyboardEvent) => {
+    e.stopPropagation()
+    const layerId = (e.currentTarget as HTMLElement).dataset.id || ""
+    onSelect(layerId)
+  }
+
   return (
-    <div>
+    <div {...props}>
       <div
+        data-id={layer.id}
         ref={ref}
         className={cn(
           "cursor-pointer transition-colors w-full text-left rounded-sm space-y-1",
@@ -346,27 +355,28 @@ export function DraggableLayerItem({
           isOver && "border-primary/50",
           isOverMiddle && "border-blue-500 bg-blue-500/20"
         )}
-        onClick={onSelect}
+        onClick={(e: React.MouseEvent) => {
+          handleSelect(e)
+        }}
         aria-label={`Select layer ${layer.name}`}
         onKeyDown={(e: React.KeyboardEvent) => {
           if (e.key === "Enter") {
-            onSelect()
+            handleSelect(e)
           }
         }}
       >
         <LayerItemContent
+          isDragActive={isDragging || isGlobalDragActive.current}
           layer={layer}
-          isSelected={isSelected}
-          onSelect={onSelect}
           onDelete={onDelete}
           onDuplicate={onDuplicate}
-          onToggleVisibility={onToggleVisibility}
-          onToggleLock={onToggleLock}
           onNameChange={onNameChange}
           onOpacityChange={onOpacityChange}
-          isDragActive={isDragging || isGlobalDragActive.current}
-          onUngroup={onUngroup}
+          onSelect={onSelect}
           onToggleGroupCollapse={onToggleGroupCollapse}
+          onToggleLock={onToggleLock}
+          onToggleVisibility={onToggleVisibility}
+          onUngroup={onUngroup}
         />
       </div>
       {layer.type === "adjustment" && isSelected && (

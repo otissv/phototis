@@ -34,36 +34,37 @@ import { GroupChildrenContainer } from "@/components/layers/group-layer"
 
 export interface LayerItemContentProps {
   layer: EditorLayer
-  onSelect: () => void
+  isDragActive?: boolean
   onDelete: () => void
   onDuplicate: () => void
-  onToggleVisibility: () => void
-  onToggleLock: () => void
   onNameChange: (name: string) => void
   onOpacityChange: (opacity: number) => void
-  isDragActive?: boolean
-  onUngroup?: () => void
+  onSelect: (layerId: string) => void
   onToggleGroupCollapse?: () => void
-  isSelected?: boolean
+  onToggleLock: () => void
+  onToggleVisibility: () => void
+  onUngroup?: () => void
 }
 
 export function LayerItemContent({
+  isDragActive = false,
   layer,
-  onSelect,
   onDelete,
   onDuplicate,
-  onToggleVisibility,
-  onToggleLock,
   onNameChange,
-  isDragActive = false,
-  onUngroup,
+  onSelect,
   onToggleGroupCollapse,
-  isSelected = false,
+  onToggleLock,
+  onToggleVisibility,
+  onUngroup,
 }: LayerItemContentProps) {
   const [isEditing, setIsEditing] = React.useState(false)
   const [editName, setEditName] = React.useState(layer.name)
-  const { reorderLayers, ungroupLayer, updateLayer, removeLayer } =
-    useEditorContext()
+  const { getSelectedLayerId, updateLayer } = useEditorContext()
+
+  const selectedLayerId = getSelectedLayerId()
+
+  const isSelected = selectedLayerId === layer.id
 
   const handleMoveChildInGroup = React.useCallback(
     (groupId: string, fromIndex: number, toIndex: number) => {
@@ -150,6 +151,7 @@ export function LayerItemContent({
 
   return (
     <div
+      data-id={layer.id}
       className={cn(
         "rounded-sm",
         layer.type === "group" ? "border" : "hover:bg-primary/10"
@@ -344,6 +346,7 @@ export function LayerItemContent({
           onMoveChildToTopLevel={(childId) =>
             handleMoveChildToTopLevel(layer.id, childId)
           }
+          onSelect={onSelect}
         />
       )}
     </div>

@@ -58,22 +58,21 @@ export function LayersPanelInner({
   const { isGlobalDragActive } = React.useContext(LayerContext)
 
   const {
+    addAdjustmentLayer,
+    addImageLayer,
+    duplicateLayer,
     getOrderedLayers,
     getSelectedLayerId,
-    selectLayer,
-    addEmptyLayer,
-    addImageLayer,
     removeLayer,
-    duplicateLayer,
     reorderLayers,
+    selectLayer,
     setBlendMode,
-    toggleVisibility,
-    toggleLock,
     setLayerName,
     setOpacity,
-    addAdjustmentLayer,
-    ungroupLayer,
     toggleGroupCollapse,
+    toggleLock,
+    toggleVisibility,
+    ungroupLayer,
     state,
   } = useEditorContext()
 
@@ -345,11 +344,12 @@ export function LayersPanelInner({
           return layer.type !== "document" ? (
             <DraggableLayerItem
               key={layer.id}
+              id={layer.id}
               layer={layer}
               index={index}
               type='layer'
               isSelected={selectedLayerId === layer.id}
-              onSelect={() => selectLayer(layer.id)}
+              onSelect={selectLayer}
               onDelete={() => handleDeleteLayer(layer.id)}
               onDuplicate={() => handleDuplicateLayer(layer.id)}
               onToggleVisibility={() => handleToggleVisibility(layer.id)}
