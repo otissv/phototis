@@ -7,7 +7,10 @@ import { cn } from "@/lib/utils"
 import { useEditorContext } from "@/lib/editor/context"
 import type { EditorLayer, AdjustmentLayer } from "@/lib/editor/state"
 import { AdjustmentLayerEditor } from "@/components/layers/adjustment.layer"
-import { LayerItemContent } from "@/components/layers/layer-content"
+import {
+  LayerItemContent,
+  LayerThumbnail,
+} from "@/components/layers/layer-content"
 import { LayerContext } from "@/components/layers/layer-panel"
 
 // Drag item type for react-dnd
@@ -85,48 +88,8 @@ export function DraggableLayerItem({
     collect: (monitor) => ({
       isDragging: monitor.isDragging(),
     }),
-    end: (item: DragItem, monitor) => {
-      // Prevent duplicate drop operations
-      if (dropHandled.current) {
-        return
-      }
-
-      dropHandled.current = true
-
-      // Check if the item was dropped on a valid target
-      const didDrop = monitor.didDrop()
-
-      if (!didDrop && !item.targetLayerId) {
-        // If this is a child from a group that was dropped outside, move it to top level
-        if (item.parentGroupId) {
-          const groupLayer = layers.find(
-            (l) => l.id === item.parentGroupId
-          ) as any
-
-          if (
-            groupLayer &&
-            groupLayer.type === "group" &&
-            groupLayer.children
-          ) {
-            const child = groupLayer.children.find(
-              (child: any) => child.id === item.id
-            )
-            if (child) {
-              // Find the group's position in the main layers order
-              const groupIndex = layers.findIndex(
-                (layer) => layer.id === item.parentGroupId
-              )
-
-              // Move the child to the main layers at the group's position atomically
-              reorderLayer(child.id, { parentId: null, index: groupIndex })
-
-              history.end(true)
-            }
-          }
-        }
-      }
-
-      // Reset global drag state
+    end: () => {
+      // Reset global drag state only; do not auto-move children to top level
       isGlobalDragActive.current = false
       dropHandled.current = false
     },
@@ -263,7 +226,8 @@ export function DraggableLayerItem({
       }
 
       if (type === "group-layer") {
-        reorderLayer(item.id, { parentId: item.targetLayerId, index: index })
+        dropHandled.current = true
+        reorderLayer(item.id, { parentId: parentGroupId ?? null, index })
         return
       }
 
@@ -365,6 +329,16 @@ export function DraggableLayerItem({
           }
         }}
       >
+        {isOverMiddle && layer.type !== "group" && (
+          <div
+            className={cn(
+              "flex items-center gap-2 p-2 rounded-sm bg-primary/5 h-10 text-sm"
+            )}
+          >
+            <LayerThumbnail layer={layer} />
+            Group with <span className='truncate w-[166px]'>{layer.name}</span>
+          </div>
+        )}
         <LayerItemContent
           isDragActive={isDragging || isGlobalDragActive.current}
           layer={layer}

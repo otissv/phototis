@@ -4,6 +4,7 @@
 import type { EditorLayer } from "@/lib/editor/state"
 import type { ImageEditorToolsState } from "@/lib/tools/tools-state"
 import { CanvasStateManager } from "@/lib/canvas-state-manager"
+import { config } from "@/config"
 
 // Worker message types
 export interface WorkerMessage {
@@ -58,6 +59,8 @@ export interface WorkerManagerConfig {
   progressiveLevels: number[]
 }
 
+const { isDebug } = config()
+
 export class WorkerManager {
   private static sharedInstance: WorkerManager | null = null
   private workers: Worker[] = []
@@ -100,8 +103,8 @@ export class WorkerManager {
         })
       )
       // Also log to console for easier debugging without listeners
-      if (typeof console !== "undefined" && console.debug) {
-        console.debug("worker-debug", detail)
+      if (typeof console !== "undefined" && console.debug && isDebug) {
+        console.debug("[Worker Debug]", detail)
       }
     } catch {}
   }
@@ -446,8 +449,8 @@ export class WorkerManager {
           })
         )
         // Also log to console for visibility without listeners
-        if (typeof console !== "undefined" && console.debug) {
-          console.debug("worker-debug", detail)
+        if (typeof console !== "undefined" && console.debug && isDebug) {
+          console.debug("[Worker Debug]", detail)
         }
       } catch {}
       return

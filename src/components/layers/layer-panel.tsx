@@ -26,7 +26,11 @@ import { TOOL_VALUES } from "@/lib/tools/tools"
 import type { SIDEBAR_TOOLS } from "@/lib/tools/tools-state"
 
 import { DocumentLayerItem } from "./document-layer"
-import { DraggableLayerItem } from "@/components/layers/draggable-layer"
+import {
+  DraggableLayerItem,
+  type DragItem,
+} from "@/components/layers/draggable-layer"
+import { useDrop } from "react-dnd"
 
 export type LayerContextType = {
   isGlobalDragActive: React.RefObject<boolean>
@@ -62,6 +66,7 @@ export function LayersPanelInner({
     getOrderedLayers,
     getSelectedLayerId,
     removeLayer,
+    reorderLayer,
     reorderLayers,
     selectLayer,
     setBlendMode,
@@ -78,6 +83,28 @@ export function LayersPanelInner({
   const layers = getOrderedLayers()
   const selectedLayerId = getSelectedLayerId()
   const isDragActive = state.ephemeral.interaction.isDragging
+
+  // Top-level drop zones to allow promoting child layers out of groups
+  const [{ isOverTop }, topDrop] = useDrop({
+    accept: ["layer", "group-layer"] as any,
+    drop: (item: DragItem) => {
+      // Move dragged item to top-level at index 0
+      reorderLayer(item.id, { parentId: null, index: 0 })
+    },
+    collect: (monitor) => ({ isOverTop: monitor.isOver() }),
+  })
+
+  const [{ isOverBottom }, bottomDrop] = useDrop({
+    accept: ["layer", "group-layer"] as any,
+    drop: (item: DragItem) => {
+      // Insert just above the document layer (end of user layers)
+      reorderLayer(item.id, {
+        parentId: null,
+        index: Math.max(0, layers.length - 1),
+      })
+    },
+    collect: (monitor) => ({ isOverBottom: monitor.isOver() }),
+  })
 
   const handleFileUpload = React.useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -146,6 +173,52 @@ export function LayersPanelInner({
     [setLayerName, isDragActive]
   )
 
+  const handleBlendModeChange = React.useCallback(
+    (layerId: string, blendMode: BlendMode) => {
+      if (isDragActive) return
+
+      // Get fresh layers data to avoid stale closure issues
+      const currentLayers = getOrderedLayers()
+
+      // Check if this is a group child by searching within groups
+      let isGroupChild = false
+      let parentGroupId: string | null = null
+
+      for (const mainLayer of currentLayers) {
+        if (mainLayer.type === "group") {
+          const groupLayer = mainLayer as any
+          if (groupLayer.children && Array.isArray(groupLayer.children)) {
+            const childLayer = groupLayer.children.find(
+              (child: any) => child.id === layerId
+            )
+            if (childLayer) {
+              isGroupChild = true
+              parentGroupId = mainLayer.id
+              break
+            }
+          }
+        }
+      }
+
+      if (isGroupChild && parentGroupId) {
+        // Update the child within the group
+        const parentGroup = currentLayers.find(
+          (l) => l.id === parentGroupId
+        ) as any
+        if (parentGroup?.children) {
+          const updatedChildren = parentGroup.children.map((child: any) =>
+            child.id === layerId ? { ...child, blendMode } : child
+          )
+          updateLayer(parentGroupId, { children: updatedChildren } as any)
+        }
+      } else {
+        // Update the layer normally
+        setBlendMode(layerId, blendMode)
+      }
+    },
+    [setBlendMode, isDragActive, getOrderedLayers, updateLayer]
+  )
+
   const handleOpacityChange = React.useCallback(
     (layerId: string, opacity: number) => {
       if (isDragActive) return
@@ -181,9 +254,6 @@ export function LayersPanelInner({
 
       if (isGroupChild && parentGroupId) {
         // Update the child within the group
-        console.log(
-          `[LayerPanel] Changing opacity for group child ${layerId} to ${value}`
-        )
         const parentGroup = currentLayers.find(
           (l) => l.id === parentGroupId
         ) as any
@@ -195,9 +265,6 @@ export function LayersPanelInner({
         }
       } else {
         // Update the layer normally
-        console.log(
-          `[LayerPanel] Changing opacity for top-level layer ${layerId} to ${value}`
-        )
         setOpacity(layerId, value)
       }
     },
@@ -328,7 +395,7 @@ export function LayersPanelInner({
                   className='text-xs h-8 justify-start whitespace-nowrap'
                   onClick={() =>
                     selectedLayerId &&
-                    setBlendMode(selectedLayerId, mode as BlendMode)
+                    handleBlendModeChange(selectedLayerId, mode as BlendMode)
                   }
                 >
                   {name}
@@ -404,6 +471,14 @@ export function LayersPanelInner({
       </div>
 
       <div className='space-y-2 px-2 transition-all'>
+        {/* Top-level drop zone (top) */}
+        <div
+          ref={topDrop as any}
+          className={cn(
+            "h-2 -mt-1",
+            isOverTop && "h-10 rounded-sm bg-primary/10 p-2 text-sm"
+          )}
+        />
         {layers.map((layer, index) => {
           return layer.type !== "document" ? (
             <DraggableLayerItem
@@ -428,6 +503,15 @@ export function LayersPanelInner({
             />
           ) : null
         })}
+
+        {/* Top-level drop zone (bottom) */}
+        <div
+          ref={bottomDrop as any}
+          className={cn(
+            "h-2",
+            isOverBottom && "h-10 rounded-sm bg-primary/10 p-2 text-sm"
+          )}
+        />
 
         <DocumentLayerItem
           isSelected={selectedLayerId === "document"}

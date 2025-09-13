@@ -7,9 +7,8 @@ import { useDebounce } from "use-debounce"
 
 import type { ImageEditorToolsState } from "@/lib/tools/tools-state"
 import { initialToolsState } from "@/lib/tools/tools-state"
-import type { EditorLayer, CanvasPosition } from "@/lib/editor/state"
+import type { EditorLayer } from "@/lib/editor/state"
 import { useEditorContext } from "@/lib/editor/context"
-// Legacy ShaderManager removed; hybrid/worker use v2 pass-graph
 import { ShaderManagerV2 } from "@/lib/shaders/v2/manager"
 import { GlobalShaderRegistryV2 } from "@/lib/shaders/v2/registry"
 import { HybridRenderer } from "@/lib/shaders/hybrid-renderer"
@@ -17,10 +16,8 @@ import { RenderConfig } from "@/lib/shaders/render-config"
 import { useWorkerRenderer } from "@/lib/hooks/useWorkerRenderer"
 import { TaskPriority, WorkerManager } from "@/lib/workers/worker-manager"
 import { CanvasStateManager } from "@/lib/canvas-state-manager"
-import { SetViewportCommand } from "@/lib/editor/commands"
 import { useCrop } from "./tools/crop.tools"
-
-// Legacy shader manager removed
+import { config } from "@/config"
 
 export interface LayerDimensions {
   layerId: string
@@ -36,6 +33,9 @@ export interface ViewportState {
   y: number
   scale: number
 }
+
+const { isDebug } = config()
+
 export interface ImageEditorCanvasProps
   extends Omit<React.ComponentProps<"canvas">, "onProgress"> {
   onProgress?: (progress: number) => void
@@ -60,7 +60,7 @@ export function ImageEditorCanvas({
     updateLayer,
   } = useEditorContext()
 
-  const selectedLayerId = getSelectedLayerId() || "layer-1"
+  const selectedLayerId = getSelectedLayerId() || "document"
   const isDragActive = state.ephemeral.interaction.isDragging
   const glRef = React.useRef<WebGL2RenderingContext | null>(null)
   const programRef = React.useRef<WebGLProgram | null>(null)
@@ -183,7 +183,9 @@ export function ImageEditorCanvas({
     drawDebounceTimerRef.current = setTimeout(() => {
       drawDebounceTimerRef.current = null
       const reasons = Array.from(drawTriggerReasonsRef.current)
-      console.log(`🎨 [Draw] Triggered by: ${reasons.join(", ")}`)
+
+      isDebug && console.debug(`🎨 [Draw] Triggered by: ${reasons.join(", ")}`)
+
       drawTriggerReasonsRef.current.clear()
       drawRef.current?.()
     }, 16) // ~1 frame at 60fps
@@ -339,24 +341,27 @@ export function ImageEditorCanvas({
     }
     const canvasStateManager = CanvasStateManager.getInstance()
     if (!canvasStateManager.canTransferToOffscreen(canvas)) {
-      console.log(
-        "🎨 [Renderer] Canvas cannot be transferred to OffscreenCanvas, will use hybrid renderer"
-      )
+      isDebug &&
+        console.debug(
+          "🎨 [Renderer] Canvas cannot be transferred to OffscreenCanvas, will use hybrid renderer"
+        )
       return
     }
     initializingCanvasesRef.current.add(canvas)
 
     if (renderType !== "worker") return
 
-    console.log(
-      `🎨 [WORKER] Initializing worker-based renderer at ${Date.now()}`
-    )
+    isDebug &&
+      console.debug(
+        `🎨 [WORKER] Initializing worker-based renderer at ${Date.now()}`
+      )
 
     void initializeWorker(canvas).then((success) => {
       if (success) {
-        console.log(
-          `🎨 [WORKER] Worker-based renderer initialized successfully at ${Date.now()}`
-        )
+        isDebug &&
+          console.debug(
+            `🎨 [WORKER] Worker-based renderer initialized successfully at ${Date.now()}`
+          )
 
         initializedCanvasesRef.current.add(canvas)
       } else {
@@ -809,7 +814,7 @@ export function ImageEditorCanvas({
       const oldData = new Map(imageDataCacheRef.current)
 
       for (const [layerId, _imageData] of oldData) {
-        if (!currentLayerIds.has(layerId) && layerId !== "main") {
+        if (!currentLayerIds.has(layerId)) {
           imageDataCacheRef.current.delete(layerId)
           const gl = glRef.current
           const tex = textureCacheRef.current.get(layerId)
@@ -1030,9 +1035,10 @@ export function ImageEditorCanvas({
       (isWorkerInitializing ||
         canvasStateManager.canTransferToOffscreen(canvas))
     ) {
-      console.log(
-        "🎨 [Renderer] Deferring WebGL context creation while worker initializes/transfer is possible"
-      )
+      isDebug &&
+        console.debug(
+          "🎨 [Renderer] Deferring WebGL context creation while worker initializes/transfer is possible"
+        )
       return
     }
 
@@ -1044,6 +1050,7 @@ export function ImageEditorCanvas({
     // Check if canvas can be used for WebGL operations
     if (!canvasStateManager.canUseForWebGL(canvas)) {
       const error = canvasStateManager.getErrorMessage(canvas)
+
       console.warn(
         "Canvas cannot be used for WebGL operations:",
         error || "Canvas has been transferred to OffscreenCanvas"
@@ -1171,12 +1178,7 @@ export function ImageEditorCanvas({
       // For image layers, load the actual image texture
       if (layer.type === "image") {
         // Get image data for this layer
-        let imageData = imageDataCacheRef.current.get(layer.id)
-
-        // For the background layer (layer-1), use the main image data if available
-        if (!imageData && layer.id === "layer-1") {
-          imageData = imageDataCacheRef.current.get("main")
-        }
+        const imageData = imageDataCacheRef.current.get(layer.id)
 
         if (imageData) {
           const texture = createTextureFromImageData(imageData)
@@ -1191,14 +1193,8 @@ export function ImageEditorCanvas({
             return texture
           }
         }
-
-        // For empty layers without image content, return null
-        if ((layer as any).isEmpty && !(layer as any).image) {
-          return null
-        }
-
-        // Fallback to main texture for layers that should have content
-        return textureRef.current
+        // For empty layers or missing image content, return null (no fallback texture)
+        return null
       }
 
       // Fallback to main texture for unknown layer types
@@ -1247,7 +1243,7 @@ export function ImageEditorCanvas({
     // Periodic cleanup of unused cache entries to prevent memory leaks
     try {
       const currentLayerIds = new Set(canonicalLayers.map((l) => l.id))
-      currentLayerIds.add("main") // Preserve main image cache
+      // No special preservation keys; caches will be cleaned based on actual layer IDs
 
       // Clean up imageData cache
       for (const [key] of Array.from(imageDataCacheRef.current.entries())) {
@@ -1337,7 +1333,7 @@ export function ImageEditorCanvas({
           isDrawingRef.current = false
           return
         }
-        console.log("🎨 [Renderer] Using WORKER-BASED renderer")
+        isDebug && console.debug("🎨 [Renderer] Using WORKER-BASED renderer")
         const canvas = canvasRef?.current
 
         if (!canvas) {
@@ -1417,10 +1413,11 @@ export function ImageEditorCanvas({
 
           if (taskId) {
             // Worker is handling the rendering
-            console.log(
-              "🎨 [Renderer] Worker task queued successfully:",
-              taskId
-            )
+            isDebug &&
+              console.debug(
+                "🎨 [Renderer] Worker task queued successfully:",
+                taskId
+              )
             // Any previously pending draw request has been effectively scheduled
             pendingRenderRef.current = null
             if (pendingRenderTimerRef.current) {
@@ -1446,9 +1443,10 @@ export function ImageEditorCanvas({
 
       // Use hybrid renderer (either as fallback or primary mode)
       if (renderType === "hybrid") {
-        console.log("🎨 [Renderer] Using HYBRID renderer")
+        isDebug && console.debug("🎨 [Renderer] Using HYBRID renderer")
       } else {
-        console.log("🎨 [Renderer] Using HYBRID renderer (fallback)")
+        isDebug &&
+          console.debug("🎨 [Renderer] Using HYBRID renderer (fallback)")
       }
       const gl = glRef.current
       const canvas = canvasRef?.current
@@ -1479,20 +1477,23 @@ export function ImageEditorCanvas({
         if (!ok || !hybridRendererRef.current) {
           try {
             console.warn("🎨 [Renderer] Hybrid renderer not initialized")
-            console.log("🎨 [Hybrid][State] gl?", !!gl, "canvas?", !!canvas)
-            console.log(
-              "🎨 [Hybrid][State] canvas size:",
-              canvas?.width,
-              "x",
-              canvas?.height
-            )
+            isDebug &&
+              console.debug("🎨 [Hybrid][State] gl?", !!gl, "canvas?", !!canvas)
+            isDebug &&
+              console.debug(
+                "🎨 [Hybrid][State] canvas size:",
+                canvas?.width,
+                "x",
+                canvas?.height
+              )
             const dimsArray = Array.from(dimsForRender.entries()).map(
               ([layerId, d]) => ({ layerId, ...d })
             )
-            console.log(
-              "🎨 [Hybrid][Dims] dimsForRender (pre-init):",
-              dimsArray
-            )
+            isDebug &&
+              console.debug(
+                "🎨 [Hybrid][Dims] dimsForRender (pre-init):",
+                dimsArray
+              )
             const cachedDims = Array.from(
               layerDimensionsRef.current.entries()
             ).map(([id, d]) => ({
@@ -1503,10 +1504,11 @@ export function ImageEditorCanvas({
               x: d.x,
               y: d.y,
             }))
-            console.log(
-              "🎨 [Hybrid][Dims] layerDimensionsRef (pre-init):",
-              cachedDims
-            )
+            isDebug &&
+              console.debug(
+                "🎨 [Hybrid][Dims] layerDimensionsRef (pre-init):",
+                cachedDims
+              )
           } catch {}
           isDrawingRef.current = false
           return
@@ -1563,11 +1565,6 @@ export function ImageEditorCanvas({
             const layerTexture = await loadLayerTexture(layer)
             if (layerTexture) {
               layerTextures.set(layer.id, layerTexture)
-            } else {
-              // Fallback to main texture if layer texture fails to load
-              if (textureRef.current) {
-                layerTextures.set(layer.id, textureRef.current)
-              }
             }
           } else if (layer.type === "group") {
             // Recursively load textures for group children
@@ -1588,11 +1585,12 @@ export function ImageEditorCanvas({
         layerTextures.size > 0
       ) {
         try {
-          console.log(
-            "🎨 [Renderer] Hybrid renderer executing with",
-            allLayersToRender.length,
-            "layers"
-          )
+          isDebug &&
+            console.debug(
+              "🎨 [Renderer] Hybrid renderer executing with",
+              allLayersToRender.length,
+              "layers"
+            )
 
           hybridRendererRef.current.renderLayers(
             allLayersToRender,
@@ -1606,10 +1604,16 @@ export function ImageEditorCanvas({
 
           // Render the final result to canvas
           hybridRendererRef.current.renderToCanvas(canvas)
-          console.log("🎨 [Renderer] Hybrid renderer completed successfully")
+          isDebug &&
+            console.debug(
+              "🎨 [Renderer] Hybrid renderer completed successfully"
+            )
         } catch (error) {
           console.error("🎨 [Renderer] Error in hybrid renderer:", error)
-          console.log("🎨 [Renderer] Falling back to simple WebGL rendering")
+          isDebug &&
+            console.debug(
+              "🎨 [Renderer] Falling back to simple WebGL rendering"
+            )
           // Fallback: Use simple WebGL rendering for the new layer system
           await renderLayersFallback(
             allLayersToRender,
@@ -1620,7 +1624,8 @@ export function ImageEditorCanvas({
         }
       } else {
         // Fallback: Use simple WebGL rendering for the new layer system
-        console.log("🎨 [Renderer] Using simple WebGL fallback renderer")
+        isDebug &&
+          console.debug("🎨 [Renderer] Using simple WebGL fallback renderer")
         await renderLayersFallback(
           allLayersToRender,
           layerTextures,
@@ -1645,11 +1650,12 @@ export function ImageEditorCanvas({
       const gl = glRef.current
       if (!gl) return
 
-      console.log(
-        "🎨 [Renderer] Simple WebGL fallback executing with",
-        layers.length,
-        "layers"
-      )
+      isDebug &&
+        console.debug(
+          "🎨 [Renderer] Simple WebGL fallback executing with",
+          layers.length,
+          "layers"
+        )
 
       // Clear the canvas
       gl.clearColor(0, 0, 0, 0)
@@ -1686,7 +1692,7 @@ export function ImageEditorCanvas({
         }
       }
 
-      console.log("🎨 [Renderer] Simple WebGL fallback completed")
+      isDebug && console.debug("🎨 [Renderer] Simple WebGL fallback completed")
     },
     []
   )

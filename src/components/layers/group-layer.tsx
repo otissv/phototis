@@ -74,34 +74,16 @@ export function GroupChildItem({
         ? parent.children
         : []
 
-      console.log(`[GroupChild] Updating child ${child.id} with patch:`, patch)
-      console.log(
-        `[GroupChild] Current children:`,
-        currentChildren.map((c: any) => ({ id: c.id, opacity: c.opacity }))
-      )
-
       const nextChildren = currentChildren.map((c: any) => {
         if (c.id === child.id) {
           // Only update the specific child with the patch, preserving all other properties
           const updated = { ...c, ...patch }
-          console.log(`[GroupChild] Updated child ${c.id}:`, {
-            id: updated.id,
-            opacity: updated.opacity,
-          })
           return updated
         }
         // Return other children unchanged
-        console.log(`[GroupChild] Keeping child ${c.id} unchanged:`, {
-          id: c.id,
-          opacity: c.opacity,
-        })
         return c
       })
 
-      console.log(
-        `[GroupChild] Final children:`,
-        nextChildren.map((c: any) => ({ id: c.id, opacity: c.opacity }))
-      )
       updateLayer(parent.id, { children: nextChildren } as any)
     },
     [groupLayer, child, updateLayer]
@@ -156,12 +138,9 @@ export function GroupChildItem({
     (opacity: number) => {
       // Group children are stored within the group's children array, not in the main layers.byId
       // So we need to update the child within the group's children array
-      console.log(
-        `[GroupChild] Changing opacity for child ${child.id} to ${opacity}`
-      )
       handleUpdateChild({ opacity })
     },
-    [handleUpdateChild, child.id]
+    [handleUpdateChild]
   )
 
   const [{ isDragging }, drag] = useDrag<
@@ -230,14 +209,12 @@ export function GroupChildItem({
           return
         }
 
-        // Time to actually perform the action
-        onMoveChild(dragIndex, hoverIndex)
-
-        // Note: we're mutating the monitor item here!
-        // Generally it's better to avoid mutations,
-        // but it's good here for the sake of performance
-        // to avoid expensive index searches.
-        item.index = hoverIndex
+        // Only reorder when dragging within the same group
+        if (item.parentGroupId === (groupLayer as any).id) {
+          onMoveChild(dragIndex, hoverIndex)
+          // Keep the drag item's index in sync to avoid extra splices
+          item.index = hoverIndex
+        }
       } catch (error) {
         // Silently handle React DnD errors during drag operations
         console.warn("React DnD hover error:", error)
@@ -249,21 +226,9 @@ export function GroupChildItem({
     canDrop: () => {
       return true
     },
-    drop: (item: DragItem) => {
-      // Prevent duplicate drop operations
-      if (dropHandled.current) {
-        return
-      }
-
-      // Check if we're dropping a child from the same group
-      if (item.parentGroupId === groupLayer.id) {
-        return
-      }
-
-      // Mover between groups
-      if (item.parentGroupId && item.parentGroupId !== groupLayer.id) {
-        dropHandled.current = true
-      }
+    drop: () => {
+      // Cross-group moves are handled by the outer drop target
+      return
     },
   })
 

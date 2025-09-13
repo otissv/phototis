@@ -19,6 +19,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuTrigger,
+  DropdownMenuItem,
 } from "@/ui/dropdown-menu"
 import { useEditorContext } from "@/lib/editor/context"
 import type { EditorLayer, AdjustmentLayer } from "@/lib/editor/state"
@@ -189,7 +190,7 @@ export function LayerItemContent({
                 <Button
                   variant='ghost'
                   className={cn(
-                    "text-sm truncate flex items-center gap-1 h-6 flex-1 justify-start px-1 rounded-sm cursor-grab",
+                    "text-sm truncate flex justify-start items-center text-left gap-1 h-6 flex-1 px-1 rounded-sm cursor-grab",
                     "hover:bg-transparent"
                   )}
                   onDoubleClick={() => !isDragActive && setIsEditing(true)}
@@ -258,13 +259,8 @@ export function LayerItemContent({
               {layer.type === "group" && (
                 <>
                   {onToggleGroupCollapse && (
-                    <Button
-                      variant='ghost'
-                      size='sm'
-                      onClick={(e: React.MouseEvent) => {
-                        e.stopPropagation()
-                        onToggleGroupCollapse()
-                      }}
+                    <DropdownMenuItem
+                      onSelect={() => onToggleGroupCollapse()}
                       className='gap-2 justify-start rounded-sm cursor-pointer text-sm'
                       disabled={isDragActive}
                       title={
@@ -275,63 +271,46 @@ export function LayerItemContent({
                     >
                       {(layer as any).collapsed ? (
                         <>
-                          {" "}
                           <ListChevronsUpDown className='size-4' /> Expand group
                         </>
                       ) : (
                         <>
-                          {" "}
                           <ListChevronsDownUp className='size-4' /> Collapse
                           group
                         </>
                       )}
-                    </Button>
+                    </DropdownMenuItem>
                   )}
                   {onUngroup && (
-                    <Button
-                      variant='ghost'
-                      size='sm'
-                      onClick={(e: React.MouseEvent) => {
-                        e.stopPropagation()
-                        onUngroup()
-                      }}
+                    <DropdownMenuItem
+                      onSelect={() => onUngroup()}
                       className='gap-2 justify-start rounded-sm cursor-pointer text-sm'
                       disabled={isDragActive}
                       title='Ungroup layers'
                     >
                       <Ungroup className='size-4' /> Ungroup layers
-                    </Button>
+                    </DropdownMenuItem>
                   )}
                 </>
               )}
 
-              <Button
-                variant='ghost'
-                size='sm'
-                onClick={(e: React.MouseEvent) => {
-                  e.stopPropagation()
-                  onDuplicate()
-                }}
+              <DropdownMenuItem
+                onSelect={() => onDuplicate()}
                 className='gap-2 justify-start rounded-sm cursor-pointer text-sm'
                 disabled={isDragActive}
                 title='Duplicate layer'
               >
                 <Copy className={cn("size-4")} /> Duplicate
-              </Button>
+              </DropdownMenuItem>
 
-              <Button
-                variant='ghost'
-                size='sm'
-                onClick={(e: React.MouseEvent) => {
-                  e.stopPropagation()
-                  onDelete()
-                }}
+              <DropdownMenuItem
+                onSelect={() => onDelete()}
                 className='gap-2 justify-start text-destructive rounded-sm cursor-pointer text-sm'
                 disabled={isDragActive}
                 title='Delete layer'
               >
                 <Trash2 className={cn("size-4")} /> Delete
-              </Button>
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -354,7 +333,7 @@ export function LayerItemContent({
 }
 
 // Thumbnail component for layer preview
-function LayerThumbnail({ layer }: { layer: EditorLayer }) {
+export function LayerThumbnail({ layer }: { layer: EditorLayer }) {
   const [thumbnailUrl, setThumbnailUrl] = React.useState<string | null>(null)
 
   React.useEffect(() => {

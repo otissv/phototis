@@ -3,6 +3,9 @@
 import React from "react"
 import { WorkerManager } from "@/lib/workers/worker-manager"
 import { useEditorContext } from "@/lib/editor/context"
+import { config } from "@/config"
+
+const { isDebug } = config()
 
 export function WorkerPrewarm() {
   const { renderType } = useEditorContext()
@@ -26,7 +29,7 @@ export function WorkerPrewarm() {
     }
     window.addEventListener("worker-debug", onDbg as EventListener)
 
-    console.log("worker renderer prewarmed")
+    isDebug && console.debug("[Worker Debug] worker renderer prewarmed")
 
     return () => {
       cancelled = true

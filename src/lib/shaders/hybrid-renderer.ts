@@ -16,12 +16,15 @@ import { ShaderManagerV2 } from "./v2/manager"
 import { GlobalShaderRegistryV2 } from "./v2/registry"
 import { registerBuiltinShaders } from "./v2/builtins"
 import { HybridPassGraphPipeline } from "./v2/pipeline.hybrid"
+import { config } from "@/config"
 
 export interface HybridRendererOptions {
   width: number
   height: number
   gl: WebGL2RenderingContext
 }
+
+const { isDebug } = config()
 
 export class HybridRenderer {
   private gl: WebGL2RenderingContext | null = null
@@ -209,11 +212,12 @@ export class HybridRenderer {
     RenderConfig.configureWebGL(gl)
 
     // Debug: Log HybridRenderer initialization
-    console.log("HybridRenderer initialized:", {
-      width,
-      height,
-      ...RenderConfig.getDebugInfo(gl),
-    })
+    isDebug &&
+      console.debug("HybridRenderer initialized:", {
+        width,
+        height,
+        ...RenderConfig.getDebugInfo(gl),
+      })
 
     // Initialize FBO manager
     this.fboManager.initialize(gl)
@@ -495,15 +499,16 @@ export class HybridRenderer {
           finalOrient = baseOrient === "upright" ? "upsideDown" : "upright"
         }
       }
-      console.log("HybridRenderer layer:orientation", {
-        layerId: (layer as any).id,
-        flipVertical: flipV,
-        flipHorizontal: flipH,
-        rotate: rot,
-        texcoordV: "normal",
-        orientation: finalOrient,
-        unpackFlipY: this.gl.getParameter(this.gl.UNPACK_FLIP_Y_WEBGL),
-      })
+      isDebug &&
+        console.debug("HybridRenderer layer:orientation", {
+          layerId: (layer as any).id,
+          flipVertical: flipV,
+          flipHorizontal: flipH,
+          rotate: rot,
+          texcoordV: "normal",
+          orientation: finalOrient,
+          unpackFlipY: this.gl.getParameter(this.gl.UNPACK_FLIP_Y_WEBGL),
+        })
     } catch {}
 
     // No direct GL bind; sampling chained via pass graph

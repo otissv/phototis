@@ -498,7 +498,8 @@ function ImageEditorInner({
       />
 
       <div className='hidden lg:block lg:col-start-3'>
-        {process.env.NODE_ENV === "development" && (
+        {/* For debugging renderer modes */}
+        {/* {process.env.NODE_ENV === "development" && (
           <div>
             <span className='px-2 py-1 rounded bg-black/60 text-white'>
               Renderer
@@ -514,7 +515,7 @@ function ImageEditorInner({
               <option value='hybrid'>Hybrid (main thread)</option>
             </select>
           </div>
-        )}
+        )} */}
         <ImageEditorPanels
           className='lg:row-span-3 w-full'
           defaultValue='layers'

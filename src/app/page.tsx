@@ -65,7 +65,6 @@ interface RouterProps {
   setRoute: (route: "gallery" | "editor" | "dropzone") => void
 }
 
-
 const MULTIPLE_IMAGE_UPLOAD = true
 
 function Router({ route, setRoute }: RouterProps) {
