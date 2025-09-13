@@ -76,6 +76,7 @@ function ImageEditorInner({
     getSelectedLayerId,
     updateLayer,
     selectLayer,
+    selectLayerNonUndoable,
     setZoomPercent,
     state,
     duplicateLayer,
@@ -251,9 +252,9 @@ function ImageEditorInner({
   React.useEffect(() => {
     if (!getSelectedLayerId()) {
       const first = getOrderedLayers()[0]
-      if (first) selectLayer(first.id)
+      if (first) selectLayerNonUndoable(first.id)
     }
-  }, [getOrderedLayers, getSelectedLayerId, selectLayer])
+  }, [getOrderedLayers, getSelectedLayerId, selectLayerNonUndoable])
 
   // Keep drag state observable to parent if requested
   React.useEffect(() => {

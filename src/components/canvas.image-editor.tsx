@@ -58,6 +58,7 @@ export function ImageEditorCanvas({
     getSelectedLayerId,
     renderType,
     updateLayer,
+    updateLayerNonUndoable,
   } = useEditorContext()
 
   const selectedLayerId = getSelectedLayerId() || "document"
@@ -865,7 +866,7 @@ export function ImageEditorCanvas({
                 layerY = (currentCanvasHeight - imageData.height) / 2
               }
 
-              updateLayer(layer.id, {
+              updateLayerNonUndoable(layer.id, {
                 filters: {
                   ...layer.filters,
                   dimensions: {

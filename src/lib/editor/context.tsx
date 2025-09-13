@@ -106,6 +106,10 @@ export type EditorContextValue = {
     layerId: LayerId,
     update: Partial<Omit<EditorLayer, "id">>
   ) => void
+  updateLayerNonUndoable: (
+    layerId: LayerId,
+    update: Partial<Omit<EditorLayer, "id">>
+  ) => void
   removeLayer: (layerId: LayerId) => void
   reorderLayer: (
     layerId: LayerId,
@@ -114,6 +118,7 @@ export type EditorContextValue = {
   reorderLayers: (fromIndex: number, toIndex: number) => void
   rotateDocument: (rotation: number) => void
   selectLayer: (layerId: LayerId | null) => void
+  selectLayerNonUndoable: (layerId: LayerId | null) => void
   setActiveTool: (active: ActiveToolModel) => void
   setBlendMode: (layerId: LayerId, blendMode: EditorLayer["blendMode"]) => void
   setCanonical: (
@@ -363,6 +368,17 @@ export function EditorProvider({
     )
   }, [])
 
+  const selectLayerNonUndoable = React.useCallback(
+    (layerId: LayerId | null) => {
+      const cmd = new SetSelectionCommand(layerId ? [layerId] : [], {
+        nonUndoable: true,
+        label: "Auto-select layer",
+      })
+      historyRef.current?.execute(cmd)
+    },
+    []
+  )
+
   const addEmptyLayer = React.useCallback(() => {
     const newLayer: ImageLayer = {
       id: `layer-${Date.now()}`,
@@ -483,6 +499,17 @@ export function EditorProvider({
   const pushLayerUpdate = React.useCallback(
     (layerId: LayerId, update: Partial<Omit<EditorLayer, "id">>) => {
       historyRef.current?.push(new UpdateLayerCommand(layerId, update))
+    },
+    []
+  )
+
+  const updateLayerNonUndoable = React.useCallback(
+    (layerId: LayerId, update: Partial<Omit<EditorLayer, "id">>) => {
+      const cmd = new UpdateLayerCommand(layerId, update, {
+        nonUndoable: true,
+        label: "Auto-update layer dimensions",
+      })
+      historyRef.current?.execute(cmd)
     },
     []
   )
@@ -764,12 +791,14 @@ export function EditorProvider({
       getSelectedLayer,
       getSelectedLayerId,
       pushLayerUpdate,
+      updateLayerNonUndoable,
       removeLayer,
       reorderLayer,
       reorderLayers,
       rotateDocument,
       save: () => historyRef.current?.save().catch(() => {}),
       selectLayer,
+      selectLayerNonUndoable,
       setActiveTool,
       setBlendMode,
       setCanonical,
@@ -801,11 +830,13 @@ export function EditorProvider({
       getSelectedLayer,
       getSelectedLayerId,
       pushLayerUpdate,
+      updateLayerNonUndoable,
       removeLayer,
       reorderLayer,
       reorderLayers,
       rotateDocument,
       selectLayer,
+      selectLayerNonUndoable,
       setActiveTool,
       setBlendMode,
       setCanonical,
