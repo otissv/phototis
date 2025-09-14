@@ -295,7 +295,7 @@ export function LayersPanelInner({
         temperature: {
           temperature: TOOL_VALUES.temperature.defaultValue as number,
         },
-        recolor: {
+        colorize: {
           recolorHue: (TOOL_VALUES as any).recolorHue.defaultValue,
           recolorSaturation: (TOOL_VALUES as any).recolorSaturation
             .defaultValue,
@@ -309,7 +309,7 @@ export function LayersPanelInner({
         grayscale: { grayscale: TOOL_VALUES.grayscale.defaultValue as number },
         invert: { invert: TOOL_VALUES.invert.defaultValue as number },
         sepia: { sepia: TOOL_VALUES.sepia.defaultValue as number },
-        solid: { solid: (TOOL_VALUES.solid as any).defaultValue.color },
+        solid: { solid: (TOOL_VALUES.solid as any).defaultValue },
       }
 
       addAdjustmentLayer(adjustmentType, defaultParams[adjustmentType], "top")
@@ -653,10 +653,10 @@ export function LayersPanelInner({
                   variant='ghost'
                   size='sm'
                   className='text-xs h-8 justify-start rounded-sm'
-                  onClick={() => handleAddAdjustmentLayer("recolor")}
+                  onClick={() => handleAddAdjustmentLayer("colorize")}
                 >
                   <Palette className='w-3 h-3 mr-1' />
-                  Recolor
+                  Colorize
                 </Button>
                 <Button
                   variant='ghost'

@@ -143,7 +143,7 @@ export class VertexShaderPlugin extends BaseShaderPlugin {
     if (values.sepia !== undefined) this.uniforms.u_sepia = values.sepia
     if (values.grayscale !== undefined)
       this.uniforms.u_grayscale = values.grayscale
-    if (values.recolor !== undefined) this.uniforms.u_recolor = values.recolor
+    if (values.colorize !== undefined) this.uniforms.u_recolor = values.colorize
     if (values.u_recolorColor !== undefined)
       this.uniforms.u_recolorColor = values.u_recolorColor
     if (values.vibrance !== undefined)

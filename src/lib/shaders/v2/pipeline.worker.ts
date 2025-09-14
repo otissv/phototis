@@ -96,8 +96,10 @@ export class WorkerPassGraphPipeline {
     for (const [k, v] of Object.entries(pass.uniforms || {})) {
       const loc = gl.getUniformLocation(program, k)
       if (!loc) continue
-      if (typeof v === "number") gl.uniform1f(loc, v)
-      else if (Array.isArray(v)) {
+      if (typeof v === "number") {
+        if (k === "u_solidEnabled") gl.uniform1i(loc, (v as number) | 0)
+        else gl.uniform1f(loc, v)
+      } else if (Array.isArray(v)) {
         if (v.length === 2) gl.uniform2f(loc, v[0] as number, v[1] as number)
         else if (v.length === 3)
           gl.uniform3f(loc, v[0] as number, v[1] as number, v[2] as number)

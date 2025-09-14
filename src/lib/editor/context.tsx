@@ -759,6 +759,7 @@ export function EditorProvider({
             checkpoints: [],
             counts: { past: 0, future: 0 },
             usedBytes: 0,
+            commands: [],
           },
         addCheckpoint: (name: string) =>
           historyRef.current?.addCheckpoint(name),

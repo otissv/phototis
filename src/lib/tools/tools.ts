@@ -119,9 +119,9 @@ export const TOOL_VALUES: Record<ToolValueKeys, ToolValueTypes> = {
   invert: {
     defaultValue: 100,
   },
-  // Legacy recolor (color+amount) remains defined for backward compatibility,
-  // but new HSL-based recolor uses the keys below.
-  recolor: {
+  // Legacy colorize (color+amount) remains defined for backward compatibility,
+  // but new HSL-based colorize uses the keys below.
+  colorize: {
     min: 0,
     max: 200,
     step: 1,
@@ -315,12 +315,12 @@ export type AdjustLayersType = {
   solid: string
   vintage: number
   temperature: number
-  // Legacy recolor control used in some tool flows
-  recolor: {
+  // Legacy colorize control used in some tool flows
+  colorize: {
     value: number
     color: string
   }
-  // New Affinity-style recolor controls (per-layer adjustment)
+  // New Affinity-style colorize controls (per-layer adjustment)
   recolorHue: number
   recolorSaturation: number
   recolorLightness: number

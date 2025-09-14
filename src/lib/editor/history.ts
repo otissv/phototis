@@ -35,6 +35,7 @@ export interface Command {
   coalesceWith?(other: Command): Command
   /** Optional precise sizing for memory accounting */
   estimateSize?(): number
+  commands?: Command[]
 }
 
 /**
@@ -208,34 +209,39 @@ export class HistoryManager {
    * - future: next redo first -> oldest redo last (reversed for intuitive display)
    */
   inspect(): {
-    past: Array<{
+    past: {
       label: string
       thumbnail?: string | null
       scope?: CommandScope
       timestamp?: number
-    }>
-    future: Array<{
+      commands?: Command[]
+    }[]
+    future: {
       label: string
       thumbnail?: string | null
       scope?: CommandScope
       timestamp?: number
-    }>
+    }[]
     checkpoints: Checkpoint[]
     counts: { past: number; future: number }
     usedBytes: number
     transactionActive: boolean
   } {
-    const past = this.past.map((e) => ({
-      label: e.label,
-      thumbnail: e.thumbnail,
-      scope: e.forward.meta.scope,
-      timestamp: e.forward.meta.timestamp,
-    }))
+    const past = this.past.map((e) => {
+      return {
+        label: e.label,
+        thumbnail: e.thumbnail,
+        scope: e.forward.meta.scope,
+        timestamp: e.forward.meta.timestamp,
+        commands: e.forward.commands,
+      }
+    })
     const future = [...this.future].reverse().map((e) => ({
       label: e.label,
       thumbnail: e.thumbnail,
       scope: e.forward.meta.scope,
       timestamp: e.forward.meta.timestamp,
+      commands: e.forward.commands,
     }))
     return {
       past,

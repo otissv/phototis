@@ -484,43 +484,43 @@ export function validateFilterParameters(parameters: any): {
     validatedParameters.grayscale = clampedGrayscale
   }
 
-  if (validatedParameters.recolor !== undefined) {
-    const recolor = validatedParameters.recolor
+  if (validatedParameters.colorize !== undefined) {
+    const colorize = validatedParameters.colorize
     if (
-      typeof recolor === "object" &&
-      recolor !== null &&
-      typeof (recolor as any).value === "number" &&
-      typeof (recolor as any).color === "string"
+      typeof colorize === "object" &&
+      colorize !== null &&
+      typeof (colorize as any).value === "number" &&
+      typeof (colorize as any).color === "string"
     ) {
       const amt = Math.max(
         -GPU_SECURITY_CONSTANTS.MAX_TINT,
-        Math.min((recolor as any).value, GPU_SECURITY_CONSTANTS.MAX_TINT)
+        Math.min((colorize as any).value, GPU_SECURITY_CONSTANTS.MAX_TINT)
       )
-      if (amt !== (recolor as any).value) {
+      if (amt !== (colorize as any).value) {
         errors.push(
-          `Recolor.value clamped from ${(recolor as any).value} to ${amt}`
+          `Colorize.value clamped from ${(colorize as any).value} to ${amt}`
         )
       }
-      const rgba = hexToRgba01((recolor as any).color.trim()) || [1, 0, 0, 1]
-      validatedParameters.recolor = amt
+      const rgba = hexToRgba01((colorize as any).color.trim()) || [1, 0, 0, 1]
+      validatedParameters.colorize = amt
       validatedParameters.u_recolorColor = [rgba[0], rgba[1], rgba[2]]
-    } else if (typeof recolor === "number") {
+    } else if (typeof colorize === "number") {
       const clampedRecolor = Math.max(
         -GPU_SECURITY_CONSTANTS.MAX_TINT,
-        Math.min(recolor, GPU_SECURITY_CONSTANTS.MAX_TINT)
+        Math.min(colorize, GPU_SECURITY_CONSTANTS.MAX_TINT)
       )
-      if (clampedRecolor !== recolor) {
+      if (clampedRecolor !== colorize) {
         errors.push(
-          `Recolor value clamped from ${recolor} to ${clampedRecolor}`
+          `Colorize value clamped from ${colorize} to ${clampedRecolor}`
         )
       }
-      validatedParameters.recolor = clampedRecolor
-      // Default recolor color to red if not provided
+      validatedParameters.colorize = clampedRecolor
+      // Default colorize color to red if not provided
       validatedParameters.u_recolorColor = [1, 0, 0]
     }
   }
 
-  // New Affinity-style recolor validation
+  // New Affinity-style colorize validation
   if (validatedParameters.recolorHue !== undefined) {
     // Allow -180..180 or 0..360; clamp to [-180,180]
     let h = Number(validatedParameters.recolorHue) || 0

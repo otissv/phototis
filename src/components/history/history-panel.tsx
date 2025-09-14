@@ -27,6 +27,10 @@ import {
   TooltipTrigger,
 } from "@/ui/tooltip"
 import { timeAgo } from "@/lib/utils/time-ago"
+import { config } from "@/config"
+import type { Command } from "@/lib/editor/history"
+
+const { isDebug } = config()
 
 export interface HistoryPanelProps extends React.ComponentProps<"div"> {
   notify?: ({ message, title }: { message: string; title?: string }) => void
@@ -38,6 +42,7 @@ type HistoryEntry = {
   thumbnail?: string | null
   timestamp: number
   scope?: string
+  commands?: Command[]
 }
 
 export function HistoryPanel({
@@ -278,6 +283,8 @@ export function HistoryPanel({
                       onClick={() =>
                         !isCurrent && !transactionActive && jumpToPast(idx)
                       }
+                      commands={entry.commands}
+                      title='Click to go to this state'
                     />
                   </ContextMenuTrigger>
                   <ContextMenuContent>
@@ -377,6 +384,7 @@ export function HistoryPanel({
                   showThumbnails={showThumbnails}
                   thumbnail={entry.thumbnail}
                   timestamp={entry.timestamp}
+                  commands={entry.commands}
                   title='Click to redo'
                   onClick={() => {
                     try {
@@ -412,6 +420,7 @@ export function HistoryPanel({
 }
 
 function HistoryItem({
+  commands,
   dense,
   disabled,
   isCurrent,
@@ -423,6 +432,7 @@ function HistoryItem({
   title,
   onClick,
 }: {
+  commands: HistoryEntry["commands"]
   dense: boolean
   disabled: boolean
   isCurrent: boolean

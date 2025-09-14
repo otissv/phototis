@@ -68,9 +68,9 @@ export const LAYER_RENDER_FRAGMENT_SHADER = `
   // No per-effect opacity for solid; global opacity is used via compositing
   uniform vec3 u_solidColor;
   uniform float u_solidAlpha;
-  // Recolor color support
+  // Colorize color support
   uniform vec3 u_recolorColor;
-  // Recolor (Affinity-style) uniforms
+  // Colorize (Affinity-style) uniforms
   uniform float u_recolorHue;         // degrees [-180..180] or [0..360]
   uniform float u_recolorSaturation;  // [0..100]
   uniform float u_recolorLightness;   // [0..100]
@@ -132,7 +132,7 @@ export const LAYER_RENDER_FRAGMENT_SHADER = `
     return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
   }
 
-  // HSL helpers for recolor
+  // HSL helpers for colorize
   vec3 rgb2hsl(vec3 c) {
     float r = c.r, g = c.g, b = c.b;
     float maxc = max(max(r, g), b);
@@ -332,7 +332,7 @@ export const LAYER_RENDER_FRAGMENT_SHADER = `
       color.rgb = mix(color.rgb, vec3(gray), u_grayscale / 100.0);
     }
     
-    // Affinity-style Recolor: set H/S/(L or preserve) and mix by Amount
+    // Affinity-style Colorize: set H/S/(L or preserve) and mix by Amount
     if (u_recolorAmount > 0.0) {
       vec3 src = color.rgb;
       vec3 hsl = rgb2hsl(src);

@@ -1368,7 +1368,7 @@ async function renderLayers(
                   u_invert: Number(p.invert || 0),
                   u_sepia: Number(p.sepia || 0),
                   u_grayscale: Number(p.grayscale || 0),
-                  u_recolor: Number(p.recolor || 0),
+                  u_recolor: Number(p.colorize || 0),
                   u_vibrance: Number(p.vibrance || 0),
                   u_noise: Number(p.noise || 0),
                   u_grain: Number(p.grain || 0),
@@ -2360,71 +2360,43 @@ async function renderAdjustmentFromBase(
   canvasWidth: number,
   canvasHeight: number
 ): Promise<WebGLTexture | null> {
-  if (!gl || !shaderManager) return null // Legacy function - using v2 system now
+  // v2 pass-graph path
+  if (
+    !gl ||
+    !shaderManagerV2 ||
+    !passGraphPipeline ||
+    !pgPositionBuffer ||
+    !pgCompTexcoordBuffer
+  )
+    return null
 
   try {
-    const glCtx = gl as WebGL2RenderingContext
-    const program = shaderManager.getProgram()
-    if (!program) return null
-
-    // Validate parameters
-    const { validatedParameters } = validateFilterParameters(parameters as any)
-
-    glCtx.useProgram(program)
-    if (!layerVAO || !layerPositionBuffer || !layerTexCoordBuffer) return null
-    glCtx.bindVertexArray(layerVAO)
-
-    const aPosLoc = glCtx.getAttribLocation(program, "a_position")
-    glCtx.bindBuffer(glCtx.ARRAY_BUFFER, layerPositionBuffer)
-    glCtx.enableVertexAttribArray(aPosLoc)
-    glCtx.vertexAttribPointer(aPosLoc, 2, glCtx.FLOAT, false, 0, 0)
-
-    const aTexLoc = glCtx.getAttribLocation(program, "a_texCoord")
-    // Adjustment-from-base samples the full-canvas base FBO (upright); use normal texcoords.
-    glCtx.bindBuffer(glCtx.ARRAY_BUFFER, blitTexCoordBuffer as WebGLBuffer)
-    glCtx.enableVertexAttribArray(aTexLoc)
-    glCtx.vertexAttribPointer(aTexLoc, 2, glCtx.FLOAT, false, 0, 0)
-
-    // Guard: do not sample from a texture attached to the active draw framebuffer
-    glCtx.activeTexture(glCtx.TEXTURE0)
-    glCtx.bindTexture(glCtx.TEXTURE_2D, baseTexture)
-    const uSampler = glCtx.getUniformLocation(program, "u_image")
-    if (uSampler) glCtx.uniform1i(uSampler, 0)
-
-    // Update shader uniforms; enforce full opacity in this pass
-    shaderManager.updateUniforms({
-      ...(validatedParameters as any),
+    // Prefix UI params to shader uniform names (u_*)
+    const paramUniforms: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(parameters as any)) {
+      const uKey = key.startsWith("u_") ? key : `u_${key}`
+      paramUniforms[uKey] = value
+    }
+    const uniforms: Record<string, unknown> = {
+      ...paramUniforms,
       u_opacity: 100,
-    })
-    shaderManager.setUniforms(glCtx, program)
-
-    // Debug: Log adjustment rendering
-    try {
-      dbg("adjustment:uniforms", {
-        texcoordBuffer: "blitTexCoordBuffer (normal V)",
-        texcoords: Array.from(RenderConfig.COMP_TEXCOORDS),
-        unpackFlipY: glCtx.getParameter(glCtx.UNPACK_FLIP_Y_WEBGL),
-        renderingPath: "renderAdjustmentFromBase",
-      })
-    } catch {}
-
-    // Draw into a pooled comp target (distinct from the texture being sampled)
-    const target = checkoutCompTarget(canvasWidth, canvasHeight)
-    glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, target.fb)
-    glCtx.viewport(0, 0, canvasWidth, canvasHeight)
-    glCtx.clearColor(0, 0, 0, 0)
-    glCtx.clear(glCtx.COLOR_BUFFER_BIT)
-    glCtx.drawArrays(glCtx.TRIANGLE_STRIP, 0, 4)
-
-    glCtx.bindVertexArray(null)
-    glCtx.useProgram(null)
-    glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, null)
-
-    // Return texture and put FBO back to pool (keep texture with it)
-    // We cannot detach texture from framebuffer; keep both until next pool use
-    return target.tex
+      u_colorSpace: 0,
+      u_resolution: [canvasWidth, canvasHeight],
+    }
+    const out = passGraphPipeline.runSingle(
+      {
+        shaderName: "adjustments.basic",
+        uniforms,
+        channels: { u_texture: baseTexture },
+        targetFboName: "pong", // write to a pooled FBO; will be read and ping-ponged by caller
+      },
+      canvasWidth,
+      canvasHeight,
+      { position: pgPositionBuffer, texcoord: pgCompTexcoordBuffer }
+    )
+    return out
   } catch (error) {
-    console.error("Failed to render adjustment from base:", error)
+    console.error("Failed to render adjustment from base (v2):", error)
     return null
   }
 }

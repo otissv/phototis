@@ -34,7 +34,7 @@ The project uses **two separate state management systems** that work together:
 // Tool value changes
 dispatch({ type: "brightness", payload: 50 })
 dispatch({ type: "contrast", payload: 25 })
-dispatch({ type: "recolor", payload: { value: 0.8, color: "#ff0000" } })
+dispatch({ type: "colorize", payload: { value: 0.8, color: "#ff0000" } })
 ```
 
 ### 2. Editor State (`state.ts` + `commands.ts`)

@@ -37,11 +37,11 @@ export const SIDEBAR_TOOLS = {
 // Define payload types for non-numeric tools
 type DimensionsPayload = DimensionsToolsType["dimensions"]
 type CropPayload = CropToolsType["crop"]
-type RecolorPayload = AdjustLayersType["recolor"]
+type RecolorPayload = AdjustLayersType["colorize"]
 
 type NumericToolKeys = Exclude<
   keyof typeof TOOL_VALUES,
-  "dimensions" | "crop" | "recolor" | "solid"
+  "dimensions" | "crop" | "colorize" | "solid"
 >
 
 export type NumericToolAction = {
@@ -60,7 +60,7 @@ export type CropToolAction = {
 }
 
 export type RecolorToolAction = {
-  type: "recolor"
+  type: "colorize"
   payload: RecolorPayload
 }
 
@@ -145,7 +145,7 @@ export const initialToolsState: ImageEditorToolsState = {
   solid: TOOL_VALUES.solid.defaultValue as ToolValueStringType["defaultValue"],
   temperature: TOOL_VALUES.temperature
     .defaultValue as ToolValueStepType["defaultValue"],
-  recolor: TOOL_VALUES.recolor
+  colorize: TOOL_VALUES.colorize
     .defaultValue as ToolValueColorType["defaultValue"],
   recolorHue: TOOL_VALUES.recolorHue
     .defaultValue as ToolValueStepType["defaultValue"],
@@ -221,11 +221,11 @@ export function imageEditorToolsReducer(
         },
       }
     }
-    case "recolor": {
+    case "colorize": {
       const { payload } = action as RecolorToolAction
       return {
         ...state,
-        recolor: {
+        colorize: {
           value: Math.max(0, Number(payload?.value) || 0),
           color: typeof payload?.color === "string" ? payload.color : "#000000",
         },

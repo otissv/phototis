@@ -27,7 +27,7 @@ export function getAdjustmentIcon(adjustmentType: string) {
     case "hue":
     case "saturation":
     case "temperature":
-    case "recolor":
+    case "colorize":
       return <Droplets className='w-3 h-3' />
     case "vibrance":
     case "vintage":
@@ -118,7 +118,7 @@ export function AdjustmentLayerEditor({
         } else if (value && typeof (value as any).color === "string") {
           inputValue = (value as any).color
         } else {
-          inputValue = (TOOL_VALUES.solid as any).defaultValue.color
+          inputValue = (TOOL_VALUES.solid as any).defaultValue
         }
         return (
           <AdjustmentLayerColor
@@ -127,15 +127,15 @@ export function AdjustmentLayerEditor({
             onChange={(value) => handleParameterChange(key, value as any)}
           />
         )
-      case "recolor":
-        // Legacy recolor kept for compatibility (color + amount)
+      case "colorize":
+        // Legacy colorize kept for compatibility (color + amount)
         if (typeof value === "number") {
           inputValue = {
             value,
-            color: (TOOL_VALUES.recolor as any).defaultValue.color,
+            color: (TOOL_VALUES.colorize as any).defaultValue.color,
           }
         } else {
-          inputValue = value ?? (TOOL_VALUES.recolor as any).defaultValue
+          inputValue = value ?? (TOOL_VALUES.colorize as any).defaultValue
         }
         return (
           <AdjustmentLayerColorAndSlider
@@ -150,7 +150,7 @@ export function AdjustmentLayerEditor({
         const num = typeof value === "number" ? value : Number(value) || def
         return (
           <div className='grid grid-cols-[56px_1fr] items-center gap-2 px-2 h-10'>
-            <span className='text-xs'>{key.replace("recolor", "")}</span>
+            <span className='text-xs'>{key.replace("colorize", "")}</span>
             <AdjustmentLayerSlider
               id={key}
               value={num}
@@ -165,7 +165,7 @@ export function AdjustmentLayerEditor({
 
         return (
           <div className='grid grid-cols-[56px_1fr] items-center gap-2 px-2 h-10'>
-            <span className='text-xs'>{key.replace("recolor", "")}</span>
+            <span className='text-xs'>{key.replace("colorize", "")}</span>
             <AdjustmentLayerSlider
               id={key}
               value={num}
@@ -182,7 +182,7 @@ export function AdjustmentLayerEditor({
         const num = typeof value === "number" ? value : Number(value) || def
         return (
           <div className='grid grid-cols-[56px_1fr] items-center gap-2 px-2 h-10'>
-            <span className='text-xs'>{key.replace("recolor", "")}</span>
+            <span className='text-xs'>{key.replace("colorize", "")}</span>
             <AdjustmentLayerSlider
               id={key}
               value={num}
@@ -291,7 +291,7 @@ export function AdjustmentLayerEditor({
               if (control.kind === "color+slider") {
                 const input =
                   (value as ToolValueColorType["defaultValue"]) ??
-                  (TOOL_VALUES.recolor as any).defaultValue
+                  (TOOL_VALUES.colorize as any).defaultValue
                 return (
                   <AdjustmentLayerColorAndSlider
                     key={key}

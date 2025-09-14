@@ -23,6 +23,9 @@ import { ImageEditorPanels } from "@/components/panels"
 import type { EditorLayer } from "@/lib/editor/state"
 import { WorkerPrewarm } from "./worker-prewarm"
 import { getImageDimensions } from "@/lib/utils/get-image-dimensions"
+import { config } from "@/config"
+
+const { isDebug } = config()
 
 export interface ImageEditorProps extends React.ComponentProps<"div"> {
   images: File[]
@@ -159,8 +162,8 @@ function ImageEditorInner({
         return toolsValues.grayscale
       case "sharpen":
         return toolsValues.sharpen
-      case "recolor":
-        return toolsValues.recolor
+      case "colorize":
+        return toolsValues.colorize
       case "vibrance":
         return toolsValues.vibrance
       case "noise":
@@ -188,7 +191,7 @@ function ImageEditorInner({
     toolsValues.sepia,
     toolsValues.grayscale,
     toolsValues.sharpen,
-    toolsValues.recolor,
+    toolsValues.colorize,
     toolsValues.vibrance,
     toolsValues.noise,
     toolsValues.grain,
@@ -500,7 +503,7 @@ function ImageEditorInner({
 
       <div className='hidden lg:block lg:col-start-3'>
         {/* For debugging renderer modes */}
-        {/* {process.env.NODE_ENV === "development" && (
+        {isDebug && (
           <div>
             <span className='px-2 py-1 rounded bg-black/60 text-white'>
               Renderer
@@ -516,7 +519,7 @@ function ImageEditorInner({
               <option value='hybrid'>Hybrid (main thread)</option>
             </select>
           </div>
-        )} */}
+        )}
         <ImageEditorPanels
           className='lg:row-span-3 w-full'
           defaultValue='layers'

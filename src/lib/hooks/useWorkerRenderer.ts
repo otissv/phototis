@@ -399,7 +399,7 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
                       u_invert: Number((p as any).invert || 0),
                       u_sepia: Number((p as any).sepia || 0),
                       u_grayscale: Number((p as any).grayscale || 0),
-                      u_recolor: Number((p as any).recolor || 0),
+                      u_recolor: Number((p as any).colorize || 0),
                       u_vibrance: Number((p as any).vibrance || 0),
                       u_noise: Number((p as any).noise || 0),
                       u_grain: Number((p as any).grain || 0),

@@ -7,7 +7,7 @@ export type AdjustmentTypes =
   | "hue"
   | "saturation"
   | "temperature"
-  | "recolor"
+  | "colorize"
   | "vibrance"
   | "vintage"
   | "grayscale"
@@ -248,7 +248,7 @@ export type SelectiveColorParametersAdjustmentType = {
   families: Record<SelectiveColorFamily, SelectiveColorControls>
 }
 export type RecolorParametersAdjustmentType = {
-  type: "recolor"
+  type: "colorize"
   targetColor: RgbaColor
   intensity: number
 }
@@ -418,7 +418,7 @@ export type AdjustmentParameters =
   // ——— Selective Color ———
   | SelectiveColorParametersAdjustmentType
 
-  // ——— Recolor / Gradient Map / LUT ———
+  // ——— Colorize / Gradient Map / LUT ———
   | RecolorParametersAdjustmentType
   | GradientMapParametersAdjustmentType
   | ColorLookupTableParametersAdjustmentType

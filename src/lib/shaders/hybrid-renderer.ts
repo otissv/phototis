@@ -6,7 +6,7 @@ import {
 } from "./fbo-manager"
 import { BLEND_MODE_MAP } from "./blend-modes/blend-modes"
 import type { BlendMode } from "./blend-modes/types.blend"
-import { LAYER_RENDER_FRAGMENT_SHADER } from "./compositing-shader"
+// Legacy monolithic shaders removed; using v2 ShaderManager only
 import type { ImageEditorToolsState } from "@/lib/tools/tools-state"
 import type { EditorLayer as Layer } from "@/lib/editor/state"
 // Legacy ShaderManager removed in v2 migration
@@ -516,10 +516,10 @@ export class HybridRenderer {
     // Build uniforms for plugin-based program
     const layerCenterX = layerX + layerWidth / 2
     const layerCenterY = layerY + layerHeight / 2
-    // Normalize recolor: accept number or { value, color }
+    // Normalize colorize: accept number or { value, color }
     let recolorAmount = 0
     let recolorColor: [number, number, number] | null = null
-    const recolorAny: any = (toolsValues as any).recolor
+    const recolorAny: any = (toolsValues as any).colorize
     if (typeof recolorAny === "number") {
       recolorAmount = recolorAny
       recolorColor = [1, 0, 0]
@@ -537,8 +537,8 @@ export class HybridRenderer {
 
     const uniformsUpdate: Record<string, any> = {
       ...(toolsValues as any),
-      // enforce numeric recolor amount for plugin uniform
-      recolor: recolorAmount,
+      // enforce numeric colorize amount for plugin uniform
+      colorize: recolorAmount,
       u_opacity: 100,
       layerSize: [layerWidth, layerHeight],
       canvasSize: [canvasWidth, canvasHeight],
@@ -568,11 +568,30 @@ export class HybridRenderer {
     const flipH = Boolean((adjustmentTools as any).flipHorizontal)
     const flipV = Boolean((adjustmentTools as any).flipVertical)
     const u_transform = this.computeTransformMat3(sx, rot, flipH, flipV)
+    // Map UI params (e.g., brightness) to shader uniforms (u_brightness)
+    const paramUniforms: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(adjustmentTools as any)) {
+      // Don't double-prefix uniforms that already have u_ prefix
+      const uKey = key.startsWith("u_") ? key : `u_${key}`
+      paramUniforms[uKey] = value
+    }
     const uniforms: Record<string, unknown> = {
-      ...(adjustmentTools as any),
+      ...paramUniforms,
       u_opacity: 100,
       u_colorSpace: 0,
       u_transform,
+      u_resolution: [canvasWidth, canvasHeight],
+    }
+
+    // Debug logging for solid adjustment
+    if (adjustmentTools.solid || paramUniforms.u_solidEnabled) {
+      console.log("Solid adjustment uniforms being sent to shader:", {
+        adjustmentTools,
+        paramUniforms,
+        uniforms: Object.keys(uniforms).filter(
+          (k) => k.includes("solid") || k.includes("Solid")
+        ),
+      })
     }
 
     const tex = this.passGraph.runSingle(
@@ -585,7 +604,7 @@ export class HybridRenderer {
       canvasWidth,
       canvasHeight,
       {
-        position: this.pluginPositionBuffer as WebGLBuffer,
+        position: this.positionBuffer as WebGLBuffer,
         texcoord: this.compTexCoordBuffer as WebGLBuffer,
       }
     )
