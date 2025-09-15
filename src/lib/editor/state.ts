@@ -131,6 +131,10 @@ export interface DocumentMetadata {
   colorProfile?: "srgb" | "display-p3" | "adobe-rgb" | string
   /** Optional DPI/PPI metadata */
   dpi?: number
+  /** Global layers applied to the entire document (like adjustment layers but document-wide) */
+  globalLayers: (AdjustmentLayer | SolidLayer | MaskLayer)[]
+  /** Global document parameters for tool filters (applied to all layers) */
+  globalParameters: Record<string, number | { value: number; color: string }>
 }
 
 export interface SelectionModel {
@@ -236,6 +240,8 @@ export function createDefaultDocument(
     background: { type: "transparent" },
     colorProfile: "srgb",
     dpi: 72,
+    globalLayers: [],
+    globalParameters: {},
   }
 }
 
@@ -618,6 +624,163 @@ export function setViewport(
 ): CanonicalEditorState {
   const nextViewport: ViewportModel = { ...state.viewport, ...viewport }
   const next: CanonicalEditorState = { ...state, viewport: nextViewport }
+  assertInvariants(next)
+  return next
+}
+
+/**
+ * Global document layer management functions
+ */
+
+export function addGlobalLayer(
+  state: CanonicalEditorState,
+  layer: AdjustmentLayer | SolidLayer | MaskLayer,
+  position: "top" | "bottom" | number = "top"
+): CanonicalEditorState {
+  const currentGlobalLayers = [...state.document.globalLayers]
+
+  if (typeof position === "number") {
+    const clamped = Math.max(0, Math.min(currentGlobalLayers.length, position))
+    currentGlobalLayers.splice(clamped, 0, layer)
+  } else if (position === "top") {
+    currentGlobalLayers.unshift(layer)
+  } else {
+    currentGlobalLayers.push(layer)
+  }
+
+  const next: CanonicalEditorState = {
+    ...state,
+    document: {
+      ...state.document,
+      globalLayers: currentGlobalLayers,
+    },
+  }
+  assertInvariants(next)
+  return next
+}
+
+export function removeGlobalLayer(
+  state: CanonicalEditorState,
+  layerId: LayerId
+): CanonicalEditorState {
+  const next: CanonicalEditorState = {
+    ...state,
+    document: {
+      ...state.document,
+      globalLayers: state.document.globalLayers.filter(
+        (layer) => layer.id !== layerId
+      ),
+    },
+  }
+  assertInvariants(next)
+  return next
+}
+
+export function updateGlobalLayer(
+  state: CanonicalEditorState,
+  layerId: LayerId,
+  update: Partial<Omit<AdjustmentLayer | SolidLayer | MaskLayer, "id">>
+): CanonicalEditorState {
+  const currentGlobalLayers = [...state.document.globalLayers]
+  const layerIndex = currentGlobalLayers.findIndex(
+    (layer) => layer.id === layerId
+  )
+
+  if (layerIndex === -1) return state
+
+  const currentLayer = currentGlobalLayers[layerIndex]
+  const nextLayer = {
+    ...currentLayer,
+    ...update,
+    id: currentLayer.id,
+  } as AdjustmentLayer | SolidLayer | MaskLayer
+
+  currentGlobalLayers[layerIndex] = nextLayer
+
+  const next: CanonicalEditorState = {
+    ...state,
+    document: {
+      ...state.document,
+      globalLayers: currentGlobalLayers,
+    },
+  }
+  assertInvariants(next)
+  return next
+}
+
+export function reorderGlobalLayer(
+  state: CanonicalEditorState,
+  fromIndex: number,
+  toIndex: number
+): CanonicalEditorState {
+  const globalLayers = [...state.document.globalLayers]
+  if (fromIndex < 0 || fromIndex >= globalLayers.length) return state
+
+  const [layer] = globalLayers.splice(fromIndex, 1)
+  const clamped = Math.max(0, Math.min(globalLayers.length, toIndex))
+  globalLayers.splice(clamped, 0, layer)
+
+  const next: CanonicalEditorState = {
+    ...state,
+    document: {
+      ...state.document,
+      globalLayers,
+    },
+  }
+  assertInvariants(next)
+  return next
+}
+
+/**
+ * Global document parameters management functions
+ */
+
+export function setGlobalParameters(
+  state: CanonicalEditorState,
+  parameters: Record<string, number | { value: number; color: string }>
+): CanonicalEditorState {
+  const next: CanonicalEditorState = {
+    ...state,
+    document: {
+      ...state.document,
+      globalParameters: { ...state.document.globalParameters, ...parameters },
+    },
+  }
+  assertInvariants(next)
+  return next
+}
+
+export function updateGlobalParameter(
+  state: CanonicalEditorState,
+  key: string,
+  value: number | { value: number; color: string }
+): CanonicalEditorState {
+  const next: CanonicalEditorState = {
+    ...state,
+    document: {
+      ...state.document,
+      globalParameters: {
+        ...state.document.globalParameters,
+        [key]: value,
+      },
+    },
+  }
+  assertInvariants(next)
+  return next
+}
+
+export function removeGlobalParameter(
+  state: CanonicalEditorState,
+  key: string
+): CanonicalEditorState {
+  const { [key]: _removed, ...rest } = state.document.globalParameters
+  const next: CanonicalEditorState = {
+    ...state,
+    document: {
+      ...state.document,
+      globalParameters: rest,
+    },
+  }
   assertInvariants(next)
   return next
 }

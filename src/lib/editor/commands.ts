@@ -2,6 +2,8 @@ import type {
   CanonicalEditorState,
   EditorLayer,
   AdjustmentLayer,
+  SolidLayer,
+  MaskLayer,
   LayerId,
   ViewportModel,
   ActiveToolModel,
@@ -95,6 +97,37 @@ export type SerializedCommand =
       previousCanvasPosition: CanvasPosition
       previousLayers: Record<LayerId, EditorLayer>
     }
+  | {
+      type: "addGlobalLayer"
+      meta: CommandMeta
+      layer: AdjustmentLayer | SolidLayer | MaskLayer
+      position: "top" | "bottom" | number
+    }
+  | { type: "removeGlobalLayer"; meta: CommandMeta; layerId: LayerId }
+  | {
+      type: "updateGlobalLayer"
+      meta: CommandMeta
+      layerId: LayerId
+      update: Partial<Omit<AdjustmentLayer | SolidLayer | MaskLayer, "id">>
+    }
+  | {
+      type: "reorderGlobalLayer"
+      meta: CommandMeta
+      fromIndex: number
+      toIndex: number
+    }
+  | {
+      type: "setGlobalParameters"
+      meta: CommandMeta
+      parameters: Record<string, number | { value: number; color: string }>
+    }
+  | {
+      type: "updateGlobalParameter"
+      meta: CommandMeta
+      key: string
+      value: number | { value: number; color: string }
+    }
+  | { type: "removeGlobalParameter"; meta: CommandMeta; key: string }
 
 function deepSize(obj: unknown): number {
   try {
@@ -1369,6 +1402,314 @@ export class DocumentDimensionsCommand implements Command {
   }
 }
 
+// Global Layer Commands
+export class AddGlobalLayerCommand implements Command {
+  meta: CommandMeta
+  private readonly layer: AdjustmentLayer | SolidLayer | MaskLayer
+  private readonly position: "top" | "bottom" | number
+
+  constructor(
+    layer: AdjustmentLayer | SolidLayer | MaskLayer,
+    position: "top" | "bottom" | number = "top",
+    meta?: Partial<CommandMeta>
+  ) {
+    this.layer = layer
+    this.position = position
+    this.meta = {
+      label: `Add Global ${capitalize(layer.type)} Layer`,
+      scope: "document",
+      ...meta,
+    }
+  }
+
+  apply(state: CanonicalEditorState): CanonicalEditorState {
+    const { addGlobalLayer } = require("@/lib/editor/state")
+    return addGlobalLayer(state, this.layer, this.position)
+  }
+
+  invert(prev: CanonicalEditorState, next: CanonicalEditorState): Command {
+    return new RemoveGlobalLayerCommand(this.layer.id, {
+      label: `Remove Global ${capitalize(this.layer.type)} Layer`,
+      scope: "document",
+    })
+  }
+
+  serialize(): SerializedCommand {
+    return {
+      type: "addGlobalLayer",
+      meta: this.meta,
+      layer: this.layer,
+      position: this.position,
+    }
+  }
+}
+
+export class RemoveGlobalLayerCommand implements Command {
+  meta: CommandMeta
+  private readonly layerId: LayerId
+
+  constructor(layerId: LayerId, meta?: Partial<CommandMeta>) {
+    this.layerId = layerId
+    this.meta = {
+      label: "Remove Global Layer",
+      scope: "document",
+      ...meta,
+    }
+  }
+
+  apply(state: CanonicalEditorState): CanonicalEditorState {
+    const { removeGlobalLayer } = require("@/lib/editor/state")
+    return removeGlobalLayer(state, this.layerId)
+  }
+
+  invert(prev: CanonicalEditorState, next: CanonicalEditorState): Command {
+    // Find the layer that was removed to recreate it
+    const removedLayer = prev.document.globalLayers.find(
+      (l) => l.id === this.layerId
+    )
+    if (!removedLayer) {
+      throw new Error("Cannot invert RemoveGlobalLayerCommand: layer not found")
+    }
+    return new AddGlobalLayerCommand(removedLayer, "top", {
+      label: `Restore Global ${capitalize(removedLayer.type)} Layer`,
+      scope: "document",
+    })
+  }
+
+  serialize(): SerializedCommand {
+    return {
+      type: "removeGlobalLayer",
+      meta: this.meta,
+      layerId: this.layerId,
+    }
+  }
+}
+
+export class UpdateGlobalLayerCommand implements Command {
+  meta: CommandMeta
+  private readonly layerId: LayerId
+  private readonly update: Partial<
+    Omit<AdjustmentLayer | SolidLayer | MaskLayer, "id">
+  >
+
+  constructor(
+    layerId: LayerId,
+    update: Partial<Omit<AdjustmentLayer | SolidLayer | MaskLayer, "id">>,
+    meta?: Partial<CommandMeta>
+  ) {
+    this.layerId = layerId
+    this.update = update
+    this.meta = {
+      label: "Update Global Layer",
+      scope: "document",
+      ...meta,
+    }
+  }
+
+  apply(state: CanonicalEditorState): CanonicalEditorState {
+    const { updateGlobalLayer } = require("@/lib/editor/state")
+    return updateGlobalLayer(state, this.layerId, this.update)
+  }
+
+  invert(prev: CanonicalEditorState, next: CanonicalEditorState): Command {
+    // Find the original layer state to restore
+    const originalLayer = prev.document.globalLayers.find(
+      (l) => l.id === this.layerId
+    )
+    if (!originalLayer) {
+      throw new Error("Cannot invert UpdateGlobalLayerCommand: layer not found")
+    }
+
+    // Create inverse update by restoring original values
+    const inverseUpdate: Partial<
+      Omit<AdjustmentLayer | SolidLayer | MaskLayer, "id">
+    > = {}
+    for (const [key, value] of Object.entries(this.update)) {
+      ;(inverseUpdate as any)[key] = (originalLayer as any)[key]
+    }
+
+    return new UpdateGlobalLayerCommand(this.layerId, inverseUpdate, {
+      label: "Restore Global Layer",
+      scope: "document",
+    })
+  }
+
+  serialize(): SerializedCommand {
+    return {
+      type: "updateGlobalLayer",
+      meta: this.meta,
+      layerId: this.layerId,
+      update: this.update,
+    }
+  }
+}
+
+export class ReorderGlobalLayerCommand implements Command {
+  meta: CommandMeta
+  private readonly fromIndex: number
+  private readonly toIndex: number
+
+  constructor(fromIndex: number, toIndex: number, meta?: Partial<CommandMeta>) {
+    this.fromIndex = fromIndex
+    this.toIndex = toIndex
+    this.meta = {
+      label: "Reorder Global Layer",
+      scope: "document",
+      ...meta,
+    }
+  }
+
+  apply(state: CanonicalEditorState): CanonicalEditorState {
+    const { reorderGlobalLayer } = require("@/lib/editor/state")
+    return reorderGlobalLayer(state, this.fromIndex, this.toIndex)
+  }
+
+  invert(prev: CanonicalEditorState, next: CanonicalEditorState): Command {
+    return new ReorderGlobalLayerCommand(this.toIndex, this.fromIndex, {
+      label: "Restore Global Layer Order",
+      scope: "document",
+    })
+  }
+
+  serialize(): SerializedCommand {
+    return {
+      type: "reorderGlobalLayer",
+      meta: this.meta,
+      fromIndex: this.fromIndex,
+      toIndex: this.toIndex,
+    }
+  }
+}
+
+// Global Parameters Commands
+export class SetGlobalParametersCommand implements Command {
+  meta: CommandMeta
+  private readonly parameters: Record<
+    string,
+    number | { value: number; color: string }
+  >
+
+  constructor(
+    parameters: Record<string, number | { value: number; color: string }>,
+    meta?: Partial<CommandMeta>
+  ) {
+    this.parameters = parameters
+    this.meta = {
+      label: "Set Global Parameters",
+      scope: "document",
+      ...meta,
+    }
+  }
+
+  apply(state: CanonicalEditorState): CanonicalEditorState {
+    const { setGlobalParameters } = require("@/lib/editor/state")
+    return setGlobalParameters(state, this.parameters)
+  }
+
+  invert(prev: CanonicalEditorState, next: CanonicalEditorState): Command {
+    return new SetGlobalParametersCommand(prev.document.globalParameters, {
+      label: "Restore Global Parameters",
+      scope: "document",
+    })
+  }
+
+  serialize(): SerializedCommand {
+    return {
+      type: "setGlobalParameters",
+      meta: this.meta,
+      parameters: this.parameters,
+    }
+  }
+}
+
+export class UpdateGlobalParameterCommand implements Command {
+  meta: CommandMeta
+  private readonly key: string
+  private readonly value: number | { value: number; color: string }
+
+  constructor(
+    key: string,
+    value: number | { value: number; color: string },
+    meta?: Partial<CommandMeta>
+  ) {
+    this.key = key
+    this.value = value
+    this.meta = {
+      label: `Update Global Parameter: ${key}`,
+      scope: "document",
+      ...meta,
+    }
+  }
+
+  apply(state: CanonicalEditorState): CanonicalEditorState {
+    const { updateGlobalParameter } = require("@/lib/editor/state")
+    return updateGlobalParameter(state, this.key, this.value)
+  }
+
+  invert(prev: CanonicalEditorState, next: CanonicalEditorState): Command {
+    const originalValue = prev.document.globalParameters[this.key]
+    if (originalValue === undefined) {
+      return new RemoveGlobalParameterCommand(this.key, {
+        label: `Remove Global Parameter: ${this.key}`,
+        scope: "document",
+      })
+    }
+    return new UpdateGlobalParameterCommand(this.key, originalValue, {
+      label: `Restore Global Parameter: ${this.key}`,
+      scope: "document",
+    })
+  }
+
+  serialize(): SerializedCommand {
+    return {
+      type: "updateGlobalParameter",
+      meta: this.meta,
+      key: this.key,
+      value: this.value,
+    }
+  }
+}
+
+export class RemoveGlobalParameterCommand implements Command {
+  meta: CommandMeta
+  private readonly key: string
+
+  constructor(key: string, meta?: Partial<CommandMeta>) {
+    this.key = key
+    this.meta = {
+      label: `Remove Global Parameter: ${key}`,
+      scope: "document",
+      ...meta,
+    }
+  }
+
+  apply(state: CanonicalEditorState): CanonicalEditorState {
+    const { removeGlobalParameter } = require("@/lib/editor/state")
+    return removeGlobalParameter(state, this.key)
+  }
+
+  invert(prev: CanonicalEditorState, next: CanonicalEditorState): Command {
+    const originalValue = prev.document.globalParameters[this.key]
+    if (originalValue === undefined) {
+      throw new Error(
+        "Cannot invert RemoveGlobalParameterCommand: parameter not found"
+      )
+    }
+    return new UpdateGlobalParameterCommand(this.key, originalValue, {
+      label: `Restore Global Parameter: ${this.key}`,
+      scope: "document",
+    })
+  }
+
+  serialize(): SerializedCommand {
+    return {
+      type: "removeGlobalParameter",
+      meta: this.meta,
+      key: this.key,
+    }
+  }
+}
+
 export function deserializeCommand(json: SerializedCommand): Command {
   switch (json.type) {
     case "addLayer":
@@ -1419,6 +1760,24 @@ export function deserializeCommand(json: SerializedCommand): Command {
       return DocumentFlipCommand.deserialize(json)
     case "documentDimensions":
       return DocumentDimensionsCommand.deserialize(json)
+    case "addGlobalLayer":
+      return new AddGlobalLayerCommand(json.layer, json.position, json.meta)
+    case "removeGlobalLayer":
+      return new RemoveGlobalLayerCommand(json.layerId, json.meta)
+    case "updateGlobalLayer":
+      return new UpdateGlobalLayerCommand(json.layerId, json.update, json.meta)
+    case "reorderGlobalLayer":
+      return new ReorderGlobalLayerCommand(
+        json.fromIndex,
+        json.toIndex,
+        json.meta
+      )
+    case "setGlobalParameters":
+      return new SetGlobalParametersCommand(json.parameters, json.meta)
+    case "updateGlobalParameter":
+      return new UpdateGlobalParameterCommand(json.key, json.value, json.meta)
+    case "removeGlobalParameter":
+      return new RemoveGlobalParameterCommand(json.key, json.meta)
     default:
       throw new Error(`Unknown command type ${(json as any).type}`)
   }

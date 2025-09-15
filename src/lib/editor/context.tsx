@@ -13,6 +13,9 @@ import type {
   EphemeralEditorState,
   DocumentLayer,
   CanvasPosition,
+  AdjustmentLayer,
+  MaskLayer,
+  SolidLayer,
 } from "@/lib/editor/state"
 import {
   normalizeLayers,
@@ -37,6 +40,13 @@ import {
   DocumentDimensionsCommand,
   CreateGroupLayerCommand,
   UngroupLayerCommand,
+  AddGlobalLayerCommand,
+  RemoveGlobalLayerCommand,
+  RemoveGlobalParameterCommand,
+  ReorderGlobalLayerCommand,
+  SetGlobalParametersCommand,
+  UpdateGlobalLayerCommand,
+  UpdateGlobalParameterCommand,
 } from "@/lib/editor/commands"
 import { loadDocument } from "@/lib/editor/persistence"
 
@@ -149,6 +159,25 @@ export type EditorContextValue = {
   createGroupLayer: (layerIds: LayerId[], groupName?: string) => void
   ungroupLayer: (groupLayerId: LayerId) => void
   toggleGroupCollapse: (groupLayerId: LayerId) => void
+  addGlobalLayer: (
+    layer: AdjustmentLayer | SolidLayer | MaskLayer,
+    position?: "top" | "bottom" | number
+  ) => void
+  getGlobalLayers: () => AdjustmentLayer[] | SolidLayer[] | MaskLayer[]
+  removeGlobalLayer: (layerId: LayerId) => void
+  updateGlobalLayer: (
+    layerId: LayerId,
+    update: Partial<Omit<AdjustmentLayer | SolidLayer | MaskLayer, "id">>
+  ) => void
+  reorderGlobalLayer: (fromIndex: number, toIndex: number) => void
+  setGlobalParameters: (
+    parameters: Record<string, number | { value: number; color: string }>
+  ) => void
+  updateGlobalParameter: (
+    key: string,
+    value: number | { value: number; color: string }
+  ) => void
+  removeGlobalParameter: (key: string) => void
 }
 
 const EditorContext = React.createContext<EditorContextValue | null>(null)
@@ -550,6 +579,100 @@ export function EditorProvider({
     [runtime.canonical.layers.byId, updateLayer]
   )
 
+  // Global layer management functions
+  const addGlobalLayer = React.useCallback(
+    (
+      layer: AdjustmentLayer | SolidLayer | MaskLayer,
+      position: "top" | "bottom" | number = "top"
+    ) => {
+      const h = historyRef.current
+      if (!h) return
+      h.beginTransaction("Add Global Layer")
+      const cmd = new AddGlobalLayerCommand(layer, position)
+      h.push(cmd)
+      h.endTransaction(true)
+    },
+    []
+  )
+
+  const getGlobalLayers = React.useCallback((): (
+    | AdjustmentLayer
+    | SolidLayer
+    | MaskLayer
+  )[] => {
+    return runtime.canonical.document.globalLayers
+  }, [runtime.canonical.document.globalLayers])
+
+  const removeGlobalLayer = React.useCallback((layerId: LayerId) => {
+    const h = historyRef.current
+    if (!h) return
+    h.beginTransaction("Remove Global Layer")
+    const cmd = new RemoveGlobalLayerCommand(layerId)
+    h.push(cmd)
+    h.endTransaction(true)
+  }, [])
+
+  const updateGlobalLayer = React.useCallback(
+    (
+      layerId: LayerId,
+      update: Partial<Omit<AdjustmentLayer | SolidLayer | MaskLayer, "id">>
+    ) => {
+      const h = historyRef.current
+      if (!h) return
+      h.beginTransaction("Update Global Layer")
+      const cmd = new UpdateGlobalLayerCommand(layerId, update)
+      h.push(cmd)
+      h.endTransaction(true)
+    },
+    []
+  )
+
+  const reorderGlobalLayer = React.useCallback(
+    (fromIndex: number, toIndex: number) => {
+      const h = historyRef.current
+      if (!h) return
+      h.beginTransaction("Reorder Global Layer")
+      const cmd = new ReorderGlobalLayerCommand(fromIndex, toIndex)
+      h.push(cmd)
+      h.endTransaction(true)
+    },
+    []
+  )
+
+  // Global parameters management functions
+  const setGlobalParameters = React.useCallback(
+    (parameters: Record<string, number | { value: number; color: string }>) => {
+      const h = historyRef.current
+      if (!h) return
+      h.beginTransaction("Set Global Parameters")
+      const cmd = new SetGlobalParametersCommand(parameters)
+      h.push(cmd)
+      h.endTransaction(true)
+    },
+    []
+  )
+
+  const updateGlobalParameter = React.useCallback(
+    (key: string, value: number | { value: number; color: string }) => {
+      const h = historyRef.current
+      if (!h) return
+      h.beginTransaction("Update Global Parameter")
+      const cmd = new UpdateGlobalParameterCommand(key, value)
+      h.push(cmd)
+      h.endTransaction(true)
+    },
+    []
+  )
+
+  const removeGlobalParameter = React.useCallback((key: string) => {
+    const h = historyRef.current
+    if (!h) return
+    h.beginTransaction("Remove Global Parameter")
+    const cmd = new RemoveGlobalParameterCommand(key)
+    h.push(cmd)
+    h.endTransaction(true)
+  }, [])
+
   const addAdjustmentLayer = React.useCallback(
     (
       adjustmentType: string,
@@ -814,6 +937,16 @@ export function EditorProvider({
       ungroupLayer,
       updateAdjustmentParameters,
       updateLayer,
+      // Global layer management
+      addGlobalLayer,
+      getGlobalLayers,
+      removeGlobalLayer,
+      updateGlobalLayer,
+      reorderGlobalLayer,
+      // Global parameters management
+      setGlobalParameters,
+      updateGlobalParameter,
+      removeGlobalParameter,
     }),
     [
       documentLayerDimensions,
@@ -851,7 +984,16 @@ export function EditorProvider({
       ungroupLayer,
       updateAdjustmentParameters,
       updateLayer,
-      setRenderType,
+      // Global layer management
+      getGlobalLayers,
+      addGlobalLayer,
+      removeGlobalLayer,
+      updateGlobalLayer,
+      reorderGlobalLayer,
+      // Global parameters management
+      setGlobalParameters,
+      updateGlobalParameter,
+      removeGlobalParameter,
     ]
   )
 

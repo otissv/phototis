@@ -672,10 +672,46 @@ export function ImageEditorCanvas({
       return `order:${topLevelOrder}|layers:${layerSignatures.join("|")}`
     }
 
+    // Create signature for global layers
+    const globalLayersSig = state.canonical.document.globalLayers
+      .map((l) =>
+        [
+          l.id,
+          l.type,
+          l.visible ? 1 : 0,
+          l.locked ? 1 : 0,
+          l.opacity,
+          l.blendMode,
+          l.type === "adjustment"
+            ? `adj:${Object.entries(l.parameters || {})
+                .map(([k, v]) => `${k}:${v}`)
+                .join("|")}`
+            : "",
+          l.type === "solid" ? `solid:${l.color?.join(",") || ""}` : "",
+          l.type === "mask"
+            ? `mask:${l.enabled ? 1 : 0}:${l.inverted ? 1 : 0}`
+            : "",
+        ].join(":")
+      )
+      .join("|")
+
+    // Create signature for global parameters
+    const globalParamsSig = Object.entries(
+      state.canonical.document.globalParameters
+    )
+      .map(([k, v]) => `${k}:${typeof v === "number" ? v : v.value}`)
+      .join("|")
+
     // Use the comprehensive signature that covers all layer operations
     // Use topLevelLayers to preserve hierarchical structure for proper group signature calculation
-    return createComprehensiveSignature(topLevelLayers)
-  }, [topLevelLayers])
+    const regularLayersSig = createComprehensiveSignature(topLevelLayers)
+
+    return `${regularLayersSig}|globalLayers:${globalLayersSig}|globalParams:${globalParamsSig}`
+  }, [
+    topLevelLayers,
+    state.canonical.document.globalLayers,
+    state.canonical.document.globalParameters,
+  ])
 
   // Update WebGL viewport when canvas dimensions change
   React.useEffect(() => {
@@ -1600,7 +1636,9 @@ export function ImageEditorCanvas({
             selectedLayerId,
             canvasWidth,
             canvasHeight,
-            dimsForRender
+            dimsForRender,
+            state.canonical.document.globalLayers,
+            state.canonical.document.globalParameters
           )
 
           // Render the final result to canvas

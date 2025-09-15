@@ -1103,7 +1103,20 @@ void main() {
     layerDimensions?: Map<
       string,
       { width: number; height: number; x: number; y: number }
-    >
+    >,
+    globalLayers?: Array<{
+      id: string
+      type: "adjustment" | "solid" | "mask"
+      adjustmentType?: string
+      parameters?: Record<string, any>
+      color?: [number, number, number, number]
+      enabled?: boolean
+      inverted?: boolean
+      visible: boolean
+      opacity: number
+      blendMode: string
+    }>,
+    globalParameters?: Record<string, number | { value: number; color: string }>
   ): void {
     if (!this.gl || !this.shaderManagerV2 || !this.compositingProgram) {
       return
@@ -1117,7 +1130,7 @@ void main() {
       blurType: 0,
       brightness: 100,
       contrast: 100,
-      crop: { x: 0, y: 0, width: 0, height: 0 },
+      crop: { x: 0, y: 0, width: 0, height: 0, overlay: "grid" },
       exposure: 0,
       flipHorizontal: false,
       flipVertical: false,
@@ -1127,7 +1140,7 @@ void main() {
       hue: 0,
       invert: 0,
       noise: 0,
-      dimensions: { width: 0, height: 0 },
+      dimensions: { width: 0, height: 0, x: 0, y: 0 },
       rotate: 0,
       saturation: 100,
       scale: 1,
@@ -1143,6 +1156,40 @@ void main() {
       tv: ImageEditorToolsState | undefined
     ): ImageEditorToolsState =>
       ({ ...(DEFAULT_TOOLS as any), ...(tv || {}) }) as ImageEditorToolsState
+
+    // Apply global parameters to tool values
+    const applyGlobalParameters = (
+      baseTools: ImageEditorToolsState
+    ): ImageEditorToolsState => {
+      if (!globalParameters) return baseTools
+
+      const result = { ...baseTools }
+      for (const [key, value] of Object.entries(globalParameters)) {
+        const numValue = typeof value === "number" ? value : value.value
+        // Apply global parameters as multipliers or additive values based on the parameter type
+        if (
+          key === "brightness" ||
+          key === "contrast" ||
+          key === "saturation"
+        ) {
+          // These are typically percentage-based, so multiply
+          ;(result as any)[key] =
+            ((result as any)[key] as number) * (numValue / 100)
+        } else if (
+          key === "exposure" ||
+          key === "gamma" ||
+          key === "hue" ||
+          key === "temperature"
+        ) {
+          // These are additive
+          ;(result as any)[key] = ((result as any)[key] as number) + numValue
+        } else {
+          // For other parameters, just set the value
+          ;(result as any)[key] = numValue
+        }
+      }
+      return result
+    }
 
     // Respect groups: handle precomp at render-time; order bottom->top
     const orderedLayers = layers
@@ -1180,7 +1227,6 @@ void main() {
           "blurType",
           "blurDirection",
           "blurCenter",
-          "sharpen",
           "noise",
           "grain",
         ]
@@ -1190,7 +1236,7 @@ void main() {
           "rotate",
           "scale",
         ]
-        const layerToolsValues = withDefaults(undefined)
+        const layerToolsValues = applyGlobalParameters(withDefaults(undefined))
         const imgFilters =
           (layer.filters as Partial<ImageEditorToolsState>) || {}
         for (const k of EFFECT_KEYS) {
@@ -1469,6 +1515,113 @@ void main() {
       }
     }
 
+    // Apply global layers to the accumulated result
+    if (globalLayers && globalLayers.length > 0 && accumulatedTexture) {
+      // Process global layers in order (top to bottom, so reverse the array)
+      const orderedGlobalLayers = globalLayers
+        .filter((l) => l.visible && l.opacity > 0)
+        .slice()
+        .reverse()
+
+      for (const globalLayer of orderedGlobalLayers) {
+        if (globalLayer.type === "adjustment") {
+          // Build tool values from global adjustment parameters
+          const adjustmentParams = (globalLayer.parameters || {}) as Record<
+            string,
+            any
+          >
+          const adjustmentTools = withDefaults(undefined)
+          try {
+            // dynamic require to avoid top-level await and keep main bundle small
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const reg = require("@/lib/editor/adjustments/registry")
+            const mapped = reg.mapParametersToShader(
+              globalLayer.adjustmentType as any,
+              adjustmentParams
+            ) as Record<string, any>
+            for (const [k, v] of Object.entries(mapped)) {
+              ;(adjustmentTools as any)[k] = v
+            }
+          } catch {
+            for (const [k, v] of Object.entries(adjustmentParams)) {
+              ;(adjustmentTools as any)[k] = v
+            }
+          }
+
+          // Render adjusted version of the accumulated result
+          const adjustedTexture = this.renderAdjustmentToTexture(
+            accumulatedTexture,
+            adjustmentTools,
+            canvasWidth,
+            canvasHeight
+          )
+
+          if (!adjustedTexture) {
+            continue
+          }
+
+          // Composite adjusted result over the base using the global layer's blend + opacity
+          const outputFBO = usePing ? "ping" : "pong"
+          const inputFBO = usePing ? "pong" : "ping"
+
+          // Copy accumulated base into input FBO only if different
+          const inputObj = this.fboManager.getFBO(inputFBO)
+          if (!inputObj || inputObj.texture !== accumulatedTexture) {
+            this.copyTextureToFBO(accumulatedTexture, inputFBO)
+          }
+
+          const compositedTexture = this.compositeLayersWithPingPong(
+            inputFBO,
+            adjustedTexture,
+            outputFBO,
+            globalLayer.blendMode as any,
+            globalLayer.opacity,
+            canvasWidth,
+            canvasHeight
+          )
+
+          if (compositedTexture) {
+            accumulatedTexture = compositedTexture
+            usePing = !usePing
+          }
+        } else if (globalLayer.type === "solid") {
+          // Create a solid color texture and composite it
+          const solidTexture = this.createSolidColorTexture(
+            globalLayer.color || [1, 1, 1, 1],
+            canvasWidth,
+            canvasHeight
+          )
+
+          if (solidTexture) {
+            const outputFBO = usePing ? "ping" : "pong"
+            const inputFBO = usePing ? "pong" : "ping"
+
+            // Copy accumulated base into input FBO only if different
+            const inputObj = this.fboManager.getFBO(inputFBO)
+            if (!inputObj || inputObj.texture !== accumulatedTexture) {
+              this.copyTextureToFBO(accumulatedTexture, inputFBO)
+            }
+
+            const compositedTexture = this.compositeLayersWithPingPong(
+              inputFBO,
+              solidTexture,
+              outputFBO,
+              globalLayer.blendMode as any,
+              globalLayer.opacity,
+              canvasWidth,
+              canvasHeight
+            )
+
+            if (compositedTexture) {
+              accumulatedTexture = compositedTexture
+              usePing = !usePing
+            }
+          }
+        }
+        // Note: Mask layers would be implemented here when needed
+      }
+    }
+
     // Store the final result in the result FBO
     if (accumulatedTexture) {
       const finalFBO = usePing ? "ping" : "pong"
@@ -1494,6 +1647,64 @@ void main() {
         this.copyTextureToFBO(accumulatedTexture, "result")
       }
     }
+  }
+
+  /**
+   * Create a solid color texture for global solid layers
+   */
+  private createSolidColorTexture(
+    color: [number, number, number, number],
+    width: number,
+    height: number
+  ): WebGLTexture | null {
+    if (!this.gl) return null
+
+    const texture = this.gl.createTexture()
+    if (!texture) return null
+
+    // Create a 1x1 pixel with the solid color
+    const pixelData = new Uint8Array([
+      Math.round(color[0] * 255),
+      Math.round(color[1] * 255),
+      Math.round(color[2] * 255),
+      Math.round(color[3] * 255),
+    ])
+
+    this.gl.bindTexture(this.gl.TEXTURE_2D, texture)
+    this.gl.texImage2D(
+      this.gl.TEXTURE_2D,
+      0,
+      this.gl.RGBA,
+      1,
+      1,
+      0,
+      this.gl.RGBA,
+      this.gl.UNSIGNED_BYTE,
+      pixelData
+    )
+    this.gl.texParameteri(
+      this.gl.TEXTURE_2D,
+      this.gl.TEXTURE_MIN_FILTER,
+      this.gl.LINEAR
+    )
+    this.gl.texParameteri(
+      this.gl.TEXTURE_2D,
+      this.gl.TEXTURE_MAG_FILTER,
+      this.gl.LINEAR
+    )
+    this.gl.texParameteri(
+      this.gl.TEXTURE_2D,
+      this.gl.TEXTURE_WRAP_S,
+      this.gl.CLAMP_TO_EDGE
+    )
+    this.gl.texParameteri(
+      this.gl.TEXTURE_2D,
+      this.gl.TEXTURE_WRAP_T,
+      this.gl.CLAMP_TO_EDGE
+    )
+    this.gl.bindTexture(this.gl.TEXTURE_2D, null)
+
+    return texture
   }
 
   cleanup(): void {
