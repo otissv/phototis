@@ -521,37 +521,37 @@ export function validateFilterParameters(parameters: any): {
   }
 
   // New Affinity-style colorize validation
-  if (validatedParameters.recolorHue !== undefined) {
+  if (validatedParameters.colorizeHue !== undefined) {
     // Allow -180..180 or 0..360; clamp to [-180,180]
-    let h = Number(validatedParameters.recolorHue) || 0
+    let h = Number(validatedParameters.colorizeHue) || 0
     if (h > 180) h = ((h + 180) % 360) - 180
     if (h < -180) h = ((h - 180) % 360) + 180
-    validatedParameters.recolorHue = h
+    validatedParameters.colorizeHue = h
   }
-  if (validatedParameters.recolorSaturation !== undefined) {
+  if (validatedParameters.colorizeSaturation !== undefined) {
     const s = Math.max(
       0,
-      Math.min(100, Number(validatedParameters.recolorSaturation))
+      Math.min(100, Number(validatedParameters.colorizeSaturation))
     )
-    validatedParameters.recolorSaturation = s
+    validatedParameters.colorizeSaturation = s
   }
-  if (validatedParameters.recolorLightness !== undefined) {
+  if (validatedParameters.colorizeLightness !== undefined) {
     const l = Math.max(
       0,
-      Math.min(100, Number(validatedParameters.recolorLightness))
+      Math.min(100, Number(validatedParameters.colorizeLightness))
     )
-    validatedParameters.recolorLightness = l
+    validatedParameters.colorizeLightness = l
   }
-  if (validatedParameters.recolorAmount !== undefined) {
+  if (validatedParameters.colorizeAmount !== undefined) {
     const a = Math.max(
       0,
-      Math.min(100, Number(validatedParameters.recolorAmount))
+      Math.min(100, Number(validatedParameters.colorizeAmount))
     )
-    validatedParameters.recolorAmount = a
+    validatedParameters.colorizeAmount = a
   }
-  if (validatedParameters.recolorPreserveLum !== undefined) {
-    validatedParameters.recolorPreserveLum =
-      !!validatedParameters.recolorPreserveLum
+  if (validatedParameters.colorizePreserveLum !== undefined) {
+    validatedParameters.colorizePreserveLum =
+      !!validatedParameters.colorizePreserveLum
   }
 
   if (validatedParameters.vibrance !== undefined) {

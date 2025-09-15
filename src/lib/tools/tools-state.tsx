@@ -3,7 +3,6 @@ import {
   type AdjustLayersType,
   type CropToolsType,
   type DimensionsToolsType,
-  type FilterToolsType,
   type RotateToolsType,
   type ScaleToolsType,
   type ToolValueBooleanType,
@@ -16,7 +15,6 @@ import {
 } from "@/lib/tools/tools"
 
 export type ImageEditorToolsState = AdjustLayersType &
-  FilterToolsType &
   HistoryToolsState &
   DimensionsToolsType &
   RotateToolsType &
@@ -37,7 +35,6 @@ export const SIDEBAR_TOOLS = {
 // Define payload types for non-numeric tools
 type DimensionsPayload = DimensionsToolsType["dimensions"]
 type CropPayload = CropToolsType["crop"]
-type RecolorPayload = AdjustLayersType["colorize"]
 
 type NumericToolKeys = Exclude<
   keyof typeof TOOL_VALUES,
@@ -59,11 +56,6 @@ export type CropToolAction = {
   payload: CropPayload
 }
 
-export type RecolorToolAction = {
-  type: "colorize"
-  payload: RecolorPayload
-}
-
 export type SolidToolAction = {
   type: "solid"
   payload: string
@@ -73,7 +65,6 @@ export type ImageEditorToolsAction =
   | NumericToolAction
   | DimensionsToolAction
   | CropToolAction
-  | RecolorToolAction
   | SolidToolAction
 
 export type ImageEditorToolsResetAction = {
@@ -145,17 +136,16 @@ export const initialToolsState: ImageEditorToolsState = {
   solid: TOOL_VALUES.solid.defaultValue as ToolValueStringType["defaultValue"],
   temperature: TOOL_VALUES.temperature
     .defaultValue as ToolValueStepType["defaultValue"],
-  colorize: TOOL_VALUES.colorize
-    .defaultValue as ToolValueColorType["defaultValue"],
-  recolorHue: TOOL_VALUES.recolorHue
+  tint: TOOL_VALUES.tint.defaultValue as ToolValueStepType["defaultValue"],
+  colorizeHue: TOOL_VALUES.colorizeHue
     .defaultValue as ToolValueStepType["defaultValue"],
-  recolorSaturation: TOOL_VALUES.recolorSaturation
+  colorizeSaturation: TOOL_VALUES.colorizeSaturation
     .defaultValue as ToolValueStepType["defaultValue"],
-  recolorLightness: TOOL_VALUES.recolorLightness
+  colorizeLightness: TOOL_VALUES.colorizeLightness
     .defaultValue as ToolValueStepType["defaultValue"],
-  recolorAmount: TOOL_VALUES.recolorAmount
+  colorizeAmount: TOOL_VALUES.colorizeAmount
     .defaultValue as ToolValueStepType["defaultValue"],
-  recolorPreserveLum: TOOL_VALUES.recolorPreserveLum
+  colorizePreserveLum: TOOL_VALUES.colorizePreserveLum
     .defaultValue as ToolValueBooleanType["defaultValue"],
   vibrance: TOOL_VALUES.vibrance
     .defaultValue as ToolValueStepType["defaultValue"],
@@ -172,7 +162,11 @@ export const initialToolsState: ImageEditorToolsState = {
     .defaultValue as ToolValueStepType["defaultValue"],
   grain: TOOL_VALUES.grain.defaultValue as ToolValueStepType["defaultValue"],
   noise: TOOL_VALUES.noise.defaultValue as ToolValueStepType["defaultValue"],
-  sharpen: TOOL_VALUES.sharpen
+  sharpenAmount: TOOL_VALUES.sharpenAmount
+    .defaultValue as ToolValueStepType["defaultValue"],
+  sharpenRadius: TOOL_VALUES.sharpenRadius
+    .defaultValue as ToolValueStepType["defaultValue"],
+  sharpenThreshold: TOOL_VALUES.sharpenThreshold
     .defaultValue as ToolValueStepType["defaultValue"],
 }
 
@@ -221,16 +215,7 @@ export function imageEditorToolsReducer(
         },
       }
     }
-    case "colorize": {
-      const { payload } = action as RecolorToolAction
-      return {
-        ...state,
-        colorize: {
-          value: Math.max(0, Number(payload?.value) || 0),
-          color: typeof payload?.color === "string" ? payload.color : "#000000",
-        },
-      }
-    }
+
     case "solid": {
       const { payload } = action as SolidToolAction
       return {

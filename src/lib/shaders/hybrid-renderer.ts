@@ -517,18 +517,18 @@ export class HybridRenderer {
     const layerCenterX = layerX + layerWidth / 2
     const layerCenterY = layerY + layerHeight / 2
     // Normalize colorize: accept number or { value, color }
-    let recolorAmount = 0
+    let colorizeAmount = 0
     let recolorColor: [number, number, number] | null = null
     const recolorAny: any = (toolsValues as any).colorize
     if (typeof recolorAny === "number") {
-      recolorAmount = recolorAny
+      colorizeAmount = recolorAny
       recolorColor = [1, 0, 0]
     } else if (
       recolorAny &&
       typeof recolorAny === "object" &&
       typeof recolorAny.value === "number"
     ) {
-      recolorAmount = recolorAny.value
+      colorizeAmount = recolorAny.value
       const hex =
         typeof recolorAny.color === "string" ? recolorAny.color : "#000000"
       const rgba = this.hexToRgba01(hex) || [0, 0, 0, 1]
@@ -538,7 +538,7 @@ export class HybridRenderer {
     const uniformsUpdate: Record<string, any> = {
       ...(toolsValues as any),
       // enforce numeric colorize amount for plugin uniform
-      colorize: recolorAmount,
+      colorize: colorizeAmount,
       u_opacity: 100,
       layerSize: [layerWidth, layerHeight],
       canvasSize: [canvasWidth, canvasHeight],

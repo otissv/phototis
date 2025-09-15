@@ -26,6 +26,19 @@ uniform float u_temperature;
 uniform float u_invert;
 uniform float u_sepia;
 uniform float u_vibrance;
+uniform float u_tint;
+uniform float u_colorizeHue;
+uniform float u_colorizeSaturation;
+uniform float u_colorizeLightness;
+uniform int u_colorizePreserveLum;
+uniform float u_colorizeAmount;
+uniform float u_sharpenAmount;
+uniform float u_sharpenRadius;
+uniform float u_sharpenThreshold;
+uniform float u_noiseAmount;
+uniform float u_noiseSize;
+uniform float u_gaussianAmount;
+uniform float u_gaussianRadius;
 uniform int u_solidEnabled;
 uniform vec3 u_solidColor;
 uniform float u_solidAlpha;
@@ -44,6 +57,52 @@ vec3 hsv2rgb(vec3 c){
   vec4 K = vec4(1., 2./3., 1./3., 3.);
   vec3 p = abs(fract(c.xxx + K.xyz) * 6. - K.www);
   return c.z * mix(K.xxx, clamp(p - K.xxx, 0., 1.), c.y);
+}
+
+// HSL helpers for Colorize
+float hue2rgb(float p, float q, float t){
+  if(t < 0.0) t += 1.0;
+  if(t > 1.0) t -= 1.0;
+  if(t < 1.0/6.0) return p + (q - p) * 6.0 * t;
+  if(t < 1.0/2.0) return q;
+  if(t < 2.0/3.0) return p + (q - p) * (2.0/3.0 - t) * 6.0;
+  return p;
+}
+
+vec3 rgb2hsl(vec3 c){
+  float r = c.r, g = c.g, b = c.b;
+  float maxc = max(max(r, g), b);
+  float minc = min(min(r, g), b);
+  float h = 0.0;
+  float s = 0.0;
+  float l = (maxc + minc) * 0.5;
+  if (maxc != minc) {
+    float d = maxc - minc;
+    s = l > 0.5 ? d / (2.0 - maxc - minc) : d / (maxc + minc);
+    if (maxc == r) h = (g - b) / d + (g < b ? 6.0 : 0.0);
+    else if (maxc == g) h = (b - r) / d + 2.0;
+    else h = (r - g) / d + 4.0;
+    h /= 6.0;
+  }
+  return vec3(h, s, l);
+}
+
+vec3 hsl2rgb(vec3 hsl){
+  float h = hsl.x;
+  float s = hsl.y;
+  float l = hsl.z;
+  if (s == 0.0) return vec3(l, l, l);
+  float q = l < 0.5 ? l * (1.0 + s) : l + s - l * s;
+  float p = 2.0 * l - q;
+  float r = hue2rgb(p, q, h + 1.0/3.0);
+  float g = hue2rgb(p, q, h);
+  float b = hue2rgb(p, q, h - 1.0/3.0);
+  return vec3(r, g, b);
+}
+
+// Noise function
+float random(vec2 st) {
+  return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
 }
 
 void main(){
@@ -99,6 +158,83 @@ void main(){
     }
     hsv_v.y = clamp(hsv_v.y, 0.0, 1.0);
     color.rgb = hsv2rgb(hsv_v);
+  }
+  // Colorize (HSL): set H/S/(L or preserve) and mix by Amount
+  if (u_colorizeAmount > 0.0) {
+    vec3 src = color.rgb;
+    vec3 hsl = rgb2hsl(src);
+    float h = mod(u_colorizeHue / 360.0, 1.0);
+    float s = clamp(u_colorizeSaturation / 100.0, 0.0, 1.0);
+    float l = (u_colorizePreserveLum == 1)
+      ? hsl.z
+      : clamp(u_colorizeLightness / 100.0, -1.0, 2.0);
+    vec3 recolored = hsl2rgb(vec3(h, s, l));
+    float amt = clamp(u_colorizeAmount / 100.0, 0.0, 1.0);
+    color.rgb = mix(src, recolored, amt);
+  }
+  // Tint: warm (positive) adds red/orange, cool (negative) adds blue/cyan
+  if (u_tint != 0.0) {
+    float tint = clamp(u_tint / 100.0, -1.0, 1.0);
+    if (tint > 0.0) {
+      // Warm tint: add red/orange
+      color.rgb += vec3(tint * 0.3, tint * 0.1, -tint * 0.1);
+    } else {
+      // Cool tint: add blue/cyan
+      color.rgb += vec3(-tint * 0.1, tint * 0.1, -tint * 0.3);
+    }
+    color.rgb = clamp(color.rgb, 0.0, 1.0);
+  }
+  // Sharpen (Unsharp Mask): blur -> high-pass -> mix
+  if (u_sharpenAmount > 0.0) {
+    float amt = clamp(u_sharpenAmount / 100.0, 0.0, 3.0);
+    float radiusPx = max(0.5, u_sharpenRadius);
+    // approximate blur using 9-tap box kernel scaled by radius
+    vec2 texel = 1.0 / u_resolution;
+    vec2 r = texel * radiusPx;
+    vec3 blur = vec3(0.0);
+    float w = 1.0 / 9.0;
+    for (int x = -1; x <= 1; x++) {
+      for (int y = -1; y <= 1; y++) {
+        blur += texture(u_texture, uv + vec2(float(x), float(y)) * r).rgb * w;
+      }
+    }
+    vec3 highpass = color.rgb - blur;
+    // threshold in [0..1] mapped from [0..255]
+    float th = clamp(u_sharpenThreshold / 255.0, 0.0, 1.0);
+    highpass = mix(vec3(0.0), highpass, step(th, abs(highpass)));
+    color.rgb = clamp(color.rgb + highpass * amt, 0.0, 1.0);
+  }
+  // Noise: add film grain noise
+  if (u_noiseAmount > 0.0) {
+    float noiseAmt = clamp(u_noiseAmount / 100.0, 0.0, 1.0);
+    float noiseScale = max(0.1, u_noiseSize);
+    vec2 noiseUV = uv * noiseScale;
+    float noise = random(noiseUV) * 2.0 - 1.0; // [-1, 1]
+    color.rgb += vec3(noise) * noiseAmt * 0.1;
+    color.rgb = clamp(color.rgb, 0.0, 1.0);
+  }
+  // Gaussian Blur: multi-tap blur with Gaussian weights
+  if (u_gaussianAmount > 0.0) {
+    float blurAmt = clamp(u_gaussianAmount / 100.0, 0.0, 1.0);
+    float radius = max(0.1, u_gaussianRadius);
+    vec2 texel = 1.0 / u_resolution;
+    vec2 blurSize = texel * radius;
+    
+    vec3 blurred = vec3(0.0);
+    float totalWeight = 0.0;
+    
+    // 5x5 Gaussian kernel approximation
+    for (int x = -2; x <= 2; x++) {
+      for (int y = -2; y <= 2; y++) {
+        float weight = exp(-(float(x*x) + float(y*y)) / (2.0 * radius * radius));
+        vec2 offset = vec2(float(x), float(y)) * blurSize;
+        blurred += texture(u_texture, uv + offset).rgb * weight;
+        totalWeight += weight;
+      }
+    }
+    
+    blurred /= totalWeight;
+    color.rgb = mix(color.rgb, blurred, blurAmt);
   }
   color.a *= u_opacity / 100.0;
   outColor = color;

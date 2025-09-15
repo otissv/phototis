@@ -16,6 +16,9 @@ import { noise } from "./plugin.noise"
 import { grain } from "./plugin.grain"
 import { colorize } from "./plugin.colorize"
 import { solid } from "./plugin.solid"
+import { tintPlugin as tint } from "./plugin.tint"
+import { sharpen } from "./plugin.sharpen"
+import { gaussian } from "./plugin.gaussian"
 
 export const PLUGINS: readonly AdjustmentPlugin[] = [
   brightness,
@@ -35,4 +38,7 @@ export const PLUGINS: readonly AdjustmentPlugin[] = [
   grain,
   colorize,
   solid,
+  tint,
+  sharpen,
+  gaussian,
 ]

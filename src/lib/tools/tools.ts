@@ -50,7 +50,6 @@ export type ToolValueTypes =
 
 export type ToolValueKeys =
   | AdjustmentType
-  | FilterType
   | RotateType
   | DimensionsType
   | CropType
@@ -119,43 +118,80 @@ export const TOOL_VALUES: Record<ToolValueKeys, ToolValueTypes> = {
   invert: {
     defaultValue: 100,
   },
-  // Legacy colorize (color+amount) remains defined for backward compatibility,
-  // but new HSL-based colorize uses the keys below.
-  colorize: {
-    min: 0,
-    max: 200,
-    step: 1,
-    defaultValue: {
-      value: 100,
-      color: "#000000",
-    },
-  },
-  recolorHue: {
+  colorizeHue: {
     min: 0,
     max: 360,
     step: 1,
     defaultValue: 180,
   },
-  recolorSaturation: {
+  colorizeSaturation: {
     min: 0,
     max: 100,
     step: 1,
     defaultValue: 50,
   },
-  recolorLightness: {
+  colorizeLightness: {
     min: -100,
     max: 200,
     step: 1,
     defaultValue: 50,
   },
-  recolorAmount: {
+  colorizeAmount: {
     min: 0,
     max: 100,
     step: 1,
     defaultValue: 50,
   },
-  recolorPreserveLum: {
+  colorizePreserveLum: {
     defaultValue: false,
+  },
+  sharpenAmount: {
+    min: 0,
+    max: 300,
+    step: 1,
+    defaultValue: 0,
+  },
+  sharpenRadius: {
+    min: 0.1,
+    max: 10,
+    step: 0.1,
+    defaultValue: 1.5,
+  },
+  sharpenThreshold: {
+    min: 0,
+    max: 255,
+    step: 1,
+    defaultValue: 0,
+  },
+  noiseAmount: {
+    min: 0,
+    max: 100,
+    step: 1,
+    defaultValue: 0,
+  },
+  noiseSize: {
+    min: 0.1,
+    max: 5.0,
+    step: 0.1,
+    defaultValue: 1.0,
+  },
+  gaussianAmount: {
+    min: 0,
+    max: 100,
+    step: 1,
+    defaultValue: 0,
+  },
+  gaussianRadius: {
+    min: 0.1,
+    max: 10.0,
+    step: 0.1,
+    defaultValue: 1.0,
+  },
+  tint: {
+    min: -100,
+    max: 100,
+    step: 1,
+    defaultValue: 0,
   },
   // Filter values
   blur: {
@@ -182,7 +218,6 @@ export const TOOL_VALUES: Record<ToolValueKeys, ToolValueTypes> = {
     step: 0.01,
     defaultValue: 0.5,
   },
-
   sepia: {
     min: 0,
     max: 100,
@@ -315,21 +350,20 @@ export type AdjustLayersType = {
   solid: string
   vintage: number
   temperature: number
-  // Legacy colorize control used in some tool flows
-  colorize: {
-    value: number
-    color: string
-  }
-  // New Affinity-style colorize controls (per-layer adjustment)
-  recolorHue: number
-  recolorSaturation: number
-  recolorLightness: number
-  recolorPreserveLum: boolean
-  recolorAmount: number
+  tint: number
+  colorizeHue: number
+  colorizeSaturation: number
+  colorizeLightness: number
+  colorizePreserveLum: boolean
+  colorizeAmount: number
   vibrance: number
-}
-
-export type FilterToolsType = {
+  sharpenAmount: number
+  sharpenRadius: number
+  sharpenThreshold: number
+  noiseAmount: number
+  noiseSize: number
+  gaussianAmount: number
+  gaussianRadius: number
   blur: number
   blurCenter: number
   blurDirection: number
@@ -337,11 +371,9 @@ export type FilterToolsType = {
   grain: number
   noise: number
   sepia: number
-  sharpen: number
 }
 
 export type AdjustmentType = keyof AdjustLayersType
-export type FilterType = keyof FilterToolsType
 export type RotateType = keyof RotateToolsType
 export type DimensionsType = keyof DimensionsToolsType
 export type CropType = keyof CropToolsType

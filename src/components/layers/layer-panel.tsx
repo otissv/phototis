@@ -296,12 +296,13 @@ export function LayersPanelInner({
           temperature: TOOL_VALUES.temperature.defaultValue as number,
         },
         colorize: {
-          recolorHue: (TOOL_VALUES as any).recolorHue.defaultValue,
-          recolorSaturation: (TOOL_VALUES as any).recolorSaturation
+          colorizeHue: (TOOL_VALUES as any).colorizeHue.defaultValue,
+          colorizeSaturation: (TOOL_VALUES as any).colorizeSaturation
             .defaultValue,
-          recolorLightness: (TOOL_VALUES as any).recolorLightness.defaultValue,
-          recolorAmount: (TOOL_VALUES as any).recolorAmount.defaultValue,
-          recolorPreserveLum: (TOOL_VALUES as any).recolorPreserveLum
+          colorizeLightness: (TOOL_VALUES as any).colorizeLightness
+            .defaultValue,
+          colorizeAmount: (TOOL_VALUES as any).colorizeAmount.defaultValue,
+          colorizePreserveLum: (TOOL_VALUES as any).colorizePreserveLum
             .defaultValue,
         },
         vibrance: { vibrance: TOOL_VALUES.vibrance.defaultValue as number },
@@ -310,6 +311,19 @@ export function LayersPanelInner({
         invert: { invert: TOOL_VALUES.invert.defaultValue as number },
         sepia: { sepia: TOOL_VALUES.sepia.defaultValue as number },
         solid: { solid: (TOOL_VALUES.solid as any).defaultValue },
+        sharpen: {
+          sharpenAmount: (TOOL_VALUES as any).sharpenAmount.defaultValue,
+          sharpenRadius: (TOOL_VALUES as any).sharpenRadius.defaultValue,
+          sharpenThreshold: (TOOL_VALUES as any).sharpenThreshold.defaultValue,
+        },
+        noise: {
+          noiseAmount: (TOOL_VALUES as any).noiseAmount.defaultValue,
+          noiseSize: (TOOL_VALUES as any).noiseSize.defaultValue,
+        },
+        gaussian: {
+          gaussianAmount: (TOOL_VALUES as any).gaussianAmount.defaultValue,
+          gaussianRadius: (TOOL_VALUES as any).gaussianRadius.defaultValue,
+        },
       }
 
       addAdjustmentLayer(adjustmentType, defaultParams[adjustmentType], "top")
@@ -666,6 +680,42 @@ export function LayersPanelInner({
                 >
                   <Eclipse className='w-3 h-3 mr-1' />
                   Invert
+                </Button>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='text-xs h-8 justify-start rounded-sm'
+                  onClick={() => handleAddAdjustmentLayer("tint")}
+                >
+                  <Eclipse className='w-3 h-3 mr-1' />
+                  Tint
+                </Button>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='text-xs h-8 justify-start rounded-sm'
+                  onClick={() => handleAddAdjustmentLayer("sharpen")}
+                >
+                  <Eclipse className='w-3 h-3 mr-1' />
+                  Sharpen
+                </Button>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='text-xs h-8 justify-start rounded-sm'
+                  onClick={() => handleAddAdjustmentLayer("noise")}
+                >
+                  <Eclipse className='w-3 h-3 mr-1' />
+                  Noise
+                </Button>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='text-xs h-8 justify-start rounded-sm'
+                  onClick={() => handleAddAdjustmentLayer("gaussian")}
+                >
+                  <Eclipse className='w-3 h-3 mr-1' />
+                  Gaussian Blur
                 </Button>
               </div>
             </DropdownMenuContent>
