@@ -560,7 +560,20 @@ export class WorkerManager {
     token?: { signature?: string; version?: number },
     interactive?: boolean,
     colorSpace?: number,
-    graph?: unknown
+    graph?: unknown,
+    globalLayers?: Array<{
+      id: string
+      type: "adjustment" | "solid" | "mask"
+      adjustmentType?: string
+      parameters?: Record<string, any>
+      color?: [number, number, number, number]
+      enabled?: boolean
+      inverted?: boolean
+      visible: boolean
+      opacity: number
+      blendMode: string
+    }>,
+    globalParameters?: Record<string, number | { value: number; color: string }>
   ): Promise<string> {
     const taskId = this.generateMessageId()
 
@@ -599,6 +612,8 @@ export class WorkerManager {
         // Optional enriched graph and colorSpace flags
         graph,
         colorSpace: typeof colorSpace === "number" ? colorSpace : 0,
+        globalLayers,
+        globalParameters,
       },
       timestamp: Date.now(),
       retryCount: 0,

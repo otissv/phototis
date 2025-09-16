@@ -10,6 +10,7 @@ import {
   MoreHorizontal,
   Trash2,
   Ungroup,
+  Unlock,
 } from "lucide-react"
 
 import { Button } from "@/ui/button"
@@ -234,12 +235,11 @@ export function LayerItemContent({
               }}
               disabled={isDragActive}
             >
-              <Lock
-                className={cn(
-                  "w-3 h-3",
-                  layer.locked ? "text-primary" : "text-muted-foreground"
-                )}
-              />
+              {layer.locked ? (
+                <Lock className={cn("w-3 h-3")} />
+              ) : (
+                <Unlock className='w-3 h-3' />
+              )}
             </Button>
           </div>
 
@@ -361,7 +361,7 @@ export function LayerThumbnail({ layer }: { layer: EditorLayer }) {
     const adjustment = layer as AdjustmentLayer
     const icon = getAdjustmentIcon(adjustment.adjustmentType)
     return (
-      <div className='w-6 h-6 rounded-xs overflow-hidden border border-border flex items-center justify-center'>
+      <div className='w-6 h-6 rounded-xs overflow-hidden border  flex items-center justify-center'>
         {icon}
       </div>
     )
@@ -370,7 +370,7 @@ export function LayerThumbnail({ layer }: { layer: EditorLayer }) {
   if (layer.type === "group") {
     // Show group layer icon
     return (
-      <div className='w-6 h-6 rounded-xs overflow-hidden border border-border flex items-center justify-center'>
+      <div className='w-6 h-6 rounded-xs overflow-hidden border  flex items-center justify-center'>
         <Layers className='w-3 h-3' />
       </div>
     )
@@ -381,7 +381,7 @@ export function LayerThumbnail({ layer }: { layer: EditorLayer }) {
     const solid = layer as any
     return (
       <div
-        className='w-6 h-6 rounded-xs overflow-hidden border border-border'
+        className='w-6 h-6 rounded-xs overflow-hidden border '
         style={{ backgroundColor: `rgba(${solid.color.join(",")})` }}
       />
     )
@@ -392,7 +392,7 @@ export function LayerThumbnail({ layer }: { layer: EditorLayer }) {
   }
 
   return (
-    <div className='w-6 h-6 rounded-xs overflow-hidden border border-border'>
+    <div className='w-6 h-6 rounded-xs overflow-hidden border '>
       <img
         src={thumbnailUrl}
         alt={layer.name}

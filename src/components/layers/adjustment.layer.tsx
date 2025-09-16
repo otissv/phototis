@@ -248,7 +248,7 @@ export function AdjustmentLayerEditor({
   const params = layer.parameters
 
   return (
-    <div className='flex items-center mb-4 rounded-b-sm min-h-10 border'>
+    <div className='flex items-center rounded-b-sm min-h-10 border'>
       <div className='flex flex-col  w-full'>
         {ui
           ? ui.map((control) => {

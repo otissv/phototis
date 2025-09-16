@@ -1445,7 +1445,10 @@ export function ImageEditorCanvas({
             canvasHeight,
             dimsForRender,
             priority,
-            layersSignature
+            layersSignature,
+            false, // interactive
+            state.canonical.document.globalLayers,
+            state.canonical.document.globalParameters
           )
 
           if (taskId) {
@@ -1628,6 +1631,25 @@ export function ImageEditorCanvas({
               allLayersToRender.length,
               "layers"
             )
+
+          // Debug: log global layers being passed to hybrid renderer
+          if (
+            state.canonical.document.globalLayers &&
+            state.canonical.document.globalLayers.length > 0
+          ) {
+            console.debug(
+              "🎨 [MainThread] Passing global layers to HybridRenderer:",
+              state.canonical.document.globalLayers.map((l: any) => ({
+                id: l.id,
+                type: l.type,
+                visible: l.visible,
+              }))
+            )
+          } else {
+            console.debug(
+              "🎨 [MainThread] No global layers passed to HybridRenderer"
+            )
+          }
 
           hybridRendererRef.current.renderLayers(
             allLayersToRender,

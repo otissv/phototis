@@ -57,6 +57,19 @@ interface RenderMessage extends WorkerMessage {
     interactive?: boolean
     colorSpace?: number
     graph?: any
+    globalLayers?: Array<{
+      id: string
+      type: "adjustment" | "solid" | "mask"
+      adjustmentType?: string
+      parameters?: Record<string, any>
+      color?: [number, number, number, number]
+      enabled?: boolean
+      inverted?: boolean
+      visible: boolean
+      opacity: number
+      blendMode: string
+    }>
+    globalParameters?: Record<string, number | { value: number; color: string }>
   }
 }
 
@@ -1167,6 +1180,23 @@ async function renderLayers(
         const texMap = new Map<string, WebGLTexture>()
         for (const [id, tex] of layerTextures) texMap.set(id, tex)
 
+        // Debug: log global layers being passed to hybrid renderer
+        if (
+          renderMessage.data.globalLayers &&
+          renderMessage.data.globalLayers.length > 0
+        ) {
+          console.debug(
+            "🎨 [Worker] Passing global layers to HybridRenderer:",
+            renderMessage.data.globalLayers.map((l: any) => ({
+              id: l.id,
+              type: l.type,
+              visible: l.visible,
+            }))
+          )
+        } else {
+          console.debug("🎨 [Worker] No global layers passed to HybridRenderer")
+        }
+
         // Pass original layer structure to let hybrid renderer handle groups
         hybridRendererInstance.renderLayers(
           layers as any,
@@ -1175,7 +1205,9 @@ async function renderLayers(
           selectedLayerId,
           canvasWidth,
           canvasHeight,
-          layerDimensionsMap
+          layerDimensionsMap,
+          renderMessage.data.globalLayers,
+          renderMessage.data.globalParameters
         )
 
         const result = (hybridRendererInstance as any).fboManager?.getFBO?.(

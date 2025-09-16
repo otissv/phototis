@@ -16,6 +16,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuTrigger,
+  DropdownMenuItem,
 } from "@/ui/dropdown-menu"
 import { BLEND_MODE_NAMES } from "@/lib/shaders/blend-modes/blend-modes"
 import type { BlendMode } from "@/lib/shaders/blend-modes/types.blend"
@@ -44,8 +45,16 @@ import {
   GripVertical,
   Settings,
   Palette,
+  Copy,
+  MoreHorizontal,
 } from "lucide-react"
 import { FxIcon } from "@/ui/icons/fx-icon"
+import {
+  LayerItemContent,
+  LayerThumbnail,
+} from "@/components/layers/layer-content"
+import { AdjustmentLayerEditor } from "@/components/layers/adjustment.layer"
+import type { AdjustmentLayer } from "@/lib/editor/state"
 
 export type LayerContextType = {
   isGlobalDragActive: React.RefObject<boolean>
@@ -225,6 +234,7 @@ function DocumentPanel() {
     getSelectedLayerId,
     getOrderedLayers,
     state,
+    updateAdjustmentParameters,
   } = useEditorContext()
 
   const [globalSelectedLayerId, setGlobalSelectedLayerId] = React.useState<
@@ -233,14 +243,6 @@ function DocumentPanel() {
 
   const globalLayers = state.canonical.document.globalLayers
   const isDragActive = state.ephemeral.interaction.isDragging
-
-  const [expandedLayers, setExpandedLayers] = React.useState<Set<string>>(
-    new Set()
-  )
-  const [editingLayerName, setEditingLayerName] = React.useState<string | null>(
-    null
-  )
-  const [tempLayerName, setTempLayerName] = React.useState("")
 
   const handleAddGlobalAdjustmentLayer = React.useCallback(
     (adjustmentType: string) => {
@@ -350,39 +352,6 @@ function DocumentPanel() {
   const handleUpdateGlobalLayerName = React.useCallback(
     (layerId: string, name: string) => {
       updateGlobalLayer(layerId, { name })
-      setEditingLayerName(null)
-    },
-    [updateGlobalLayer]
-  )
-
-  const handleUpdateGlobalLayerParameter = React.useCallback(
-    (layerId: string, paramKey: string, value: number) => {
-      const layer = globalLayers.find((l) => l.id === layerId)
-      if (layer && layer.type === "adjustment") {
-        const newParameters = { ...layer.parameters, [paramKey]: value }
-        updateGlobalLayer(layerId, { parameters: newParameters })
-      }
-    },
-    [globalLayers, updateGlobalLayer]
-  )
-
-  const handleUpdateSolidLayerColor = React.useCallback(
-    (layerId: string, color: [number, number, number, number]) => {
-      updateGlobalLayer(layerId, { color })
-    },
-    [updateGlobalLayer]
-  )
-
-  const handleUpdateMaskLayerEnabled = React.useCallback(
-    (layerId: string, enabled: boolean) => {
-      updateGlobalLayer(layerId, { enabled })
-    },
-    [updateGlobalLayer]
-  )
-
-  const handleUpdateMaskLayerInverted = React.useCallback(
-    (layerId: string, inverted: boolean) => {
-      updateGlobalLayer(layerId, { inverted })
     },
     [updateGlobalLayer]
   )
@@ -394,54 +363,34 @@ function DocumentPanel() {
     [removeGlobalLayer]
   )
 
-  const handleToggleLayerExpanded = React.useCallback((layerId: string) => {
-    setExpandedLayers((prev) => {
-      const newSet = new Set(prev)
-      if (newSet.has(layerId)) {
-        newSet.delete(layerId)
-      } else {
-        newSet.add(layerId)
-      }
-      return newSet
-    })
-  }, [])
-
-  const handleStartEditingName = React.useCallback(
-    (layerId: string, currentName: string) => {
-      setEditingLayerName(layerId)
-      setTempLayerName(currentName)
-    },
-    []
-  )
-
-  const handleCancelEditingName = React.useCallback(() => {
-    setEditingLayerName(null)
-    setTempLayerName("")
-  }, [])
-
-  const handleConfirmEditingName = React.useCallback(
+  const handleDuplicateGlobalLayer = React.useCallback(
     (layerId: string) => {
-      if (tempLayerName.trim()) {
-        handleUpdateGlobalLayerName(layerId, tempLayerName.trim())
-      } else {
-        handleCancelEditingName()
+      const layer = globalLayers.find((l) => l.id === layerId)
+      if (layer) {
+        const duplicatedLayer = {
+          ...layer,
+          id: `global-${layer.type}-${Date.now()}`,
+          name: `${layer.name} Copy`,
+        }
+        addGlobalLayer(duplicatedLayer, "top")
       }
     },
-    [tempLayerName, handleUpdateGlobalLayerName, handleCancelEditingName]
+    [globalLayers, addGlobalLayer]
   )
 
-  const handleKeyDown = React.useCallback(
-    (e: React.KeyboardEvent, layerId: string) => {
-      if (e.key === "Enter") {
-        handleConfirmEditingName(layerId)
-      } else if (e.key === "Escape") {
-        handleCancelEditingName()
+  const handleUpdateGlobalLayerParameters = React.useCallback(
+    (layerId: string, parameters: Record<string, any>) => {
+      // Update the layer with new parameters
+      const layer = globalLayers.find((l) => l.id === layerId)
+      if (layer && layer.type === "adjustment") {
+        const newParameters = { ...layer.parameters, ...parameters }
+        updateGlobalLayer(layerId, { parameters: newParameters } as any)
       }
     },
-    [handleConfirmEditingName, handleCancelEditingName]
+    [globalLayers, updateGlobalLayer]
   )
 
-  // const handleBlendModeChange = useBlendModeChange({ isDragActive })
+  const handleBlendModeChange = useBlendModeChange({ isDragActive })
   const handleOpacityChange = useOpacityChange({ isDragActive })
 
   return (
@@ -461,291 +410,36 @@ function DocumentPanel() {
         handleOpacityChange={handleUpdateGlobalLayerOpacity}
       />
 
-      <div className='space-y-3'>
+      <div className='space-y-2'>
         {globalLayers.length === 0 ? (
           <div className='text-xs text-muted-foreground text-center py-4'>
             No global layers added
           </div>
         ) : (
           <div className='space-y-1'>
-            {globalLayers.map((layer, index) => {
-              const isExpanded = expandedLayers.has(layer.id)
-              const isEditingName = editingLayerName === layer.id
-
-              return (
-                <div
-                  key={layer.id}
-                  className={cn(
-                    "border  rounded-sm bg-background/50",
-                    globalSelectedLayerId === layer.id &&
-                      "border-primary bg-primary/10"
-                  )}
-                  onClick={() => setGlobalSelectedLayerId(layer.id)}
-                  onKeyUp={(e) => {
-                    if (e.key === "Enter") {
-                      setGlobalSelectedLayerId(layer.id)
-                    }
-                  }}
-                >
-                  {/* Layer Header */}
-                  <div className='flex items-center gap-2 p-2'>
-                    <Button
-                      variant='ghost'
-                      size='sm'
-                      className='h-4 w-4 p-0'
-                      onClick={() =>
-                        handleToggleGlobalLayerVisibility(layer.id)
-                      }
-                      title={layer.visible ? "Hide Layer" : "Show Layer"}
-                    >
-                      {layer.visible ? (
-                        <Eye className='w-3 h-3' />
-                      ) : (
-                        <EyeOff className='w-3 h-3' />
-                      )}
-                    </Button>
-
-                    <Button
-                      variant='ghost'
-                      size='sm'
-                      className='h-4 w-4 p-0'
-                      onClick={() => handleToggleGlobalLayerLock(layer.id)}
-                      title={layer.locked ? "Unlock Layer" : "Lock Layer"}
-                    >
-                      {layer.locked ? (
-                        <Lock className='w-3 h-3' />
-                      ) : (
-                        <Unlock className='w-3 h-3' />
-                      )}
-                    </Button>
-
-                    <div className='flex-1 min-w-0'>
-                      {isEditingName ? (
-                        <Input
-                          value={tempLayerName}
-                          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                            setTempLayerName(e.target.value)
-                          }
-                          onKeyDown={(
-                            e: React.KeyboardEvent<HTMLInputElement>
-                          ) => handleKeyDown(e, layer.id)}
-                          onBlur={() => handleConfirmEditingName(layer.id)}
-                          className='h-6 text-xs'
-                          autoFocus
-                        />
-                      ) : (
-                        <button
-                          className='flex items-center gap-1 cursor-pointer bg-transparent border-none p-0 w-full text-left'
-                          onDoubleClick={() =>
-                            handleStartEditingName(layer.id, layer.name)
-                          }
-                          type='button'
-                        >
-                          <span className='text-xs font-medium truncate'>
-                            {layer.name}
-                          </span>
-                          <Badge
-                            variant='secondary'
-                            className='text-xs px-1 py-0'
-                          >
-                            {layer.type}
-                          </Badge>
-                        </button>
-                      )}
-                    </div>
-
-                    <Button
-                      variant='ghost'
-                      size='sm'
-                      className='h-4 w-4 p-0'
-                      onClick={() => handleToggleLayerExpanded(layer.id)}
-                      title={isExpanded ? "Collapse" : "Expand"}
-                    >
-                      <ChevronDown
-                        className={`w-3 h-3 transition-transform ${isExpanded ? "rotate-180" : ""}`}
-                      />
-                    </Button>
-
-                    <Button
-                      variant='ghost'
-                      size='sm'
-                      className='h-4 w-4 p-0'
-                      onClick={() => handleRemoveGlobalLayer(layer.id)}
-                      title='Remove Layer'
-                    >
-                      <Trash2 className='w-3 h-3' />
-                    </Button>
-                  </div>
-
-                  {/* Layer Controls */}
-                  {isExpanded && (
-                    <div className='px-2 pb-2 space-y-3 border-t'>
-                      {/* Layer-specific controls */}
-                      {layer.type === "adjustment" && (
-                        <div className='space-y-2'>
-                          <div className='flex items-center gap-1'>
-                            <Settings className='w-3 h-3' />
-                            <Label className='text-xs'>Parameters</Label>
-                          </div>
-                          {Object.entries(layer.parameters).map(
-                            ([paramKey, paramValue]) => (
-                              <div key={paramKey} className='space-y-1'>
-                                <div className='flex items-center justify-between'>
-                                  <Label className='text-xs'>
-                                    {capitalize(paramKey)}
-                                  </Label>
-                                  <span className='text-xs w-8 text-right'>
-                                    {typeof paramValue === "number"
-                                      ? paramValue
-                                      : paramValue.value}
-                                  </span>
-                                </div>
-                                <Slider
-                                  value={[
-                                    typeof paramValue === "number"
-                                      ? paramValue
-                                      : paramValue.value,
-                                  ]}
-                                  onValueChange={([val]) =>
-                                    handleUpdateGlobalLayerParameter(
-                                      layer.id,
-                                      paramKey,
-                                      val
-                                    )
-                                  }
-                                  min={0}
-                                  max={200}
-                                  step={1}
-                                  className='h-2'
-                                />
-                              </div>
-                            )
-                          )}
-                        </div>
-                      )}
-
-                      {layer.type === "solid" && (
-                        <div className='space-y-2'>
-                          <div className='flex items-center gap-1'>
-                            <Palette className='w-3 h-3' />
-                            <Label className='text-xs'>Color</Label>
-                          </div>
-                          <div className='flex items-center gap-2'>
-                            <div
-                              className='w-8 h-6 border rounded cursor-pointer'
-                              style={{
-                                backgroundColor: `rgba(${Math.round(layer.color[0] * 255)}, ${Math.round(layer.color[1] * 255)}, ${Math.round(layer.color[2] * 255)}, ${layer.color[3]})`,
-                              }}
-                              onClick={() => {
-                                // Simple color picker - in a real implementation, you'd use a proper color picker component
-                                const newColor = [
-                                  Math.random(),
-                                  Math.random(),
-                                  Math.random(),
-                                  layer.color[3],
-                                ] as [number, number, number, number]
-                                handleUpdateSolidLayerColor(layer.id, newColor)
-                              }}
-                              onKeyDown={(e: React.KeyboardEvent) => {
-                                if (e.key === "Enter" || e.key === " ") {
-                                  e.preventDefault()
-                                  const newColor = [
-                                    Math.random(),
-                                    Math.random(),
-                                    Math.random(),
-                                    layer.color[3],
-                                  ] as [number, number, number, number]
-                                  handleUpdateSolidLayerColor(
-                                    layer.id,
-                                    newColor
-                                  )
-                                }
-                              }}
-                              role='button'
-                              tabIndex={0}
-                              title='Click to randomize color'
-                            />
-                            <div className='flex-1 text-xs text-muted-foreground'>
-                              RGBA:{" "}
-                              {layer.color
-                                .map((v) => Math.round(v * 255))
-                                .join(", ")}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {layer.type === "mask" && (
-                        <div className='space-y-2'>
-                          <div className='flex items-center gap-1'>
-                            <svg
-                              className='w-3 h-3'
-                              viewBox='0 0 24 24'
-                              fill='currentColor'
-                              aria-label='Mask settings icon'
-                            >
-                              <title>Mask settings icon</title>
-                              <rect
-                                x='3'
-                                y='4'
-                                width='20'
-                                height='16'
-                                rx='3'
-                                ry='3'
-                                fill='none'
-                                stroke='currentColor'
-                                strokeWidth='1'
-                              />
-                              <circle
-                                cx='13'
-                                cy='12'
-                                r='4'
-                                fill='currentColor'
-                              />
-                            </svg>
-                            <Label className='text-xs'>Mask Settings</Label>
-                          </div>
-                          <div className='space-y-2'>
-                            <div className='flex items-center justify-between'>
-                              <Label className='text-xs'>Enabled</Label>
-                              <Button
-                                variant={layer.enabled ? "default" : "outline"}
-                                size='sm'
-                                className='h-5 px-2 text-xs'
-                                onClick={() =>
-                                  handleUpdateMaskLayerEnabled(
-                                    layer.id,
-                                    !layer.enabled
-                                  )
-                                }
-                              >
-                                {layer.enabled ? "On" : "Off"}
-                              </Button>
-                            </div>
-                            <div className='flex items-center justify-between'>
-                              <Label className='text-xs'>Inverted</Label>
-                              <Button
-                                variant={layer.inverted ? "default" : "outline"}
-                                size='sm'
-                                className='h-5 px-2 text-xs'
-                                onClick={() =>
-                                  handleUpdateMaskLayerInverted(
-                                    layer.id,
-                                    !layer.inverted
-                                  )
-                                }
-                              >
-                                {layer.inverted ? "Yes" : "No"}
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
+            {globalLayers.map((layer, index) => (
+              <GlobalLayerItem
+                key={layer.id}
+                layer={layer}
+                isSelected={globalSelectedLayerId === layer.id}
+                onSelect={setGlobalSelectedLayerId}
+                onDelete={() => handleRemoveGlobalLayer(layer.id)}
+                onDuplicate={() => handleDuplicateGlobalLayer(layer.id)}
+                onToggleVisibility={() =>
+                  handleToggleGlobalLayerVisibility(layer.id)
+                }
+                onToggleLock={() => handleToggleGlobalLayerLock(layer.id)}
+                onNameChange={(name) =>
+                  handleUpdateGlobalLayerName(layer.id, name)
+                }
+                onOpacityChange={(opacity) =>
+                  handleUpdateGlobalLayerOpacity(layer.id, opacity)
+                }
+                onUpdateParameters={(parameters) =>
+                  handleUpdateGlobalLayerParameters(layer.id, parameters)
+                }
+              />
+            ))}
           </div>
         )}
       </div>
@@ -767,6 +461,204 @@ function DocumentPanel() {
 
 function capitalize(str: string): string {
   return str.charAt(0).toUpperCase() + str.slice(1)
+}
+
+// Global Layer Item Component - simplified version for global layers
+interface GlobalLayerItemProps {
+  layer: any // Global layer type
+  isSelected: boolean
+  onSelect: (layerId: string) => void
+  onDelete: () => void
+  onDuplicate: () => void
+  onToggleVisibility: () => void
+  onToggleLock: () => void
+  onNameChange: (name: string) => void
+  onOpacityChange: (opacity: number) => void
+  onUpdateParameters?: (parameters: Record<string, any>) => void
+}
+
+function GlobalLayerItem({
+  layer,
+  isSelected,
+  onSelect,
+  onDelete,
+  onDuplicate,
+  onToggleVisibility,
+  onToggleLock,
+  onNameChange,
+  onOpacityChange,
+  onUpdateParameters,
+}: GlobalLayerItemProps) {
+  const { isGlobalDragActive } = React.useContext(LayerContext)
+  const isDragActive = false // Global layers don't support drag and drop
+  const [isEditing, setIsEditing] = React.useState(false)
+  const [editName, setEditName] = React.useState(layer.name)
+
+  const handleNameSubmit = React.useCallback(() => {
+    if (isDragActive) return
+    onNameChange(editName)
+    setIsEditing(false)
+  }, [editName, onNameChange])
+
+  const handleNameKeyDown = React.useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Enter") {
+        handleNameSubmit()
+      } else if (e.key === "Escape") {
+        setEditName(layer.name)
+        setIsEditing(false)
+      }
+    },
+    [handleNameSubmit, layer.name]
+  )
+
+  React.useEffect(() => {
+    setEditName(layer.name)
+  }, [layer.name])
+
+  return (
+    <div
+      className={cn("rounded-sm bg-background/50", !isSelected && "border")}
+      onClick={() => onSelect(layer.id)}
+      onKeyUp={(e) => {
+        if (e.key === "Enter") {
+          onSelect(layer.id)
+        }
+      }}
+    >
+      <div
+        className={cn(
+          "rounded-tl-sm rounded-tr-sm",
+          isSelected && "bg-primary/10"
+        )}
+      >
+        <div
+          className={cn(
+            "flex flex-col items-center px-2 rounded-t-sm rounded-b-none",
+            layer.type === "image" && "rounded-b-sm"
+          )}
+        >
+          <div className='flex items-center w-full h-10'>
+            <div className='w-full'>
+              {isEditing ? (
+                <Input
+                  value={editName}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    setEditName(e.target.value)
+                  }
+                  onBlur={handleNameSubmit}
+                  onKeyDown={handleNameKeyDown}
+                  className={cn(
+                    "h-6 text-sm rounded-sm outline-none px-1",
+                    "focus-visible:ring-0 focus-visible:ring-transparent focus-visible:ring-offset-0"
+                  )}
+                  autoFocus
+                  disabled={isDragActive}
+                />
+              ) : (
+                <div className='flex items-center gap-2'>
+                  <LayerThumbnail layer={layer} />
+                  <Button
+                    variant='ghost'
+                    className={cn(
+                      "text-sm truncate flex justify-start items-center text-left gap-1 h-6 flex-1 px-1 rounded-sm cursor-grab",
+                      "hover:bg-transparent"
+                    )}
+                    onDoubleClick={() => !isDragActive && setIsEditing(true)}
+                    disabled={isDragActive}
+                  >
+                    <span className='text-xs whitespace-nowrap truncate w-44'>
+                      {layer.name}
+                    </span>
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            <div className='flex items-center justify-center p-0.5'>
+              <Button
+                title='Toggle layer visibility'
+                className='w-9 h-9 p-0 rounded-sm cursor-pointer'
+                size='sm'
+                variant='ghost'
+                onClick={(e: React.MouseEvent) => {
+                  e.stopPropagation()
+                  onToggleVisibility()
+                }}
+                disabled={isDragActive}
+              >
+                {layer.visible ? (
+                  <Eye className='w-3 h-3' />
+                ) : (
+                  <EyeOff className='w-3 h-3' />
+                )}
+              </Button>
+
+              <Button
+                title='Toggle layer lock'
+                className='w-9 h-9 p-0 rounded-sm cursor-pointer'
+                size='sm'
+                variant='ghost'
+                onClick={(e: React.MouseEvent) => {
+                  e.stopPropagation()
+                  onToggleLock()
+                }}
+                disabled={isDragActive}
+              >
+                <Lock
+                  className={cn(
+                    "w-3 h-3",
+                    layer.locked ? "text-primary" : "text-muted-foreground"
+                  )}
+                />
+              </Button>
+            </div>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  title='More options'
+                  className='w-9 h-9 rounded-sm cursor-pointer'
+                  size='sm'
+                  variant='ghost'
+                >
+                  <MoreHorizontal className='size-3' />
+                </Button>
+              </DropdownMenuTrigger>
+
+              <DropdownMenuContent className='flex flex-col'>
+                <DropdownMenuItem
+                  onSelect={() => onDuplicate()}
+                  className='gap-2 justify-start rounded-sm cursor-pointer text-sm'
+                  disabled={isDragActive}
+                  title='Duplicate layer'
+                >
+                  <Copy className={cn("size-4")} /> Duplicate
+                </DropdownMenuItem>
+
+                <DropdownMenuItem
+                  onSelect={() => onDelete()}
+                  className='gap-2 justify-start text-destructive rounded-sm cursor-pointer text-sm'
+                  disabled={isDragActive}
+                  title='Delete layer'
+                >
+                  <Trash2 className={cn("size-4")} /> Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+      </div>
+      {layer.type === "adjustment" && isSelected && onUpdateParameters && (
+        <div>
+          <AdjustmentLayerEditor
+            layer={layer as AdjustmentLayer}
+            onUpdate={onUpdateParameters}
+          />
+        </div>
+      )}
+    </div>
+  )
 }
 
 export function LayersPanelInner({
@@ -1043,7 +935,7 @@ export function LayersPanelInner({
         />
       </div>
 
-      <div className='flex items-center gap-1 border-t border-border p-2'>
+      <div className='flex items-center gap-1 border-t  p-2'>
         {/* File upload button */}
         <div className='relative h-8 w-8 p-0 flex items-center justify-center rounded-sm hover:bg-muted'>
           <Image className='w-4 h-4' />

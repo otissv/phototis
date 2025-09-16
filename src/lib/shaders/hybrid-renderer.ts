@@ -1092,6 +1092,37 @@ void main() {
       .reverse()
   }
 
+  // Reset all render state to prevent stale data from previous renders
+  private resetRenderState(): void {
+    if (!this.gl) return
+
+    try {
+      if (isDebug) {
+        console.debug("🎨 [HybridRenderer] Resetting render state")
+      }
+
+      // Clear core framebuffers
+      this.fboManager.clearFBO("temp", 0, 0, 0, 0)
+      this.fboManager.clearFBO("ping", 0, 0, 0, 0)
+      this.fboManager.clearFBO("pong", 0, 0, 0, 0)
+      this.fboManager.clearFBO("result", 0, 0, 0, 0)
+
+      // Clear mask textures cache
+      this.maskTextures.clear()
+      this.pendingMaskDecodes.clear()
+
+      // Reset color space flag
+      this.colorSpaceFlag = 0
+
+      if (isDebug) {
+        console.debug("🎨 [HybridRenderer] Render state reset complete")
+      }
+    } catch (error) {
+      // Silently handle any errors during reset
+      console.warn("Error during render state reset:", error)
+    }
+  }
+
   // Method to render all layers with proper compositing using layer-specific FBOs
   renderLayers(
     layers: Layer[],
@@ -1122,6 +1153,10 @@ void main() {
       return
     }
 
+    // Reset all state at the start of each frame to avoid any stale
+    // contents leaking between renders (e.g., after global layer deletion)
+    this.resetRenderState()
+
     // Provide safe defaults for tool values to avoid undefined access
     const DEFAULT_TOOLS: Partial<ImageEditorToolsState> = {
       blur: 0,
@@ -1150,6 +1185,13 @@ void main() {
       upscale: 0,
       vibrance: 0,
       zoom: 100,
+      // Critical uniforms that must be reset when global layers are deleted
+      u_solidEnabled: 0,
+      u_colorizeAmount: 0,
+      u_tint: 0,
+      u_sharpenAmount: 0,
+      u_noiseAmount: 0,
+      u_gaussianAmount: 0,
     } as Partial<ImageEditorToolsState>
 
     const withDefaults = (
@@ -1517,6 +1559,18 @@ void main() {
 
     // Apply global layers to the accumulated result
     if (globalLayers && globalLayers.length > 0 && accumulatedTexture) {
+      // Debug: log global layers being processed
+      if (isDebug) {
+        console.debug(
+          "🎨 [HybridRenderer] Processing global layers:",
+          globalLayers.map((l) => ({
+            id: l.id,
+            type: l.type,
+            visible: l.visible,
+          }))
+        )
+      }
+
       // Process global layers in order (top to bottom, so reverse the array)
       const orderedGlobalLayers = globalLayers
         .filter((l) => l.visible && l.opacity > 0)

@@ -663,13 +663,21 @@ export function removeGlobalLayer(
   state: CanonicalEditorState,
   layerId: LayerId
 ): CanonicalEditorState {
+  const beforeCount = state.document.globalLayers.length
+  const filteredLayers = state.document.globalLayers.filter(
+    (layer) => layer.id !== layerId
+  )
+  const afterCount = filteredLayers.length
+
+  console.debug(
+    `🎨 [State] Removing global layer ${layerId}: ${beforeCount} -> ${afterCount} layers`
+  )
+
   const next: CanonicalEditorState = {
     ...state,
     document: {
       ...state.document,
-      globalLayers: state.document.globalLayers.filter(
-        (layer) => layer.id !== layerId
-      ),
+      globalLayers: filteredLayers,
     },
   }
   assertInvariants(next)

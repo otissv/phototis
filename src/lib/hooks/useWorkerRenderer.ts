@@ -305,7 +305,23 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
       >,
       priority: TaskPriority = TaskPriority.HIGH,
       layersSignature?: string,
-      interactive?: boolean
+      interactive?: boolean,
+      globalLayers?: Array<{
+        id: string
+        type: "adjustment" | "solid" | "mask"
+        adjustmentType?: string
+        parameters?: Record<string, any>
+        color?: [number, number, number, number]
+        enabled?: boolean
+        inverted?: boolean
+        visible: boolean
+        opacity: number
+        blendMode: string
+      }>,
+      globalParameters?: Record<
+        string,
+        number | { value: number; color: string }
+      >
     ): Promise<string | null> => {
       const manager = workerManagerRef.current
       if (!manager || !manager.isReady()) {
@@ -438,7 +454,9 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
                 },
                 interactive ?? false,
                 colorSpaceFlag,
-                graph
+                graph,
+                globalLayers,
+                globalParameters
               )
 
               console.log("🎨 [Worker] Starting task:", { taskId })
