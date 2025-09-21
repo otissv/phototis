@@ -46,7 +46,6 @@ import {
 import { NoiseButton, NoiseControls } from "@/components/tools/noise.tools"
 import { CropControls } from "@/components/tools/crop.tools"
 import type {
-  TOOL_VALUES,
   ToolValueCropType,
   ToolValueDimensionType,
   ToolValueNumberType,

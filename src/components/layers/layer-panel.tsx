@@ -1,52 +1,26 @@
 "use client"
 
-import {
-  ChevronDown,
-  Copy,
-  Eye,
-  EyeOff,
-  Image,
-  Lock,
-  MoreHorizontal,
-  Trash2,
-} from "lucide-react"
+import { Image } from "lucide-react"
 import React from "react"
 import { useDrop } from "react-dnd"
-import { AdjustmentLayerEditor } from "@/components/layers/adjustment.layer"
 import { BlendModesControls } from "@/components/layers/blend-modes-controls"
 import {
   DraggableLayerItem,
   type DragItem,
 } from "@/components/layers/draggable-layer"
-import { LayerThumbnail } from "@/components/layers/layer-content"
 import { OpacityControls } from "@/components/layers/opacity-controls"
 import { useEditorContext } from "@/lib/editor/context"
-import type { AdjustmentLayer } from "@/lib/editor/state"
-import { useBlendModeChange } from "@/lib/hooks/useBlendModeChange"
-import { useOpacityChange } from "@/lib/hooks/useOpacityChange"
+import { useBlendModeChange } from "@/components/hooks/useBlendModeChange"
+import { useOpacityChange } from "@/components/hooks/useOpacityChange"
 import { TOOL_VALUES } from "@/lib/tools/tools"
 import type {
   ImageEditorToolsActions,
   ImageEditorToolsState,
-  SIDEBAR_TOOLS,
-  SidebarToolsKeys,
 } from "@/lib/tools/tools-state"
 import { cn } from "@/lib/utils"
 import { Button } from "@/ui/button"
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/ui/collapsible"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/ui/dropdown-menu"
-import { Input } from "@/ui/input"
+import type { Collapsible } from "@/ui/collapsible"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs"
-import { DocumentLayerItem } from "./document-layer"
 import { DocumentPanel } from "./document-panel"
 import { FxLayersMenu } from "./Fx-layers-menu"
 import { AdjustmentLayersMenu } from "./adjustment-layers-menu"

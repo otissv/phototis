@@ -50,8 +50,6 @@ function ImageEditorInner({
   const [isPanelsOpen, setIsPanelsOpen] = React.useState(false)
   const id = useId()
 
-  // const [selectedTool, setSelectedTool] =
-  //   React.useState<SidebarToolsKeys>("rotate")
   const [progress, setProgress] = React.useState(0)
 
   const {

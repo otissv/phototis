@@ -128,7 +128,7 @@ if (errors.length > 0) {
 ### Basic Integration
 
 ```typescript
-import { useWorkerRenderer } from "@/lib/hooks/useWorkerRenderer"
+import { useWorkerRenderer } from "@/components/hooks/useWorkerRenderer"
 
 function ImageEditor() {
   const {

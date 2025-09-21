@@ -13,10 +13,10 @@ import { ShaderManagerV2 } from "@/lib/shaders/v2/manager"
 import { GlobalShaderRegistryV2 } from "@/lib/shaders/v2/registry"
 import { HybridRenderer } from "@/lib/shaders/hybrid-renderer"
 import { RenderConfig } from "@/lib/shaders/render-config"
-import { useWorkerRenderer } from "@/lib/hooks/useWorkerRenderer"
+import { useWorkerRenderer } from "@/components/hooks/useWorkerRenderer"
 import { TaskPriority, WorkerManager } from "@/lib/workers/worker-manager"
 import { CanvasStateManager } from "@/lib/canvas-state-manager"
-import { useCrop } from "./tools/crop.tools"
+import { useCrop } from "@/components/tools/crop.tools"
 import { config } from "@/config"
 
 export interface LayerDimensions {
