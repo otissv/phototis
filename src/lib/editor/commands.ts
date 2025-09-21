@@ -1343,9 +1343,24 @@ export class DocumentDimensionsCommand implements Command {
       layers: {
         ...state.layers,
         byId: {
-          ...state.layers.byId,
           ...this.layers,
-        },
+          document: {
+            ...this.layers.document,
+            filters: {
+              ...(this.layers.document as any).filters,
+              dimensions: {
+                ...(this.layers.document as any).filters.dimensions,
+                width: this.width,
+                height: this.height,
+              },
+              crop: {
+                ...(this.layers.document as any).filters.crop,
+                width: this.width,
+                height: this.height,
+              },
+            },
+          },
+        } as any,
       },
       document: {
         ...state.document,

@@ -1,15 +1,14 @@
 "use client"
 
-import React from "react"
+import React, { useId } from "react"
 import { PlusIcon, MinusIcon, Menu } from "lucide-react"
 
 import { Button } from "@/ui/button"
 import { cn } from "@/lib/utils"
-import type { SIDEBAR_TOOLS } from "@/lib/tools/tools-state"
+import type { SidebarToolsKeys } from "@/lib/tools/tools-state"
 import { ImageEditorCanvas } from "@/components/canvas.image-editor"
 import { ImageEditorSidebar } from "@/components/sidebar.image-editor"
 import { ImageEditorFooter } from "@/components/tools.image-editor"
-import type { TOOL_VALUES } from "@/lib/tools/tools"
 import {
   imageEditorToolsReducer,
   initialToolsState,
@@ -24,6 +23,7 @@ import type { EditorLayer } from "@/lib/editor/state"
 import { WorkerPrewarm } from "./worker-prewarm"
 import { getImageDimensions } from "@/lib/utils/get-image-dimensions"
 import { config } from "@/config"
+import { capitalize } from "@/lib/utils/capitalize"
 
 const { isDebug } = config()
 
@@ -45,46 +45,30 @@ function ImageEditorInner({
 }: ImageEditorProps) {
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null)
   const drawFnRef = React.useRef<() => void>(() => {})
-  const { renderType, setRenderType } = useEditorContext()
 
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(false)
   const [isPanelsOpen, setIsPanelsOpen] = React.useState(false)
-  // const [renderType, setRenderType] = React.useState<
-  //   "default" | "worker" | "hybrid"
-  // >(() => {
-  //   try {
-  //     if (typeof window !== "undefined") {
-  //       const stored = window.localStorage.getItem("phototis:renderType")
-  //       if (
-  //         stored === "worker" ||
-  //         stored === "hybrid" ||
-  //         stored === "default"
-  //       ) {
-  //         return stored
-  //       }
-  //     }
-  //   } catch {}
-  //   return "default"
-  // })
+  const id = useId()
 
-  const [selectedSidebar, setSelectedSidebar] =
-    React.useState<keyof typeof SIDEBAR_TOOLS>("rotate")
-  const [selectedTool, setSelectedTool] =
-    React.useState<keyof typeof TOOL_VALUES>("rotate")
+  // const [selectedTool, setSelectedTool] =
+  //   React.useState<SidebarToolsKeys>("rotate")
   const [progress, setProgress] = React.useState(0)
 
   const {
+    state,
+    activeTool,
+    history,
+    duplicateLayer,
     getOrderedLayers,
     getSelectedLayer,
     getSelectedLayerId,
-    updateLayer,
+    removeLayer,
+    renderType,
+    setRenderType,
     selectLayer,
     selectLayerNonUndoable,
     setZoomPercent,
-    state,
-    duplicateLayer,
-    removeLayer,
-    history,
+    updateLayer,
   } = useEditorContext()
 
   // Get the currently selected layer's filters
@@ -106,7 +90,7 @@ function ImageEditorInner({
   }, [selectedLayer])
 
   const dispatch = React.useCallback(
-    (action: ImageEditorToolsActions) => {
+    (action: ImageEditorToolsActions | ImageEditorToolsActions[]) => {
       const current = selectedLayer
       const selectedId = getSelectedLayerId()
 
@@ -129,102 +113,29 @@ function ImageEditorInner({
   )
 
   const value = React.useMemo(() => {
-    switch (selectedTool) {
+    switch (activeTool) {
       case "rotate":
         return toolsValues.rotate
       case "scale":
         return toolsValues.scale
       case "crop":
         return toolsValues.crop
-      case "brightness":
-        return toolsValues.brightness
-      case "contrast":
-        return toolsValues.contrast
-      case "hue":
-        return toolsValues.hue
-      case "saturation":
-        return toolsValues.saturation
-      case "exposure":
-        return toolsValues.exposure
-      case "temperature":
-        return toolsValues.temperature
-      case "gamma":
-        return toolsValues.gamma
-      case "vintage":
-        return toolsValues.vintage
-      case "blur":
-        return toolsValues.blur
-      case "invert":
-        return toolsValues.invert
-      case "sepia":
-        return toolsValues.sepia
-      case "grayscale":
-        return toolsValues.grayscale
-      case "sharpen":
-        return toolsValues.sharpen
-      case "colorize":
-        return toolsValues.colorize
-      case "vibrance":
-        return toolsValues.vibrance
-      case "noise":
-        return toolsValues.noise
-      case "grain":
-        return toolsValues.grain
       default:
         return 0
     }
-  }, [
-    selectedTool,
-    toolsValues.rotate,
-    toolsValues.scale,
-    toolsValues.crop,
-    toolsValues.brightness,
-    toolsValues.contrast,
-    toolsValues.hue,
-    toolsValues.saturation,
-    toolsValues.exposure,
-    toolsValues.temperature,
-    toolsValues.gamma,
-    toolsValues.vintage,
-    toolsValues.blur,
-    toolsValues.invert,
-    toolsValues.sepia,
-    toolsValues.grayscale,
-    toolsValues.sharpen,
-    toolsValues.colorize,
-    toolsValues.vibrance,
-    toolsValues.noise,
-    toolsValues.grain,
-  ])
+  }, [activeTool, toolsValues.rotate, toolsValues.scale, toolsValues.crop])
 
   const handleSelectedToolChange = React.useCallback(
-    (tool: keyof typeof TOOL_VALUES) => {
-      setSelectedTool(tool)
-      // Sync canonical active tool so canvas can react (e.g., crop overlay)
+    (tool: SidebarToolsKeys) => {
       try {
-        history.begin("Set Tool")
+        history.begin(`Select ${capitalize(tool)}`)
         history.push(
-          new SetActiveToolCommand({ sidebar: selectedSidebar, tool } as any)
+          new SetActiveToolCommand({ sidebar: activeTool, tool } as any)
         )
         history.end(true)
       } catch {}
     },
-    [history, selectedSidebar]
-  )
-
-  const handleSelectedSidebarChange = React.useCallback(
-    (sidebar: keyof typeof SIDEBAR_TOOLS) => {
-      setSelectedSidebar(sidebar)
-      // Sync canonical active tool so canvas can react (e.g., crop overlay)
-      try {
-        history.begin("Set Tool")
-        history.push(
-          new SetActiveToolCommand({ sidebar, tool: selectedTool } as any)
-        )
-        history.end(true)
-      } catch {}
-    },
-    [history, selectedTool]
+    [history, activeTool]
   )
 
   const handleOnProgress = React.useCallback((progress: number) => {
@@ -411,11 +322,9 @@ function ImageEditorInner({
               )}
             >
               <ImageEditorSidebar
-                onSelectedToolChange={handleSelectedToolChange}
-                onChange={handleSelectedSidebarChange}
+                onChange={handleSelectedToolChange}
                 progress={progress}
                 selectedLayer={selectedLayer || ({} as EditorLayer)}
-                selectedSidebar={selectedSidebar}
               />
             </PopoverContent>
           </Popover>
@@ -423,11 +332,9 @@ function ImageEditorInner({
 
         <div className='hidden lg:block'>
           <ImageEditorSidebar
-            onSelectedToolChange={handleSelectedToolChange}
-            onChange={handleSelectedSidebarChange}
+            onChange={handleSelectedToolChange}
             progress={progress}
             selectedLayer={selectedLayer || ({} as EditorLayer)}
-            selectedSidebar={selectedSidebar}
           />
         </div>
 
@@ -452,7 +359,8 @@ function ImageEditorInner({
               <ImageEditorPanels
                 className='lg:row-span-3 w-full'
                 defaultValue='layers'
-                setSelectedSidebar={setSelectedSidebar}
+                toolsValues={toolsValues}
+                dispatch={dispatch}
               />
             </PopoverContent>
           </Popover>
@@ -469,7 +377,7 @@ function ImageEditorInner({
         <div className='relative'>
           <ImageEditorCanvas
             onProgress={handleOnProgress}
-            id='image-editor-canvas'
+            id={`image-editor-canvas-${id}`}
             canvasRef={canvasRef}
             onDrawReady={handleDrawReady}
           />
@@ -478,13 +386,13 @@ function ImageEditorInner({
 
       <ImageEditorFooter
         selectedLayer={selectedLayer || ({} as EditorLayer)}
-        selectedSidebar={selectedSidebar}
+        selectedSidebar={activeTool}
         dispatch={
           dispatch as (
             value: ImageEditorToolsActions | ImageEditorToolsActions[]
           ) => void
         }
-        selectedTool={selectedTool}
+        selectedTool={activeTool}
         value={value}
         onSelectedToolChange={handleSelectedToolChange}
         className='lg:col-start-2 lg:row-start-3 mx-auto'
@@ -524,8 +432,13 @@ function ImageEditorInner({
           className='lg:row-span-3 w-full'
           defaultValue='layers'
           notify={notify}
-          setSelectedSidebar={setSelectedSidebar}
           allowAddMultipleImages={allowAddMultipleImages}
+          toolsValues={toolsValues}
+          dispatch={
+            dispatch as (
+              value: ImageEditorToolsActions | ImageEditorToolsActions[]
+            ) => void
+          }
         />
       </div>
     </div>

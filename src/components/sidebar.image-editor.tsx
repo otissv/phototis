@@ -1,53 +1,40 @@
 "use client"
 
-import {
-  Crop,
-  Image,
-  ImageUpscale,
-  RotateCwSquare,
-  SlidersHorizontal,
-  Sparkles,
-} from "lucide-react"
+import { Crop, Image, ImageUpscale, RotateCwSquare } from "lucide-react"
 
 import { Button, type ButtonProps } from "@/ui/button"
 import { cn } from "@/lib/utils"
-import type { TOOL_VALUES } from "@/lib/tools/tools"
 import type { EditorLayer } from "@/lib/editor/state"
-import {
-  SIDEBAR_TOOLS,
-  type ImageEditorToolsActions,
-} from "@/lib/tools/tools-state"
+import { useEditorContext } from "@/lib/editor/context"
+import type { SidebarToolsKeys } from "@/lib/tools/tools-state"
 
 export interface ImageEditorSidebarProps
   extends Omit<React.ComponentProps<"ul">, "onChange"> {
   progress?: number
   selectedLayer: EditorLayer
-  selectedSidebar: keyof typeof SIDEBAR_TOOLS
-  onChange: (selected: keyof typeof SIDEBAR_TOOLS) => void
-  onSelectedToolChange: (tool: keyof typeof TOOL_VALUES) => void
+  onChange: (tool: SidebarToolsKeys) => void
 }
 export function ImageEditorSidebar({
   className,
-  onChange,
-  onSelectedToolChange,
   progress,
   selectedLayer,
-  selectedSidebar,
+  onChange,
   ...props
 }: ImageEditorSidebarProps) {
-  const isDocumentLayer = selectedLayer?.id === "document"
+  const { getSelectedLayerId, activeTool } = useEditorContext()
+  const selectedLayerId = getSelectedLayerId()
+  const isDocumentLayer = selectedLayerId === "document"
 
   return (
     <ul className={cn("flex flex-col gap-2 p-2", className)} {...props}>
       <li className={cn({ hidden: !isDocumentLayer })}>
         <SidebarButton
           title='Canvas dimensions'
-          footerType='dimensionsCanvas'
+          toolType='dimensionsCanvas'
           disabled={progress || !isDocumentLayer}
-          selectedSidebar={selectedSidebar}
-          onChange={onChange}
-          onSelectedToolChange={onSelectedToolChange}
+          selectedSidebar={activeTool}
           isDocumentLayer={isDocumentLayer}
+          onSidebarClick={onChange}
         >
           <Image />
           Resize
@@ -56,13 +43,12 @@ export function ImageEditorSidebar({
       <li>
         <SidebarButton
           title='Resize'
-          footerType='dimensions'
+          toolType='dimensions'
           disabled={progress || isDocumentLayer}
-          selectedSidebar={selectedSidebar}
-          onChange={onChange}
-          onSelectedToolChange={onSelectedToolChange}
+          selectedSidebar={activeTool}
           isDocumentLayer={isDocumentLayer}
           className={isDocumentLayer ? "hidden" : ""}
+          onSidebarClick={onChange}
         >
           <ImageUpscale />
           Resize
@@ -71,27 +57,36 @@ export function ImageEditorSidebar({
       <li>
         <SidebarButton
           title='Rotate Layer'
-          footerType='rotate'
+          toolType='rotate'
           disabled={progress}
-          selectedSidebar={selectedSidebar}
-          onChange={onChange}
-          onSelectedToolChange={onSelectedToolChange}
+          selectedSidebar={activeTool}
           isDocumentLayer={isDocumentLayer}
+          onSidebarClick={onChange}
         >
           <RotateCwSquare />
           Rotate
+        </SidebarButton>
+      </li>
+      <li>
+        <SidebarButton
+          title='Crop'
+          toolType='crop'
+          disabled={progress}
+          selectedSidebar={activeTool}
+          isDocumentLayer={isDocumentLayer}
+          onSidebarClick={onChange}
+        >
+          <Crop />
+          Crop
         </SidebarButton>
       </li>
 
       <li>
         <SidebarButton
           title='Scale'
-          footerType='scale'
-          disabled={progress}
-          selectedSidebar={selectedSidebar}
-          onChange={onChange}
-          onSelectedToolChange={onSelectedToolChange}
-          isDocumentLayer={isDocumentLayer}
+          toolType='scale'
+          disabled={progress || isDocumentLayer}
+          onSidebarClick={onChange}
         >
           <ImageUpscale />
           Scale
@@ -100,55 +95,12 @@ export function ImageEditorSidebar({
       <li>
         <SidebarButton
           title='Upscale'
-          footerType='upscale'
-          disabled={progress}
-          selectedSidebar={selectedSidebar}
-          onChange={onChange}
-          onSelectedToolChange={onSelectedToolChange}
-          isDocumentLayer={isDocumentLayer}
+          toolType='upscale'
+          disabled={progress || isDocumentLayer}
+          onSidebarClick={onChange}
         >
           <ImageUpscale />
           Upscale
-        </SidebarButton>
-      </li>
-      <li>
-        <SidebarButton
-          title='Crop'
-          footerType='crop'
-          disabled={progress}
-          selectedSidebar={selectedSidebar}
-          onChange={onChange}
-          onSelectedToolChange={onSelectedToolChange}
-          isDocumentLayer={isDocumentLayer}
-        >
-          <Crop />
-          Crop
-        </SidebarButton>
-      </li>
-      <li>
-        <SidebarButton
-          title='Filters'
-          footerType='effects'
-          disabled={progress || isDocumentLayer}
-          selectedSidebar={selectedSidebar}
-          onChange={onChange}
-          onSelectedToolChange={onSelectedToolChange}
-        >
-          <SlidersHorizontal />
-          Filters
-        </SidebarButton>
-      </li>
-      <li>
-        <SidebarButton
-          title='Presets'
-          footerType='presets'
-          disabled={progress || isDocumentLayer}
-          selectedSidebar={selectedSidebar}
-          onChange={onChange}
-          onSelectedToolChange={onSelectedToolChange}
-        >
-          <Sparkles />
-          Presets
         </SidebarButton>
       </li>
     </ul>
@@ -156,40 +108,32 @@ export function ImageEditorSidebar({
 }
 
 interface SidebarButtonProps extends Omit<ButtonProps, "selected"> {
-  footerType: keyof typeof SIDEBAR_TOOLS
-  selectedSidebar: keyof typeof SIDEBAR_TOOLS
-  onChange: (selected: keyof typeof SIDEBAR_TOOLS) => void
-  onSelectedToolChange: (tool: keyof typeof TOOL_VALUES) => void
+  toolType: SidebarToolsKeys
   isDocumentLayer?: boolean
 }
 
 function SidebarButton({
-  footerType,
-  selectedSidebar,
-  onChange,
-  onSelectedToolChange,
+  toolType,
+  onSidebarClick,
   disabled,
   children,
   title,
   className,
   isDocumentLayer,
 }: SidebarButtonProps) {
+  const { activeTool } = useEditorContext()
+
   return (
     <Button
       title={title}
       variant='ghost'
       className={cn(
-        "flex flex-col rounded-md text-xs size-12 hover:bg-blue-500/50",
-        selectedSidebar === footerType && "bg-accent text-accent-foreground",
-        selectedSidebar === footerType && isDocumentLayer && "bg-blue-500/50",
+        "flex flex-col rounded-md text-xs size-12 hover:bg-accent",
+        activeTool === toolType && "bg-accent text-accent-foreground",
+        activeTool === toolType && isDocumentLayer && "bg-blue-500/50",
         className
       )}
-      onClick={() => {
-        onChange(footerType)
-        if (!SIDEBAR_TOOLS.rotate.includes(selectedSidebar)) {
-          onSelectedToolChange(footerType as keyof typeof TOOL_VALUES)
-        }
-      }}
+      onClick={() => onSidebarClick(toolType)}
       disabled={disabled}
     >
       {children}

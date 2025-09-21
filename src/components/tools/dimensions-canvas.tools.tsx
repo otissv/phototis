@@ -14,7 +14,12 @@ import {
 } from "@/components/button.image-editor"
 import { GPU_SECURITY_CONSTANTS } from "@/lib/security/gpu-security"
 import { LayerDimensions } from "../canvas.image-editor"
-import { CanonicalEditorState, EditorLayer, LayerId, CanvasPosition } from "@/lib/editor/state"
+import {
+  CanonicalEditorState,
+  EditorLayer,
+  LayerId,
+  CanvasPosition,
+} from "@/lib/editor/state"
 
 function DimensionsCanvasButton({
   onSelectedToolChange,
@@ -35,8 +40,6 @@ function DimensionsCanvasButton({
   )
 }
 DimensionsCanvasButton.displayName = "DimensionsCanvasButton"
-
-
 
 function DimensionsCanvasControls() {
   const { state, dimensionsDocument, getLayerById } = useEditorContext()
@@ -161,7 +164,6 @@ function DimensionsCanvasControls() {
       handleOnSave()
     }
   }
-  
 
   const handleOnSave = () => {
     try {
@@ -177,7 +179,7 @@ function DimensionsCanvasControls() {
             canvasPosition: canvasPositionState as CanvasPosition,
           },
           getLayerById,
-        })  ,
+        }),
       })
     } catch (error) {
       // If the command fails, show the error and revert the local state
@@ -416,21 +418,21 @@ function DimensionsCanvasControls() {
 }
 DimensionsCanvasControls.displayName = "DimensionsCanvasControls"
 
-function updateLayerDimensions ({
+function updateLayerDimensions({
   layers,
   canvas,
-  getLayerById
+  getLayerById,
 }: {
-  layers: Record<LayerId, EditorLayer>,
+  layers: Record<LayerId, EditorLayer>
   canvas: {
     width: number
     height: number
     canvasPosition: CanvasPosition
-  },
+  }
   getLayerById: (layerId: LayerId) => EditorLayer | null
 }) {
   const calculatePositionFromAnchor = (
-    layerDimensions: LayerDimensions,
+    layerDimensions: { width: number; height: number; x: number; y: number },
     canvasDimensions: {
       width: number
       height: number
@@ -524,13 +526,15 @@ function updateLayerDimensions ({
       )
     }
 
-    return { x: Math.round(x), y: Math.round(canvasDimensions.height - y - layerDimensions.height) }
+    return {
+      x: Math.round(x),
+      y: Math.round(y),
+    }
   }
-  
+
   const updatedLayers: Record<LayerId, EditorLayer> = {}
 
   for (const layer of Object.values(layers)) {
-
     if (layer.type !== "image") {
       updatedLayers[layer.id] = layer
       continue
@@ -543,12 +547,12 @@ function updateLayerDimensions ({
         dimensions: {
           ...layer.filters.dimensions,
           ...calculatePositionFromAnchor(layer.filters.dimensions, {
-        width: canvas.width,
-        height: canvas.height,
-        canvasPosition: canvas.canvasPosition
-          })
+            width: canvas.width,
+            height: canvas.height,
+            canvasPosition: canvas.canvasPosition,
+          }),
         },
-      }
+      },
     }
   }
 

@@ -97,7 +97,7 @@ export interface GroupLayer extends BaseLayer {
 }
 
 // Union type for all layer types
-export type EditorLayer = BaseEditorLayer | GroupLayer
+export type EditorLayer = BaseEditorLayer | GroupLayer | DocumentLayer
 
 /**
  * Layers collection uses an order array for deterministic z-order and a map

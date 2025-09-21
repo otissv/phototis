@@ -1263,7 +1263,7 @@ async function renderLayers(
                 ? "selected-global"
                 : layer.type === "image"
                   ? "layer.filters"
-                  : "global",
+                  : "document",
             flipH: Boolean((layerToolsValues as any)?.flipHorizontal),
             flipV: Boolean((layerToolsValues as any)?.flipVertical),
             rotate: Number((layerToolsValues as any)?.rotate || 0),

@@ -65,7 +65,10 @@ function defaultOptions() {
 function ToastTemplate({
   message,
   title,
-}: { message: string; title?: string }) {
+}: {
+  message: string
+  title?: string
+}) {
   return (
     <div className='flex flex-col gap-1'>
       <p className='text-sm font-medium'>{title}</p>

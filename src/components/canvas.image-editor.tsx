@@ -1,6 +1,6 @@
 "use client"
 
-import React from "react"
+import React, { useId } from "react"
 import { cn } from "@/lib/utils"
 import { motion, useMotionValue, useTransform } from "motion/react"
 import { useDebounce } from "use-debounce"
@@ -71,6 +71,9 @@ export function ImageEditorCanvas({
   const hybridRendererRef = React.useRef<HybridRenderer | null>(null)
   const [processing, setProcessing] = React.useState(0)
   const [isElementDragging, setIsElementDragging] = React.useState(false)
+  const id = useId()
+
+  console.log("activeTool:==================", state.canonical.activeTool.tool)
 
   // Helper function to flatten grouped layers for signature calculation
   const flattenLayersForSignature = React.useCallback(
@@ -912,27 +915,15 @@ export function ImageEditorCanvas({
                     x: layerX,
                     y: layerY,
                   },
+                  crop: {
+                    ...layer.filters.crop,
+                    width: imageData.width,
+                    height: imageData.height,
+                    x: layerX,
+                    y: layerY,
+                  },
                 },
               } as any)
-            } else {
-              // // For the first image layer (index 0), set canvas size if not yet initialized
-              // // When the first image is loaded, update document size to image dimensions
-              // const isFirstImage = dimensions.find(dim => dim.name === layer.name) === 0
-              // try {
-              //   if (
-              //     isFirstImage &&
-              //     state.canonical.document.width === 800 &&
-              //     state.canonical.document.height === 600
-              //   ) {
-              //     dimensionsDocument?.({
-              //       width: imageData.width,
-              //       height: imageData.height,
-              //       canvasPosition:
-              //         state.canonical.document.canvasPosition || "centerCenter",
-              //       layers: state.canonical.layers.byId,
-              //     })
-              //   }
-              // } catch {}
             }
 
             const layerDimensions: LayerDimensions = {
@@ -1382,11 +1373,6 @@ export function ImageEditorCanvas({
         // Get canvas dimensions
         const canvasWidth = canvasDimensions.width
         const canvasHeight = canvasDimensions.height
-
-        // Use throttled values for immediate feedback during dragging
-        const activeToolsValues = isDragActive
-          ? throttledToolsValues
-          : debouncedToolsValues
 
         // Use smooth values for numbers, but keep flips from latest selected filters (booleans can toggle instantly)
         const renderingToolsValues = {
@@ -1915,7 +1901,7 @@ export function ImageEditorCanvas({
           onDrop={handleDrop}
           title='Drop image files here to add them as new layers'
           {...props}
-          id='image-editor-canvas'
+          id={`image-editor-canvas-${id}`}
         />
         {/* Preview overlay canvas for tool previews (visible only for crop) */}
         {state.canonical.activeTool.tool === "crop" && (
@@ -1927,7 +1913,7 @@ export function ImageEditorCanvas({
             }}
             width={canvasDimensions.width}
             height={canvasDimensions.height}
-            id='image-editor-overlay'
+            id={`image-editor-overlay-${id}`}
             ref={overlayRef}
           />
         )}

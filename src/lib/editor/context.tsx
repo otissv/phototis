@@ -8,7 +8,6 @@ import type {
   EditorLayer,
   ImageLayer,
   LayerId,
-  ViewportModel,
   ActiveToolModel,
   EphemeralEditorState,
   DocumentLayer,
@@ -22,7 +21,10 @@ import {
   createEditorRuntimeState,
   assertInvariants,
 } from "@/lib/editor/state"
-import { initialToolsState as defaultFilters } from "@/lib/tools/tools-state"
+import {
+  initialToolsState as defaultFilters,
+  SidebarToolsKeys,
+} from "@/lib/tools/tools-state"
 import { HistoryManager, type Command } from "@/lib/editor/history"
 import {
   AddLayerCommand,
@@ -52,6 +54,7 @@ import { loadDocument } from "@/lib/editor/persistence"
 
 export type EditorContextValue = {
   state: EditorRuntimeState
+  activeTool: ActiveToolModel["tool"]
   documentLayerDimensions: {
     width: number
     height: number
@@ -259,7 +262,28 @@ export function EditorProvider({
     const layers = normalizeLayers([...initialLayers, documentLayer])
     const canonical: CanonicalEditorState = {
       ...base.canonical,
-      layers,
+      layers: {
+        ...layers,
+        byId: {
+          ...layers.byId,
+          document: {
+            ...layers.byId.document,
+            filters: {
+              ...layers.byId.document.filters,
+              dimensions: {
+                ...layers.byId.document.filters.dimensions,
+                width: documentWidth,
+                height: documentHeight,
+              },
+              crop: {
+                ...layers.byId.document.filters.crop,
+                width: documentWidth,
+                height: documentHeight,
+              },
+            },
+          },
+        },
+      },
       document: {
         ...base.canonical.document,
         width: documentWidth,
@@ -774,20 +798,11 @@ export function EditorProvider({
       }
     }
 
-    // Compute next viewport rotation (normalize to [0, 360))
-    const prevViewportRotation = (canonicalRef.current.viewport as any)
-      .rotation as number | undefined
-    const safePrev = Number.isFinite(prevViewportRotation)
-      ? (prevViewportRotation as number)
-      : 0
-    const nextViewportRotation = ((safePrev + rotation + 360) % 360) as number
-
     // Group both operations as one user action for undo/redo
     const h = historyRef.current
     if (!h) return
     h.beginTransaction(`Rotate Document ${rotation > 0 ? "+" : ""}${rotation}°`)
     h.push(new DocumentRotateCommand(rotation, previousRotations))
-    h.push(new SetViewportCommand({ rotation: nextViewportRotation }))
     h.endTransaction(true)
   }, [])
 
@@ -864,6 +879,7 @@ export function EditorProvider({
   const value: EditorContextValue = React.useMemo(
     () => ({
       state: runtime,
+      activeTool: runtime.canonical.activeTool.tool,
       documentLayerDimensions,
       renderType,
       history: {

@@ -7,7 +7,6 @@ import {
   ImageEditorButton,
   type ImageEditorButtonProps,
 } from "@/components/button.image-editor"
-import type { ImageEditorFooterProps } from "./utils.tools"
 import { Button } from "@/ui/button"
 import {
   Select,
@@ -16,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/ui/select"
-import type { CropToolsType, ToolValueCropType } from "@/lib/tools/tools"
+import type { CropToolsType } from "@/lib/tools/tools"
 import { Input } from "@/ui/input"
 import type { EditorContextValue } from "@/lib/editor/context"
 import type { LayerDimensions } from "../canvas.image-editor"
@@ -131,9 +130,8 @@ function CropControls({
   }, [width, height])
 
   return (
-    <div className='flex items-center justify-center gap-6 text-s my-4'>
+    <div className='flex flex-col justify-start gap-6 text-s my-4'>
       <div className='flex items-center gap-2'>
-        <span>Crop: </span>
         <Input
           type='number'
           value={width}
@@ -149,27 +147,30 @@ function CropControls({
         />
         px
       </div>
-      <Select defaultValue={overlay} onValueChange={handleOverlayGridChange}>
-        <SelectTrigger className='h-8 w-36 rounded-sm flex items-center gap-2'>
-          <SelectValue placeholder='Third Grid' />
-          <ChevronDown className='h-4 w-4' />
-        </SelectTrigger>
-        <SelectContent className='rounded-sm'>
-          <SelectItem value='thirdGrid'>Third Grid</SelectItem>
-          <SelectItem value='grid'>Grid</SelectItem>
-          <SelectItem value='goldenRatio'>Golden Ratio</SelectItem>
-          {/* <SelectItem value='goldenSpiral'>Golden Spiral</SelectItem> */}
-          <SelectItem value='diagonals'>Diagonals</SelectItem>
-        </SelectContent>
-      </Select>
 
-      <Button
-        size='icon'
-        className='rounded-sm h-8 w-fit px-4'
-        onClick={handleSave}
-      >
-        Save
-      </Button>
+      <div className='flex items-center gap-2'>
+        <Select defaultValue={overlay} onValueChange={handleOverlayGridChange}>
+          <SelectTrigger className='h-8 w-36 rounded-sm flex items-center gap-2'>
+            <SelectValue placeholder='Third Grid' />
+            <ChevronDown className='h-4 w-4' />
+          </SelectTrigger>
+          <SelectContent className='rounded-sm'>
+            <SelectItem value='thirdGrid'>Third Grid</SelectItem>
+            <SelectItem value='grid'>Grid</SelectItem>
+            <SelectItem value='goldenRatio'>Golden Ratio</SelectItem>
+            {/* <SelectItem value='goldenSpiral'>Golden Spiral</SelectItem> */}
+            <SelectItem value='diagonals'>Diagonals</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Button
+          size='icon'
+          className='rounded-sm h-8 w-fit px-4'
+          onClick={handleSave}
+        >
+          Save
+        </Button>
+      </div>
     </div>
   )
 }
@@ -583,24 +584,30 @@ function useCrop({
       const newImageData = octx.getImageData(0, 0, sw, sh)
 
       imageDataCacheRef.current.set(selectedLayerId, newImageData)
-      
+
       // Update the layer state with new dimensions instead of directly setting the ref
-      const newX = Math.max(0, Math.min(cropRect.x, canvasDimensions.width - sw))
-      const newY = Math.max(0, Math.min(cropRect.y, canvasDimensions.height - sh))
-      
+      const newX = Math.max(
+        0,
+        Math.min(cropRect.x, canvasDimensions.width - sw)
+      )
+      const newY = Math.max(
+        0,
+        Math.min(cropRect.y, canvasDimensions.height - sh)
+      )
+
       const currentLayer = state.canonical.layers.byId[selectedLayerId] as any
       const currentFilters = currentLayer?.filters || {}
       const nextFilters = {
         ...currentFilters,
         dimensions: {
           ...(currentFilters.dimensions || {}),
-        width: sw,
-        height: sh,
+          width: sw,
+          height: sh,
           x: newX,
           y: newY,
         },
       }
-      
+
       // Update the layer state - the sync effect will update the ref
       updateLayer(selectedLayerId, { filters: nextFilters } as any)
 
@@ -658,7 +665,7 @@ function useCrop({
     glRef.current,
     imageDataCacheRef.current.set,
     imageDataCacheRef.current.get,
-
+    layerDimensionsRef.current.get,
     textureCacheRef.current.get,
     textureCacheRef.current.delete,
   ])

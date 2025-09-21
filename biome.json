@@ -1,16 +1,8 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "files": {
-    "ignore": [
-      ".vscode/**",
-      ".next/**",
-      ".turbo",
-      "apps/**/public/**",
-      "**/test-results/**",
-      "**/playwright-report/**",
-      "**/blob-report/**",
-      "**/playwright/.cache/**"
-    ]
+    "includes": ["src/**/*.ts", "src/**/*.tsx", "*.ts", "*.tsx"],
+    "ignoreUnknown": false
   },
   "formatter": {
     "enabled": true,
@@ -37,7 +29,13 @@
       },
       "complexity": {
         "noForEach": "off"
+      },
+      "a11y": {
+        "noStaticElementInteractions": "off"
       }
     }
+  },
+  "assist": {
+    "enabled": false
   }
 }

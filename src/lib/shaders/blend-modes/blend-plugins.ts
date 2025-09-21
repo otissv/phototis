@@ -409,7 +409,6 @@ vec4 blendHardMix(vec4 base, vec4 top) {
 }`,
 }
 
-
 export const blendSubtract: BlendModePlugin = {
   id: "subtract",
   name: "Subtract",
@@ -436,4 +435,4 @@ vec4 blendDivide(vec4 base, vec4 top) {
   vec3 compositedResult = (result * top.a + base.rgb * base.a * (1.0 - top.a)) / alpha;
   return vec4(compositedResult, alpha);
 }`,
-},
+}

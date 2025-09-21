@@ -23,8 +23,6 @@ export type ImageEditorToolsState = AdjustLayersType &
   UpscaleToolsType
 
 export const SIDEBAR_TOOLS = {
-  effects: ["blur", "grain", "noise", "sharpen"],
-  presets: ["presets"],
   scale: ["scale"],
   dimensions: ["dimensions"],
   dimensionsCanvas: ["dimensionsCanvas"],
@@ -32,6 +30,8 @@ export const SIDEBAR_TOOLS = {
   crop: ["crop"],
   rotate: ["rotate", "flipVertical", "flipHorizontal"],
 }
+export type SidebarToolsKeys = keyof typeof SIDEBAR_TOOLS
+
 // Define payload types for non-numeric tools
 type DimensionsPayload = DimensionsToolsType["dimensions"]
 type CropPayload = CropToolsType["crop"]

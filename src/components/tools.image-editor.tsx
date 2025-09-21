@@ -14,6 +14,7 @@ import {
   ImageIcon,
   MoveHorizontal,
   Redo,
+  RotateCcwSquare,
   RotateCwSquare,
   Square,
   Undo,
@@ -404,10 +405,23 @@ export function RotateFooter({
       <ul className='flex gap-2 w-full justify-center'>
         <li className='flex items-center gap-1'>
           <ImageEditorButton
-            title='Rotate image 90°'
+            title='Rotate image 90 degrees counter-clockwise'
             variant='ghost'
-            onClick={handleRotateLeft}
+            onClick={() => rotateDocument(-90)}
             disabled={progress}
+            aria-label='Rotate image 90 degrees counter-clockwise'
+          >
+            <RotateCcwSquare size={16} className='mr-1' />
+            Rotate 90°
+          </ImageEditorButton>
+        </li>
+        <li className='flex items-center gap-1'>
+          <ImageEditorButton
+            title='Rotate image 90 degrees clockwise°'
+            variant='ghost'
+            onClick={() => rotateDocument(90)}
+            disabled={progress}
+            aria-label='Rotate image 90 degrees clockwise'
           >
             <RotateCwSquare size={16} className='mr-1' />
             Rotate 90°
