@@ -145,6 +145,20 @@ export const TOOL_VALUES: Record<ToolValueKeys, ToolValueTypes> = {
   colorizePreserveLum: {
     defaultValue: false,
   },
+  sepia: {
+    min: 0,
+    max: 100,
+    step: 1,
+    defaultValue: 0,
+  },
+  vintage: {
+    min: 0,
+    max: 100,
+    step: 1,
+    defaultValue: 0,
+  },
+
+  // Effect values
   sharpenAmount: {
     min: 0,
     max: 300,
@@ -193,64 +207,9 @@ export const TOOL_VALUES: Record<ToolValueKeys, ToolValueTypes> = {
     step: 1,
     defaultValue: 0,
   },
-  // Filter values
-  blur: {
-    min: 0,
-    max: 200,
-    step: 1,
-    defaultValue: 0,
-  },
-  blurType: {
-    min: 0,
-    max: 3,
-    step: 1,
-    defaultValue: 0,
-  },
-  blurDirection: {
-    min: 0,
-    max: 360,
-    step: 1,
-    defaultValue: 0,
-  },
-  blurCenter: {
-    min: 0,
-    max: 1,
-    step: 0.01,
-    defaultValue: 0.5,
-  },
-  sepia: {
-    min: 0,
-    max: 100,
-    step: 1,
-    defaultValue: 0,
-  },
-  vintage: {
-    min: 0,
-    max: 100,
-    step: 1,
-    defaultValue: 0,
-  },
 
-  // Filter values
+  // Tool values
 
-  noise: {
-    min: 0,
-    max: 50,
-    step: 1,
-    defaultValue: 0,
-  },
-  grain: {
-    min: 0,
-    max: 50,
-    step: 1,
-    defaultValue: 0,
-  },
-  sharpen: {
-    min: 0,
-    max: 100,
-    step: 1,
-    defaultValue: 0,
-  },
   rotate: {
     min: 0,
     max: 360,
@@ -364,12 +323,6 @@ export type AdjustLayersType = {
   noiseSize: number
   gaussianAmount: number
   gaussianRadius: number
-  blur: number
-  blurCenter: number
-  blurDirection: number
-  blurType: number
-  grain: number
-  noise: number
   sepia: number
 }
 

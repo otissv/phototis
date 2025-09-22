@@ -153,15 +153,6 @@ export const initialToolsState: ImageEditorToolsState = {
     .defaultValue as ToolValueStepType["defaultValue"],
 
   // Effect values
-  blur: TOOL_VALUES.blur.defaultValue as ToolValueStepType["defaultValue"],
-  blurCenter: TOOL_VALUES.blurCenter
-    .defaultValue as ToolValueStepType["defaultValue"],
-  blurDirection: TOOL_VALUES.blurDirection
-    .defaultValue as ToolValueStepType["defaultValue"],
-  blurType: TOOL_VALUES.blurType
-    .defaultValue as ToolValueStepType["defaultValue"],
-  grain: TOOL_VALUES.grain.defaultValue as ToolValueStepType["defaultValue"],
-  noise: TOOL_VALUES.noise.defaultValue as ToolValueStepType["defaultValue"],
   noiseAmount: TOOL_VALUES.noiseAmount
     .defaultValue as ToolValueStepType["defaultValue"],
   noiseSize: TOOL_VALUES.noiseSize
