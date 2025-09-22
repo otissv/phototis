@@ -1,6 +1,6 @@
 "use client"
 
-import { Crop, Image, ImageUpscale, RotateCwSquare } from "lucide-react"
+import { Crop, Image, ImageUpscale, Move, RotateCwSquare } from "lucide-react"
 
 import { Button, type ButtonProps } from "@/ui/button"
 import { cn } from "@/lib/utils"
@@ -78,6 +78,19 @@ export function ImageEditorSidebar({
         >
           <Crop />
           Crop
+        </SidebarButton>
+      </li>
+      <li>
+        <SidebarButton
+          title='Move'
+          toolType='move'
+          disabled={progress}
+          selectedSidebar={activeTool}
+          isDocumentLayer={isDocumentLayer}
+          onSidebarClick={onChange}
+        >
+          <Move />
+          Move
         </SidebarButton>
       </li>
 

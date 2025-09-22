@@ -17,6 +17,7 @@ import { useWorkerRenderer } from "@/components/hooks/useWorkerRenderer"
 import { TaskPriority, WorkerManager } from "@/lib/workers/worker-manager"
 import { CanvasStateManager } from "@/lib/canvas-state-manager"
 import { useCrop } from "@/components/tools/crop.tools"
+import { useMove } from "@/components/tools/move.tools"
 import { config } from "@/config"
 
 export interface LayerDimensions {
@@ -72,8 +73,6 @@ export function ImageEditorCanvas({
   const [processing, setProcessing] = React.useState(0)
   const [isElementDragging, setIsElementDragging] = React.useState(false)
   const id = useId()
-
-  console.log("activeTool:==================", state.canonical.activeTool.tool)
 
   // Helper function to flatten grouped layers for signature calculation
   const flattenLayersForSignature = React.useCallback(
@@ -1857,6 +1856,20 @@ export function ImageEditorCanvas({
     updateLayer,
     drawRef,
     history,
+  })
+
+  // Move tool: drag image layers by updating filters.dimensions.x/y
+  useMove({
+    state,
+    selectedLayerId,
+    canvasRef: canvasRef as React.RefObject<HTMLCanvasElement | null>,
+    layerDimensionsRef,
+    canvasDimensions,
+    updateLayer,
+    setIsElementDragging,
+    drawRef,
+    history,
+    scale: viewport.scale,
   })
 
   return (

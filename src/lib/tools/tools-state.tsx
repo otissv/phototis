@@ -6,7 +6,6 @@ import {
   type RotateToolsType,
   type ScaleToolsType,
   type ToolValueBooleanType,
-  type ToolValueColorType,
   type ToolValueCropType,
   type ToolValueDimensionType,
   type ToolValueStepType,
@@ -29,6 +28,7 @@ export const SIDEBAR_TOOLS = {
   upscale: ["upscale"],
   crop: ["crop"],
   rotate: ["rotate", "flipVertical", "flipHorizontal"],
+  move: ["move"],
 }
 export type SidebarToolsKeys = keyof typeof SIDEBAR_TOOLS
 
@@ -162,6 +162,14 @@ export const initialToolsState: ImageEditorToolsState = {
     .defaultValue as ToolValueStepType["defaultValue"],
   grain: TOOL_VALUES.grain.defaultValue as ToolValueStepType["defaultValue"],
   noise: TOOL_VALUES.noise.defaultValue as ToolValueStepType["defaultValue"],
+  noiseAmount: TOOL_VALUES.noiseAmount
+    .defaultValue as ToolValueStepType["defaultValue"],
+  noiseSize: TOOL_VALUES.noiseSize
+    .defaultValue as ToolValueStepType["defaultValue"],
+  gaussianAmount: TOOL_VALUES.gaussianAmount
+    .defaultValue as ToolValueStepType["defaultValue"],
+  gaussianRadius: TOOL_VALUES.gaussianRadius
+    .defaultValue as ToolValueStepType["defaultValue"],
   sharpenAmount: TOOL_VALUES.sharpenAmount
     .defaultValue as ToolValueStepType["defaultValue"],
   sharpenRadius: TOOL_VALUES.sharpenRadius
@@ -190,8 +198,8 @@ export function imageEditorToolsReducer(
         dimensions: {
           width: Math.max(0, Number(payload?.width) || 0),
           height: Math.max(0, Number(payload?.height) || 0),
-          x: Math.max(0, Number(payload?.x) || 0),
-          y: Math.max(0, Number(payload?.y) || 0),
+          x: Number(payload?.x ?? 0) || 0,
+          y: Number(payload?.y ?? 0) || 0,
         },
       }
     }

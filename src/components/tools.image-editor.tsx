@@ -52,6 +52,7 @@ import type {
 } from "@/lib/tools/tools"
 import { cn } from "@/lib/utils"
 import { DimensionsCanvasControls } from "./tools/dimensions-canvas.tools"
+import { MoveControls } from "@/components/tools/move.tools"
 
 export function ImageEditorFooter({
   selectedSidebar,
@@ -60,6 +61,8 @@ export function ImageEditorFooter({
   selectedSidebar: keyof typeof SIDEBAR_TOOLS
 }) {
   switch (selectedSidebar) {
+    case "move":
+      return <MoveFooter {...(props as MoveFooterProps)} />
     case "dimensionsCanvas":
       return (
         <DimensionsCanvasFooter {...(props as DimensionsCanvasFooterProps)} />
@@ -729,6 +732,45 @@ export function UpscaleFooter({
   return (
     <div className={cn("flex justify-center", className)} {...props}>
       <UpscaleControls {...controlProps} />
+    </div>
+  )
+}
+
+export interface MoveFooterProps
+  extends Prettify<
+    Omit<ImageEditorFooterProps, "onChange" | "value"> & {
+      value: ToolValueDimensionType["defaultValue"]
+    }
+  > {}
+
+export function MoveFooter({
+  canvasRef,
+  className,
+  drawFnRef,
+  progress,
+  selectedLayer,
+  selectedTool,
+  toolsValues,
+  dispatch,
+  onProgress,
+  onSelectedToolChange: _onSelectedToolChange,
+  ...props
+}: MoveFooterProps) {
+  const controlProps = {
+    canvasRef,
+    drawFnRef,
+    progress,
+    selectedLayer,
+    selectedTool,
+    toolsValues,
+    value: toolsValues?.dimensions,
+    dispatch,
+    onProgress,
+  }
+
+  return (
+    <div className={cn("flex justify-center", className)} {...props}>
+      <MoveControls value={controlProps.value} dispatch={dispatch} />
     </div>
   )
 }
