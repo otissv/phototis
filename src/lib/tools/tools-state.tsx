@@ -3,6 +3,9 @@ import {
   type AdjustLayersType,
   type CropToolsType,
   type DimensionsToolsType,
+  type DimensionsCanvasToolsType,
+  type EffectsToolsType,
+  type MoveToolsType,
   type RotateToolsType,
   type ScaleToolsType,
   type ToolValueBooleanType,
@@ -16,6 +19,9 @@ import {
 export type ImageEditorToolsState = AdjustLayersType &
   HistoryToolsState &
   DimensionsToolsType &
+  DimensionsCanvasToolsType &
+  EffectsToolsType &
+  MoveToolsType &
   RotateToolsType &
   CropToolsType &
   ScaleToolsType &
@@ -29,6 +35,16 @@ export const SIDEBAR_TOOLS = {
   crop: ["crop"],
   rotate: ["rotate", "flipVertical", "flipHorizontal"],
   move: ["move"],
+  effects: [
+    "blur",
+    "blurType",
+    "blurDirection",
+    "blurCenter",
+    "noise",
+    "grain",
+    "sharpen",
+    "sepia",
+  ],
 }
 export type SidebarToolsKeys = keyof typeof SIDEBAR_TOOLS
 

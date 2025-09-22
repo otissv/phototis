@@ -1,6 +1,8 @@
+import * as React from "react"
 import { TOOL_VALUES } from "@/lib/tools/tools"
 import { onToolControlValueChange } from "@/lib/utils"
 import SlidingTrack from "@/components/sliding-track"
+import { useEditorContext } from "@/lib/editor/context"
 
 export interface ImageEditorFooterSliderProps
   extends Omit<
@@ -32,6 +34,33 @@ export function ImageEditorFooterSlider({
   isDecimal,
 }: ImageEditorFooterSliderProps) {
   const disabled = Boolean(progress)
+  const { addKeyframe, state, getSelectedLayerId } = useEditorContext()
+  const playheadTime = state.canonical.timeline.playheadTime || 0
+  const selectedLayerId = getSelectedLayerId()
+
+  // Enhanced onChange that writes keyframes
+  const handleValueChange = React.useCallback(
+    (newValue: number) => {
+      // Call original onChange for immediate UI feedback
+      onChange?.(newValue)
+
+      // Write keyframe at current playhead time
+      try {
+        if (selectedLayerId) {
+          addKeyframe(
+            selectedLayerId,
+            "filter",
+            selectedTool,
+            newValue,
+            playheadTime
+          )
+        }
+      } catch (error) {
+        console.warn("Failed to add keyframe:", error)
+      }
+    },
+    [onChange, addKeyframe, selectedTool, playheadTime, selectedLayerId]
+  )
 
   return (
     <SlidingTrack
@@ -50,7 +79,7 @@ export function ImageEditorFooterSlider({
       operator={operator}
       onValueChange={onToolControlValueChange({
         selectedTool,
-        onChange: onChange || (() => {}),
+        onChange: handleValueChange,
       })}
       label={label}
       isDecimal={isDecimal}

@@ -105,55 +105,28 @@ export function EffectsFooter({
   onSelectedToolChange,
   ...props
 }: EffectsFooterProps) {
-  const { history } = useEditorContext()
+  const { addKeyframe, state, getSelectedLayerId } = useEditorContext()
+  const playheadTime = state.canonical.timeline.playheadTime || 0
+  const selectedLayerId = getSelectedLayerId()
+
   const handleOnChange = React.useCallback(
     (value: number) => {
-      switch (selectedTool) {
-        case "sharpen":
-          history.begin("Sharpen")
-          dispatch({ type: "sharpen", payload: value })
-          history.end(true)
-          return
-        case "blur":
-          history.begin("Blur")
-          dispatch({ type: "blur", payload: value })
-          history.end(true)
-          return
-        case "blurType":
-          history.begin("Blur Type")
-          dispatch({ type: "blurType", payload: value })
-          history.end(true)
-          return
-        case "blurDirection":
-          history.begin("Blur Direction")
-          dispatch({ type: "blurDirection", payload: value })
-          history.end(true)
-          return
-        case "blurCenter":
-          history.begin("Blur Center")
-          dispatch({ type: "blurCenter", payload: value })
-          history.end(true)
-          return
-        case "noise":
-          history.begin("Noise")
-          dispatch({ type: "noise", payload: value })
-          history.end(true)
-          return
-        case "grain":
-          history.begin("Grain")
-          dispatch({ type: "grain", payload: value })
-          history.end(true)
-          return
-        case "sepia":
-          history.begin("Sepia")
-          dispatch({ type: "sepia", payload: value })
-          history.end(true)
-          return
-        default:
-          return () => {}
+      // Write keyframe at current playhead time
+      try {
+        if (selectedLayerId) {
+          addKeyframe(
+            selectedLayerId,
+            "filter",
+            selectedTool,
+            value,
+            playheadTime
+          )
+        }
+      } catch (error) {
+        console.warn("Failed to add keyframe:", error)
       }
     },
-    [history, selectedTool, dispatch]
+    [addKeyframe, selectedTool, playheadTime, selectedLayerId]
   )
 
   const controlProps = {
@@ -161,21 +134,30 @@ export function EffectsFooter({
     drawFnRef,
     progress,
     selectedLayer,
-    selectedTool,
+    selectedTool: "blur" as const, // Default to blur for effects footer
     toolsValues,
-    value: toolsValues[selectedTool],
+    value: toolsValues.blur,
     dispatch,
     onChange: handleOnChange,
   }
 
   const renderBlurControls = () => {
-    if (selectedTool === "blur") {
+    if (selectedTool === "effects") {
       return (
         <div className='flex flex-col gap-4 mt-4'>
           <div className='flex gap-2 justify-center'>
             <ImageEditorButton
               variant='ghost'
-              onClick={() => dispatch({ type: "blurType", payload: 0 })}
+              onClick={() =>
+                selectedLayerId &&
+                addKeyframe(
+                  selectedLayerId,
+                  "filter",
+                  "blurType",
+                  0,
+                  playheadTime
+                )
+              }
               isActive={toolsValues?.blurType === 0}
               disabled={progress}
             >
@@ -184,7 +166,16 @@ export function EffectsFooter({
             </ImageEditorButton>
             <ImageEditorButton
               variant='ghost'
-              onClick={() => dispatch({ type: "blurType", payload: 1 })}
+              onClick={() =>
+                selectedLayerId &&
+                addKeyframe(
+                  selectedLayerId,
+                  "filter",
+                  "blurType",
+                  1,
+                  playheadTime
+                )
+              }
               isActive={toolsValues?.blurType === 1}
               disabled={progress}
             >
@@ -193,7 +184,16 @@ export function EffectsFooter({
             </ImageEditorButton>
             <ImageEditorButton
               variant='ghost'
-              onClick={() => dispatch({ type: "blurType", payload: 2 })}
+              onClick={() =>
+                selectedLayerId &&
+                addKeyframe(
+                  selectedLayerId,
+                  "filter",
+                  "blurType",
+                  2,
+                  playheadTime
+                )
+              }
               isActive={toolsValues?.blurType === 2}
               disabled={progress}
             >
@@ -202,7 +202,16 @@ export function EffectsFooter({
             </ImageEditorButton>
             <ImageEditorButton
               variant='ghost'
-              onClick={() => dispatch({ type: "blurType", payload: 3 })}
+              onClick={() =>
+                selectedLayerId &&
+                addKeyframe(
+                  selectedLayerId,
+                  "filter",
+                  "blurType",
+                  3,
+                  playheadTime
+                )
+              }
               isActive={toolsValues?.blurType === 3}
               disabled={progress}
             >
@@ -232,32 +241,28 @@ export function EffectsFooter({
     <div {...props}>
       <div className='flex justify-center overflow-x-auto '>
         <div className='max-w-lg w-full flex flex-col items-center justify-center'>
-          {selectedTool === "noise" && <NoiseControls {...controlProps} />}
-          {selectedTool === "sharpen" && <SharpenControls {...controlProps} />}
+          <NoiseControls {...controlProps} />
+          <SharpenControls {...controlProps} />
         </div>
       </div>
       <ul className='flex gap-6 w-full max-w-lg overflow-x-auto py-2'>
         <li>
-          <ImageEditorButton
-            isActive={selectedTool === "blur"}
-            variant='ghost'
-            onClick={() => onSelectedToolChange("blur")}
-          >
+          <ImageEditorButton isActive={true} variant='ghost' onClick={() => {}}>
             Blur
           </ImageEditorButton>
         </li>
         <li>
           <SharpenButton
-            onSelectedToolChange={onSelectedToolChange}
-            selectedTool={selectedTool}
+            onSelectedToolChange={() => {}}
+            selectedTool='sharpen'
             progress={progress}
           />
         </li>
 
         <li>
           <NoiseButton
-            onSelectedToolChange={onSelectedToolChange}
-            selectedTool={selectedTool}
+            onSelectedToolChange={() => {}}
+            selectedTool='noise'
             progress={progress}
           />
         </li>
@@ -289,8 +294,16 @@ export function RotateFooter({
   onSelectedToolChange: _onSelectedToolChange,
   ...props
 }: RotateFooterProps) {
-  const { rotateDocument, flipDocument } = useEditorContext()
+  const {
+    rotateDocument,
+    flipDocument,
+    addKeyframe,
+    state,
+    getSelectedLayerId,
+  } = useEditorContext()
   const isDocumentLayer = selectedLayer?.id === "document"
+  const playheadTime = state.canonical.timeline.playheadTime || 0
+  const selectedLayerId = getSelectedLayerId()
 
   const safeRotate =
     typeof (toolsValues as any).rotate === "number"
@@ -299,46 +312,21 @@ export function RotateFooter({
   const safeFlipH = Boolean((toolsValues as any)?.flipHorizontal)
   const safeFlipV = Boolean((toolsValues as any)?.flipVertical)
 
-  const handleRotateLeft = () => {
-    if (isDocumentLayer) {
-      // Document rotation - rotate all layers
-      rotateDocument(-90)
-    } else {
-      // Individual layer rotation
-      const currentRotation = safeRotate
-      // Invert rotation direction if image is flipped horizontally
-      const rotationDirection = safeFlipH ? -90 : 90
-      const newRotation = (currentRotation + rotationDirection + 360) % 360
-      dispatch({ type: "rotate", payload: newRotation })
-    }
-  }
-
-  const handleRotateRight = () => {
-    if (isDocumentLayer) {
-      // Document rotation - rotate all layers
-      rotateDocument(90)
-    } else {
-      // Individual layer rotation
-      const currentRotation = safeRotate
-      // Invert rotation direction if image is flipped horizontally
-      const rotationDirection = safeFlipH ? 90 : -90
-      const newRotation = (currentRotation + rotationDirection + 360) % 360
-      dispatch({ type: "rotate", payload: newRotation })
-    }
-  }
-
   const handleFlipHorizontal = () => {
     if (isDocumentLayer) {
       flipDocument({ horizontal: true })
       return
     }
     // Individual layer flip
-    dispatch([
-      {
-        type: "flipHorizontal",
-        payload: safeFlipH ? 0 : 1,
-      },
-    ])
+    if (selectedLayerId) {
+      addKeyframe(
+        selectedLayerId,
+        "filter",
+        "flipHorizontal",
+        safeFlipH ? 0 : 1,
+        playheadTime
+      )
+    }
   }
 
   const handleFlipVertical = () => {
@@ -347,10 +335,15 @@ export function RotateFooter({
       return
     }
     // Individual layer flip
-    dispatch({
-      type: "flipVertical",
-      payload: safeFlipV ? 0 : 1,
-    })
+    if (selectedLayerId) {
+      addKeyframe(
+        selectedLayerId,
+        "filter",
+        "flipVertical",
+        safeFlipV ? 0 : 1,
+        playheadTime
+      )
+    }
   }
 
   const handleOnChange = React.useCallback(
@@ -362,10 +355,26 @@ export function RotateFooter({
         rotateDocument(rotationDiff)
       } else {
         // Individual layer rotation
-        dispatch({ type: selectedTool as any, payload: value } as any)
+        if (selectedLayerId) {
+          addKeyframe(
+            selectedLayerId,
+            "filter",
+            selectedTool as any,
+            value,
+            playheadTime
+          )
+        }
       }
     },
-    [dispatch, selectedTool, isDocumentLayer, safeRotate, rotateDocument]
+    [
+      addKeyframe,
+      selectedTool,
+      isDocumentLayer,
+      safeRotate,
+      rotateDocument,
+      playheadTime,
+      selectedLayerId,
+    ]
   )
 
   const Control = React.useMemo(() => {
@@ -375,7 +384,7 @@ export function RotateFooter({
       operator: "°",
       progress,
       selectedLayer,
-      selectedTool,
+      selectedTool: selectedTool === "effects" ? "rotate" : selectedTool,
       toolsValues,
       value: safeRotate, // Use the safe rotation value
       dispatch,
@@ -384,6 +393,8 @@ export function RotateFooter({
     switch (selectedTool) {
       case "rotate":
         return <RotationControls {...controlProps} />
+      default:
+        return null
     }
   }, [
     canvasRef,
@@ -484,7 +495,9 @@ export function TransformHeader({
     [downloadImage]
   )
 
-  const { history } = useEditorContext()
+  const { history, addKeyframe, state, getSelectedLayerId } = useEditorContext()
+  const playheadTime = state.canonical.timeline.playheadTime || 0
+
   const handleOnUndo = React.useCallback(() => {
     history.undo()
   }, [history])
@@ -493,15 +506,36 @@ export function TransformHeader({
     history.redo()
   }, [history])
 
+  const handleReset = React.useCallback(() => {
+    // Reset all tool values to defaults at current playhead time
+    try {
+      const { TOOL_VALUES } = require("@/lib/tools/tools")
+      const selectedLayerId = getSelectedLayerId()
+      if (selectedLayerId) {
+        for (const [key, toolValue] of Object.entries(TOOL_VALUES)) {
+          if ("defaultValue" in (toolValue as any)) {
+            addKeyframe(
+              selectedLayerId,
+              "filter",
+              key,
+              (toolValue as any).defaultValue,
+              playheadTime
+            )
+          }
+        }
+      }
+    } catch (error) {
+      console.warn("Failed to reset keyframes:", error)
+    }
+  }, [addKeyframe, playheadTime, getSelectedLayerId])
+
   return (
     <ul className='flex gap-1 justify-center' {...props}>
       <li>
         <ImageEditorButton
           title='Reset'
           variant='ghost'
-          onClick={() => {
-            dispatch({ type: "reset" })
-          }}
+          onClick={handleReset}
           disabled={progress}
         >
           <History size={16} />
@@ -623,16 +657,28 @@ export function ScaleFooter({
   onSelectedToolChange,
   ...props
 }: ScaleFooterProps) {
+  const { addKeyframe, state, getSelectedLayerId } = useEditorContext()
+  const playheadTime = state.canonical.timeline.playheadTime || 0
+  const selectedLayerId = getSelectedLayerId()
+
   const handleOnChange = React.useCallback(
     (value: number) => {
-      dispatch({ type: selectedTool as any, payload: value } as any)
+      if (selectedLayerId) {
+        addKeyframe(
+          selectedLayerId,
+          "filter",
+          selectedTool as any,
+          value,
+          playheadTime
+        )
+      }
     },
-    [dispatch, selectedTool]
+    [addKeyframe, selectedTool, playheadTime, selectedLayerId]
   )
 
   const controlProps = {
     progress,
-    selectedTool,
+    selectedTool: selectedTool === "effects" ? "scale" : selectedTool,
     toolsValues,
     canvasRef,
     drawFnRef,
@@ -710,11 +756,23 @@ export function UpscaleFooter({
   onSelectedToolChange: _onSelectedToolChange,
   ...props
 }: UpscaleFooterProps) {
+  const { addKeyframe, state, getSelectedLayerId } = useEditorContext()
+  const playheadTime = state.canonical.timeline.playheadTime || 0
+  const selectedLayerId = getSelectedLayerId()
+
   const handleOnChange = React.useCallback(
     (value: number) => {
-      dispatch({ type: selectedTool as any, payload: value } as any)
+      if (selectedLayerId) {
+        addKeyframe(
+          selectedLayerId,
+          "filter",
+          selectedTool as any,
+          value,
+          playheadTime
+        )
+      }
     },
-    [dispatch, selectedTool]
+    [addKeyframe, selectedTool, playheadTime, selectedLayerId]
   )
 
   const controlProps = {
@@ -795,11 +853,23 @@ export function CropFooter({
   onSelectedToolChange: _onSelectedToolChange,
   ...props
 }: CropFooterProps) {
+  const { addKeyframe, state, getSelectedLayerId } = useEditorContext()
+  const playheadTime = state.canonical.timeline.playheadTime || 0
+  const selectedLayerId = getSelectedLayerId()
+
   const handleOnChange = React.useCallback(
     (value: number) => {
-      dispatch({ type: selectedTool as any, payload: value } as any)
+      if (selectedLayerId) {
+        addKeyframe(
+          selectedLayerId,
+          "filter",
+          selectedTool as any,
+          value,
+          playheadTime
+        )
+      }
     },
-    [dispatch, selectedTool]
+    [addKeyframe, selectedTool, playheadTime, selectedLayerId]
   )
 
   const controlProps = {

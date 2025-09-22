@@ -10,10 +10,10 @@ import { ImageEditorCanvas } from "@/components/canvas.image-editor"
 import { ImageEditorSidebar } from "@/components/sidebar.image-editor"
 import { ImageEditorFooter } from "@/components/tools.image-editor"
 import {
-  imageEditorToolsReducer,
   initialToolsState,
   type ImageEditorToolsActions,
 } from "@/lib/tools/tools-state"
+import { sampleToolsAtTime } from "@/lib/tools/tracks"
 import { SetActiveToolCommand } from "@/lib/editor/commands"
 
 import { EditorProvider, useEditorContext } from "@/lib/editor/context"
@@ -63,10 +63,10 @@ function ImageEditorInner({
     removeLayer,
     renderType,
     setRenderType,
-    selectLayer,
     selectLayerNonUndoable,
     setZoomPercent,
     updateLayer,
+    addKeyframe,
   } = useEditorContext()
 
   // Get the currently selected layer's filters
@@ -75,39 +75,50 @@ function ImageEditorInner({
   }, [getSelectedLayer])
 
   const toolsValues = React.useMemo(() => {
-    // If document layer is selected, use document filters
+    const t = state.canonical.timeline.playheadTime || 0
     if (selectedLayer?.id === "document" && selectedLayer.type === "document") {
-      return (selectedLayer as any).filters || initialToolsState
+      const tracks = (selectedLayer as any).filterTracks
+      return tracks ? sampleToolsAtTime(tracks, t) : initialToolsState
     }
-    // For image layers, use their filters
     if (selectedLayer?.type === "image") {
-      return (selectedLayer as any).filters || initialToolsState
+      const tracks = (selectedLayer as any).filterTracks
+      return tracks ? sampleToolsAtTime(tracks, t) : initialToolsState
     }
-    // For other layer types, return initial state
     return initialToolsState
-  }, [selectedLayer])
+  }, [selectedLayer, state.canonical.timeline.playheadTime])
 
   const dispatch = React.useCallback(
     (action: ImageEditorToolsActions | ImageEditorToolsActions[]) => {
       const current = selectedLayer
       const selectedId = getSelectedLayerId()
-
       if (!current || !selectedId) return
-
-      // Only allow filter updates for image and document layers
       if (current.type !== "image" && current.type !== "document") return
+      const t = state.canonical.timeline.playheadTime || 0
 
-      const currentFilters = (current as any).filters || initialToolsState
-      const newFilters = Array.isArray(action)
-        ? action.reduce((acc, curr) => {
-            return imageEditorToolsReducer(acc, curr)
-          }, currentFilters)
-        : imageEditorToolsReducer(currentFilters, action)
+      const applyAction = (act: any) => {
+        if (act.type === "dimensions") {
+          addKeyframe(selectedId, "filter", "dimensions", act.payload, t)
+        } else if (act.type === "crop") {
+          addKeyframe(selectedId, "filter", "crop", act.payload, t)
+        } else if (act.type === "solid") {
+          addKeyframe(selectedId, "filter", "solid", act.payload, t)
+        } else {
+          addKeyframe(selectedId, "filter", act.type, act.payload, t)
+        }
+      }
 
-      // Cast to any to bypass type checking for filters property
-      updateLayer(selectedId, { filters: newFilters } as any)
+      if (Array.isArray(action)) {
+        action.forEach(applyAction)
+      } else {
+        applyAction(action)
+      }
     },
-    [selectedLayer, getSelectedLayerId, updateLayer]
+    [
+      selectedLayer,
+      getSelectedLayerId,
+      addKeyframe,
+      state.canonical.timeline.playheadTime,
+    ]
   )
 
   const value = React.useMemo(() => {
@@ -144,14 +155,7 @@ function ImageEditorInner({
     drawFnRef.current = d
   }, [])
 
-  const handleImageDrop = React.useCallback(
-    (file: File) => {
-      // Forward to provider's handler by calling through Canvas (which now handles internally)
-      // Kept for API compatibility; no-op here
-      onImageDrop?.(file)
-    },
-    [onImageDrop]
-  )
+  // onImageDrop is handled at the outer component level; no local wrapper needed
 
   React.useEffect(() => {
     try {
@@ -525,7 +529,7 @@ export function ImageEditor({
     }
 
     getCanvasDimensions(images)
-  }, [])
+  }, [images, dimensions])
 
   return dimensions.length > 0 ? (
     <EditorProvider images={images} dimensions={dimensions}>

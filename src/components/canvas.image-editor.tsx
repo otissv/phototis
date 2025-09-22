@@ -7,6 +7,7 @@ import { useDebounce } from "use-debounce"
 
 import type { ImageEditorToolsState } from "@/lib/tools/tools-state"
 import { initialToolsState } from "@/lib/tools/tools-state"
+import { sampleToolsAtTime } from "@/lib/tools/tracks"
 import type { EditorLayer } from "@/lib/editor/state"
 import { useEditorContext } from "@/lib/editor/context"
 import { ShaderManagerV2 } from "@/lib/shaders/v2/manager"
@@ -60,6 +61,7 @@ export function ImageEditorCanvas({
     renderType,
     updateLayer,
     updateLayerNonUndoable,
+    addKeyframe,
   } = useEditorContext()
 
   const selectedLayerId = getSelectedLayerId() || "document"
@@ -228,10 +230,17 @@ export function ImageEditorCanvas({
     for (const layer of canonicalLayers) {
       if (layer.type !== "image") continue
       const imageLayer = layer as any
-      const filters = imageLayer.filters || {}
-      const dimensions = filters.dimensions || {}
+      const t = state.canonical.timeline.playheadTime || 0
+      let dimensions: any = null
+      try {
+        const tr = (imageLayer.filterTracks || {}).dimensions
+        if (tr) {
+          const { sampleTrack } = require("@/lib/animation/timeline")
+          dimensions = sampleTrack(tr, t)
+        }
+      } catch {}
 
-      if (dimensions.width && dimensions.height) {
+      if (dimensions && dimensions.width && dimensions.height) {
         const layerId = layer.id
         const currentDims = layerDimensionsRef.current.get(layerId)
         const newDims = {
@@ -262,7 +271,7 @@ export function ImageEditorCanvas({
         layerDimensionsRef.current.delete(layerId)
       }
     }
-  }, [canonicalLayers])
+  }, [canonicalLayers, state.canonical.timeline.playheadTime])
 
   // Canvas dimensions state - mirror canonical.document
   const [canvasDimensions, setCanvasDimensions] = React.useState({
@@ -392,58 +401,21 @@ export function ImageEditorCanvas({
     scale: 1,
   })
 
-  // Get the effective filters for the selected layer (including adjustment layers above it)
+  // Get the effective filters for the selected layer by sampling its filterTracks at playhead time
   const effectiveFilters = React.useMemo(() => {
+    const t = state.canonical.timeline.playheadTime || 0
     if (!selectedLayerId) return initialToolsState
-
     const selectedLayer = state.canonical.layers.byId[selectedLayerId]
     if (!selectedLayer) return initialToolsState
-
-    // Start with the selected layer's own filters
-    let effects: ImageEditorToolsState = { ...initialToolsState }
-
-    if (selectedLayer.type === "image") {
-      const imageLayer = selectedLayer as any
-      if (imageLayer.filters) {
-        effects = { ...effects, ...imageLayer.filters }
-      }
-    } else if (selectedLayer.type === "document") {
-      // For document layer, apply document-level transformations to all layers
-      const documentLayer = selectedLayer as any
-      if (documentLayer.filters) {
-        effects = { ...effects, ...documentLayer.filters }
-      }
+    if (selectedLayer.type === "image" || selectedLayer.type === "document") {
+      const tracks = (selectedLayer as any).filterTracks
+      return tracks ? sampleToolsAtTime(tracks, t) : initialToolsState
     }
-
-    // Apply adjustment layers that are above the selected layer
-    const selectedIndex = state.canonical.layers.order.indexOf(selectedLayerId)
-    if (selectedIndex >= 0) {
-      for (
-        let i = selectedIndex + 1;
-        i < state.canonical.layers.order.length;
-        i++
-      ) {
-        const layerId = state.canonical.layers.order[i]
-        const layer = state.canonical.layers.byId[layerId]
-
-        if (layer?.type === "adjustment" && layer.visible) {
-          const adjustment = layer as any
-          if (adjustment.parameters) {
-            Object.entries(adjustment.parameters).forEach(([key, value]) => {
-              if (key in effects) {
-                ;(effects as any)[key] = value
-              }
-            })
-          }
-        }
-      }
-    }
-
-    return effects
+    return initialToolsState
   }, [
     selectedLayerId,
-    state.canonical.layers.order,
     state.canonical.layers.byId,
+    state.canonical.timeline.playheadTime,
   ])
 
   // Use effective filters instead of just selected layer filters
@@ -629,9 +601,20 @@ export function ImageEditorCanvas({
             }`
           }
         } else if ((l as any).type === "adjustment") {
-          const params = ((l as any).parameters || {}) as Record<string, number>
-          const keys = Object.keys(params).sort()
-          adjSig = `adj:${keys.map((k) => `${k}:${params[k]}`).join("|")}`
+          try {
+            const t = state.canonical.timeline.playheadTime || 0
+            const tracks = ((l as any).parameterTracks || {}) as Record<
+              string,
+              any
+            >
+            const { sampleTrack } = require("@/lib/animation/timeline")
+            const entries = Object.entries(tracks)
+              .map(([k, tr]) => `${k}:${sampleTrack(tr, t)}`)
+              .sort()
+            adjSig = `adj:${entries.join("|")}`
+          } catch {
+            adjSig = "adj:"
+          }
         } else if (l.type === "group") {
           const groupLayer = l as any
           // Include group children order and their properties
@@ -649,10 +632,19 @@ export function ImageEditorCanvas({
         // Include orientation signature so flips/rotation changes trigger redraws
         let orientSig = "orient:0:0:0"
         try {
-          const f: any = (l as any).filters || {}
-          const fh = f.flipHorizontal ? 1 : 0
-          const fv = f.flipVertical ? 1 : 0
-          const rot = typeof f.rotate === "number" ? Math.round(f.rotate) : 0
+          const t = state.canonical.timeline.playheadTime || 0
+          const tracks: any = (l as any).filterTracks || {}
+          const { sampleTrack } = require("@/lib/animation/timeline")
+          const fhv = tracks.flipHorizontal
+            ? sampleTrack(tracks.flipHorizontal, t)
+            : 0
+          const fvv = tracks.flipVertical
+            ? sampleTrack(tracks.flipVertical, t)
+            : 0
+          const rotv = tracks.rotate ? sampleTrack(tracks.rotate, t) : 0
+          const fh = fhv ? 1 : 0
+          const fv = fvv ? 1 : 0
+          const rot = Math.round(Number(rotv || 0))
           orientSig = `orient:${fh}:${fv}:${rot}`
         } catch {}
 
@@ -685,9 +677,19 @@ export function ImageEditorCanvas({
           l.opacity,
           l.blendMode,
           l.type === "adjustment"
-            ? `adj:${Object.entries(l.parameters || {})
-                .map(([k, v]) => `${k}:${v}`)
-                .join("|")}`
+            ? (() => {
+                try {
+                  const tracks: any = (l as any).parameterTracks || {}
+                  const t = state.canonical.timeline.playheadTime || 0
+                  const { sampleTrack } = require("@/lib/animation/timeline")
+                  const entries = Object.entries(tracks).map(
+                    ([k, tr]: any) => `${k}:${sampleTrack(tr, t)}`
+                  )
+                  return `adj:${entries.join("|")}`
+                } catch {
+                  return "adj:"
+                }
+              })()
             : "",
           l.type === "solid" ? `solid:${l.color?.join(",") || ""}` : "",
           l.type === "mask"
@@ -713,6 +715,7 @@ export function ImageEditorCanvas({
     topLevelLayers,
     state.canonical.document.globalLayers,
     state.canonical.document.globalParameters,
+    state.canonical.timeline.playheadTime,
   ])
 
   // Update WebGL viewport when canvas dimensions change
@@ -904,25 +907,27 @@ export function ImageEditorCanvas({
                 layerY = (currentCanvasHeight - imageData.height) / 2
               }
 
-              updateLayerNonUndoable(layer.id, {
-                filters: {
-                  ...layer.filters,
+              try {
+                const currentTracks = (layer as any).filterTracks || {}
+                const { upsertToolKeyframes } = require("@/lib/tools/tracks")
+                const nextTracks = upsertToolKeyframes(currentTracks, 0, {
                   dimensions: {
-                    ...layer.filters.dimensions,
                     width: imageData.width,
                     height: imageData.height,
                     x: layerX,
                     y: layerY,
                   },
                   crop: {
-                    ...layer.filters.crop,
                     width: imageData.width,
                     height: imageData.height,
                     x: layerX,
                     y: layerY,
                   },
-                },
-              } as any)
+                })
+                updateLayerNonUndoable(layer.id, {
+                  filterTracks: nextTracks,
+                } as any)
+              } catch {}
             }
 
             const layerDimensions: LayerDimensions = {
@@ -959,6 +964,7 @@ export function ImageEditorCanvas({
     canvasDimensions.width,
     canvasDimensions.height,
     isDragActive,
+    state.canonical.timeline.playheadTime,
   ])
 
   // Handle viewport updates based on zoom
@@ -1433,7 +1439,8 @@ export function ImageEditorCanvas({
             layersSignature,
             false, // interactive
             state.canonical.document.globalLayers,
-            state.canonical.document.globalParameters
+            state.canonical.document.globalParameters,
+            state.canonical.timeline.playheadTime || 0
           )
 
           if (taskId) {
@@ -1841,6 +1848,97 @@ export function ImageEditorCanvas({
     [onImageDrop, isElementDragging]
   )
 
+  const handlePointerDown = React.useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      e.preventDefault()
+      e.stopPropagation()
+      const rect = (
+        e.currentTarget.parentElement as HTMLElement
+      ).getBoundingClientRect()
+      // Determine handle by target dataset
+      const target = e.target as HTMLElement
+      const handle = (target.getAttribute("data-handle") as any) || "move"
+      cropDragRef.current = {
+        mode: handle,
+        startX: e.clientX - rect.left,
+        startY: e.clientY - rect.top,
+        startRect: { ...cropRect },
+      }
+      ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    },
+    [cropRect]
+  )
+
+  const handlePointerMove = React.useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const drag = cropDragRef.current
+      if (!drag) return
+      const container = e.currentTarget.parentElement as HTMLElement
+      const bounds = container.getBoundingClientRect()
+      const px = e.clientX - bounds.left
+      const py = e.clientY - bounds.top
+      const { startX, startY, startRect } = drag
+      const mode = drag.mode || "move"
+      let nx = startRect.x
+      let ny = startRect.y
+      let nw = startRect.width
+      let nh = startRect.height
+      const dx = px - startX
+      const dy = py - startY
+      const minSize = 8
+      const clamp = (v: number, min: number, max: number) =>
+        Math.max(min, Math.min(max, v))
+      if (mode === "move") {
+        nx = clamp(startRect.x + dx, 0, canvasDimensions.width - nw)
+        ny = clamp(startRect.y + dy, 0, canvasDimensions.height - nh)
+      } else {
+        const left = startRect.x
+        const top = startRect.y
+        const right = startRect.x + startRect.width
+        const bottom = startRect.y + startRect.height
+        let nleft = left
+        let ntop = top
+        let nright = right
+        let nbottom = bottom
+        if (mode.includes("w")) nleft = clamp(left + dx, 0, right - minSize)
+        if (mode.includes("e"))
+          nright = clamp(right + dx, left + minSize, canvasDimensions.width)
+        if (mode.includes("n")) ntop = clamp(top + dy, 0, bottom - minSize)
+        if (mode.includes("s"))
+          nbottom = clamp(bottom + dy, top + minSize, canvasDimensions.height)
+        nx = nleft
+        ny = ntop
+        nw = nright - nleft
+        nh = nbottom - ntop
+      }
+      setCropRect({
+        x: Math.round(nx),
+        y: Math.round(ny),
+        width: Math.round(nw),
+        height: Math.round(nh),
+      })
+      try {
+        window.dispatchEvent(
+          new CustomEvent("phototis:crop-rect-changed", {
+            detail: {
+              width: Math.round(nw),
+              height: Math.round(nh),
+            },
+          })
+        )
+      } catch {}
+    },
+    [canvasDimensions.width, canvasDimensions.height, cropRect]
+  )
+
+  const handlePointerUp = React.useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      cropDragRef.current = null
+      ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
+    },
+    []
+  )
+
   useCrop({
     cropRect,
     setCropRect,
@@ -1870,6 +1968,7 @@ export function ImageEditorCanvas({
     drawRef,
     history,
     scale: viewport.scale,
+    addKeyframe,
   })
 
   return (
@@ -1945,98 +2044,9 @@ export function ImageEditorCanvas({
               cursor:
                 cropDragRef.current?.mode === "move" ? "grabbing" : "move",
             }}
-            onPointerDown={(e) => {
-              e.preventDefault()
-              e.stopPropagation()
-              const rect = (
-                e.currentTarget.parentElement as HTMLElement
-              ).getBoundingClientRect()
-              // Determine handle by target dataset
-              const target = e.target as HTMLElement
-              const handle =
-                (target.getAttribute("data-handle") as any) || "move"
-              cropDragRef.current = {
-                mode: handle,
-                startX: e.clientX - rect.left,
-                startY: e.clientY - rect.top,
-                startRect: { ...cropRect },
-              }
-              ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-            }}
-            onPointerMove={(e) => {
-              const drag = cropDragRef.current
-              if (!drag) return
-              const container = e.currentTarget.parentElement as HTMLElement
-              const bounds = container.getBoundingClientRect()
-              const px = e.clientX - bounds.left
-              const py = e.clientY - bounds.top
-              const { startX, startY, startRect } = drag
-              const mode = drag.mode || "move"
-              let nx = startRect.x
-              let ny = startRect.y
-              let nw = startRect.width
-              let nh = startRect.height
-              const dx = px - startX
-              const dy = py - startY
-              const minSize = 8
-              const clamp = (v: number, min: number, max: number) =>
-                Math.max(min, Math.min(max, v))
-              if (mode === "move") {
-                nx = clamp(startRect.x + dx, 0, canvasDimensions.width - nw)
-                ny = clamp(startRect.y + dy, 0, canvasDimensions.height - nh)
-              } else {
-                const left = startRect.x
-                const top = startRect.y
-                const right = startRect.x + startRect.width
-                const bottom = startRect.y + startRect.height
-                let nleft = left
-                let ntop = top
-                let nright = right
-                let nbottom = bottom
-                if (mode.includes("w"))
-                  nleft = clamp(left + dx, 0, right - minSize)
-                if (mode.includes("e"))
-                  nright = clamp(
-                    right + dx,
-                    left + minSize,
-                    canvasDimensions.width
-                  )
-                if (mode.includes("n"))
-                  ntop = clamp(top + dy, 0, bottom - minSize)
-                if (mode.includes("s"))
-                  nbottom = clamp(
-                    bottom + dy,
-                    top + minSize,
-                    canvasDimensions.height
-                  )
-                nx = nleft
-                ny = ntop
-                nw = nright - nleft
-                nh = nbottom - ntop
-              }
-              setCropRect({
-                x: Math.round(nx),
-                y: Math.round(ny),
-                width: Math.round(nw),
-                height: Math.round(nh),
-              })
-              try {
-                window.dispatchEvent(
-                  new CustomEvent("phototis:crop-rect-changed", {
-                    detail: {
-                      width: Math.round(nw),
-                      height: Math.round(nh),
-                    },
-                  })
-                )
-              } catch {}
-            }}
-            onPointerUp={(e) => {
-              cropDragRef.current = null
-              ;(e.currentTarget as HTMLElement).releasePointerCapture(
-                e.pointerId
-              )
-            }}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
           >
             {(["nw", "n", "ne", "e", "se", "s", "sw", "w"] as const).map(
               (h) => (
@@ -2071,19 +2081,6 @@ export function ImageEditorCanvas({
             )}
           </div>
         )}
-        {/* Drag overlay indicator */}
-        {/* <div
-          className={cn(
-            "absolute inset-0 pointer-events-none flex items-center justify-center opacity-0 transition-opacity duration-200",
-            "bg-blue-500/20 border-dashed border-blue-500 backdrop-blur-sm",
-            "ring-inset ring-1 ring-blue-500"
-          )}
-          id='drag-overlay'
-          style={{
-            width: canvasDimensions.width,
-            height: canvasDimensions.height,
-          }}
-        /> */}
       </motion.div>
 
       {/* Worker error indicator */}

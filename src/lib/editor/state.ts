@@ -10,10 +10,9 @@
  */
 
 import type { BlendMode } from "@/lib/shaders/blend-modes/types.blend"
-import type {
-  ImageEditorToolsState,
-  SIDEBAR_TOOLS,
-} from "@/lib/tools/tools-state"
+import type { SIDEBAR_TOOLS } from "@/lib/tools/tools-state"
+import type { ImageEditorToolsTracks } from "@/lib/tools/tracks"
+import type { Track } from "@/lib/animation/timeline"
 import type { TOOL_VALUES } from "@/lib/tools/tools"
 import type { AdjustmentTypes } from "./types.adjustment"
 
@@ -51,14 +50,14 @@ export interface ImageLayer extends BaseLayer {
   type: "image"
   image?: File | null
   isEmpty: boolean
-  filters: ImageEditorToolsState
+  filterTracks: ImageEditorToolsTracks
 }
 
 // Adjustment layer
 export interface AdjustmentLayer extends BaseLayer {
   type: "adjustment"
   adjustmentType: AdjustmentTypes
-  parameters: Record<string, number | { value: number; color: string }>
+  parameterTracks: Record<string, Track<any>>
 }
 
 // Solid color layer
@@ -70,7 +69,7 @@ export interface SolidLayer extends BaseLayer {
 // Document layer for global document properties
 export interface DocumentLayer extends BaseLayer {
   type: "document"
-  filters: ImageEditorToolsState
+  filterTracks: ImageEditorToolsTracks
 }
 
 // Mask data for adjustment layers
@@ -172,6 +171,10 @@ export interface CanonicalEditorState {
   selection: SelectionModel
   viewport: ViewportModel
   activeTool: ActiveToolModel
+  timeline: {
+    playheadTime: number // seconds
+    timebase: { fps: number }
+  }
 }
 
 /**
@@ -302,6 +305,7 @@ export function createEditorRuntimeState(params?: {
     selection,
     viewport,
     activeTool,
+    timeline: { playheadTime: 0, timebase: { fps: 30 } },
   }
 
   const runtime: EditorRuntimeState = {
@@ -427,11 +431,12 @@ export function validateEditorState(
         })
       }
     } else if (layer.type === "adjustment") {
-      // Validate adjustment layer parameters
-      if (!layer.parameters || Object.keys(layer.parameters).length === 0) {
+      // Validate adjustment layer parameterTracks
+      const tracks = (layer as any).parameterTracks
+      if (!tracks || Object.keys(tracks).length === 0) {
         errors.push({
-          path: `layers.byId.${id}.parameters`,
-          message: "Adjustment layer must have parameters",
+          path: `layers.byId.${id}.parameterTracks`,
+          message: "Adjustment layer must have parameterTracks",
         })
       }
     } else if (layer.type === "group") {

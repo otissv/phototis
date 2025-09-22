@@ -21,11 +21,13 @@ import {
   createEditorRuntimeState,
   assertInvariants,
 } from "@/lib/editor/state"
+// Removed unused import
+import { createDefaultToolTracks } from "@/lib/tools/tracks"
 import {
-  initialToolsState as defaultFilters,
-  SidebarToolsKeys,
-} from "@/lib/tools/tools-state"
-import { HistoryManager, type Command } from "@/lib/editor/history"
+  HistoryManager,
+  type Command,
+  type CommandMeta,
+} from "@/lib/editor/history"
 import {
   AddLayerCommand,
   RemoveLayerCommand,
@@ -151,6 +153,32 @@ export type EditorContextValue = {
   setZoomPercent: (zoom: number) => void
   toggleLock: (layerId: LayerId) => void
   toggleVisibility: (layerId: LayerId) => void
+  // Timeline controls
+  setPlayheadTime: (time: number, options?: { nonUndoable?: boolean }) => void
+  setTimebase: (fps: number) => void
+  // Keyframe editing helpers
+  addKeyframe: (
+    layerId: LayerId,
+    target: "filter" | "adjustment",
+    key: string,
+    value: any,
+    time?: number,
+    opts?: { easing?: string; interpolation?: "stepped" | "linear" | "bezier" }
+  ) => void
+  deleteKeyframe: (
+    layerId: LayerId,
+    target: "filter" | "adjustment",
+    key: string,
+    time?: number
+  ) => void
+  setKeyframeEasing: (
+    layerId: LayerId,
+    target: "filter" | "adjustment",
+    key: string,
+    time: number,
+    easing: string,
+    interpolation?: "stepped" | "linear" | "bezier"
+  ) => void
   updateAdjustmentParameters: (
     layerId: LayerId,
     parameters: Record<string, number>
@@ -166,7 +194,7 @@ export type EditorContextValue = {
     layer: AdjustmentLayer | SolidLayer | MaskLayer,
     position?: "top" | "bottom" | number
   ) => void
-  getGlobalLayers: () => AdjustmentLayer[] | SolidLayer[] | MaskLayer[]
+  getGlobalLayers: () => (AdjustmentLayer | SolidLayer | MaskLayer)[]
   removeGlobalLayer: (layerId: LayerId) => void
   updateGlobalLayer: (
     layerId: LayerId,
@@ -215,28 +243,13 @@ export function EditorProvider({
     })
 
     const initialLayers: ImageLayer[] = images.map((image, index) => {
-      const dimensions = imageDimensions.find((dim) => dim.name === image.name)
-
       return {
         id: `layer-${Date.now()}-${index}`,
         name: image.name,
         visible: true,
         locked: false,
         type: "image",
-        filters: {
-          ...defaultFilters,
-          dimensions: {
-            width: dimensions?.width || 1,
-            height: dimensions?.height || 1,
-            x: 0,
-            y: 0,
-          },
-          crop: {
-            ...defaultFilters.crop,
-            width: dimensions?.width || 1,
-            height: dimensions?.height || 1,
-          },
-        },
+        filterTracks: createDefaultToolTracks(),
         opacity: 100,
         isEmpty: !image,
         blendMode: "normal",
@@ -254,7 +267,7 @@ export function EditorProvider({
       type: "document",
       visible: true,
       locked: false,
-      filters: { ...defaultFilters },
+      filterTracks: createDefaultToolTracks(),
       opacity: 100,
       blendMode: "normal",
     }
@@ -262,28 +275,7 @@ export function EditorProvider({
     const layers = normalizeLayers([...initialLayers, documentLayer])
     const canonical: CanonicalEditorState = {
       ...base.canonical,
-      layers: {
-        ...layers,
-        byId: {
-          ...layers.byId,
-          document: {
-            ...layers.byId.document,
-            filters: {
-              ...layers.byId.document.filters,
-              dimensions: {
-                ...layers.byId.document.filters.dimensions,
-                width: documentWidth,
-                height: documentHeight,
-              },
-              crop: {
-                ...layers.byId.document.filters.crop,
-                width: documentWidth,
-                height: documentHeight,
-              },
-            },
-          },
-        },
-      },
+      layers,
       document: {
         ...base.canonical.document,
         width: documentWidth,
@@ -439,7 +431,7 @@ export function EditorProvider({
       visible: true,
       locked: false,
       type: "image",
-      filters: { ...defaultFilters },
+      filterTracks: createDefaultToolTracks(),
       opacity: 100,
       isEmpty: true,
       blendMode: "normal",
@@ -477,7 +469,7 @@ export function EditorProvider({
         visible: true,
         locked: false,
         type: "image",
-        filters: { ...defaultFilters },
+        filterTracks: createDefaultToolTracks(),
         opacity: 100,
         isEmpty: false,
         image: file,
@@ -737,11 +729,12 @@ export function EditorProvider({
       layerId: LayerId,
       parameters: Record<string, number | { value: number; color: string }>
     ) => {
+      const t = runtime.canonical.timeline.playheadTime || 0
       historyRef.current?.execute(
-        new UpdateAdjustmentParametersCommand(layerId, parameters)
+        new UpdateAdjustmentParametersCommand(layerId, parameters, t)
       )
     },
-    []
+    [runtime.canonical.timeline.playheadTime]
   )
 
   const setBlendMode = React.useCallback(
@@ -786,6 +779,394 @@ export function EditorProvider({
     historyRef.current?.execute(new SetViewportCommand({ zoom }))
   }, [])
 
+  // Timeline setters
+  const setPlayheadTime = React.useCallback(
+    (time: number, options?: { nonUndoable?: boolean }) => {
+      const nonUndoable = Boolean(options?.nonUndoable)
+      const cmd = new (class SetTimelinePlayheadCommand implements Command {
+        meta: CommandMeta
+        private prev?: number
+        constructor(t: number) {
+          this.meta = {
+            label: "Set Playhead Time",
+            scope: "global",
+            timestamp: Date.now(),
+            coalescable: true,
+            mergeKey: "timeline:playhead",
+            nonUndoable,
+          }
+          ;(this as any).nextTime = t
+        }
+        apply(s: CanonicalEditorState): CanonicalEditorState {
+          this.prev = s.timeline.playheadTime
+          return {
+            ...s,
+            timeline: { ...s.timeline, playheadTime: (this as any).nextTime },
+          }
+        }
+        invert(): Command {
+          return new SetTimelinePlayheadCommand(this.prev ?? 0)
+        }
+        estimateSize(): number {
+          return 16
+        }
+        serialize(): any {
+          return {
+            type: "setTimelinePlayhead",
+            meta: this.meta,
+            t: (this as any).nextTime,
+          }
+        }
+      })(Math.max(0, Number.isFinite(time) ? time : 0))
+      historyRef.current?.execute(cmd)
+    },
+    []
+  )
+
+  const setTimebase = React.useCallback((fps: number) => {
+    const cmd = new (class SetTimelineTimebaseCommand implements Command {
+      meta: CommandMeta
+      private prev?: number
+      constructor(f: number) {
+        this.meta = {
+          label: "Set Timebase FPS",
+          scope: "global",
+          timestamp: Date.now(),
+          coalescable: false,
+        }
+        ;(this as any).nextFps = f
+      }
+      apply(s: CanonicalEditorState): CanonicalEditorState {
+        this.prev = s.timeline.timebase.fps
+        return {
+          ...s,
+          timeline: { ...s.timeline, timebase: { fps: (this as any).nextFps } },
+        }
+      }
+      invert(): Command {
+        return new SetTimelineTimebaseCommand(this.prev ?? 30)
+      }
+      estimateSize(): number {
+        return 16
+      }
+      serialize(): any {
+        return {
+          type: "setTimelineTimebase",
+          meta: this.meta,
+          fps: (this as any).nextFps,
+        }
+      }
+    })(Math.max(1, Math.round(fps)))
+    historyRef.current?.execute(cmd)
+  }, [])
+
+  // Track/keyframe editing helpers via generic commands
+  const addKeyframe = React.useCallback(
+    (
+      layerId: LayerId,
+      target: "filter" | "adjustment",
+      key: string,
+      value: any,
+      time?: number,
+      opts?: {
+        easing?: string
+        interpolation?: "stepped" | "linear" | "bezier"
+      }
+    ) => {
+      const cmd = new (class UpsertTrackKeyframeCommand implements Command {
+        meta: CommandMeta
+        constructor() {
+          this.meta = {
+            label: `Add Keyframe ${key}`,
+            scope: "global",
+            timestamp: Date.now(),
+            coalescable: false,
+          }
+        }
+        apply(s: CanonicalEditorState): CanonicalEditorState {
+          const byId = { ...s.layers.byId }
+          const layer = byId[layerId] as any
+          if (!layer) return s
+          const { upsertKeyframe } = require("@/lib/animation/timeline")
+          const t = typeof time === "number" ? time : s.timeline.playheadTime
+          if (target === "filter") {
+            const tracks = { ...(layer.filterTracks || {}) }
+            if (tracks[key])
+              tracks[key] = upsertKeyframe(tracks[key], t, value, opts)
+            byId[layerId] = { ...layer, filterTracks: tracks }
+          } else {
+            const tracks = { ...(layer.parameterTracks || {}) }
+            if (tracks[key])
+              tracks[key] = upsertKeyframe(tracks[key], t, value, opts)
+            byId[layerId] = { ...layer, parameterTracks: tracks }
+          }
+          require("@/lib/animation/timeline").clearSamplingCache()
+          return { ...s, layers: { ...s.layers, byId } }
+        }
+        invert(): Command {
+          return new (class DeleteTrackKeyframeInverse implements Command {
+            meta: CommandMeta = {
+              label: `Remove Keyframe ${key}`,
+              scope: "global",
+              timestamp: Date.now(),
+              coalescable: false,
+            }
+            apply(ss: CanonicalEditorState): CanonicalEditorState {
+              const byId = { ...ss.layers.byId }
+              const layer = byId[layerId] as any
+              if (!layer) return ss
+              const { deleteKeyframe } = require("@/lib/animation/timeline")
+              const t =
+                typeof time === "number" ? time : ss.timeline.playheadTime
+              if (target === "filter") {
+                const tracks = { ...(layer.filterTracks || {}) }
+                if (tracks[key]) tracks[key] = deleteKeyframe(tracks[key], t)
+                byId[layerId] = { ...layer, filterTracks: tracks }
+              } else {
+                const tracks = { ...(layer.parameterTracks || {}) }
+                if (tracks[key]) tracks[key] = deleteKeyframe(tracks[key], t)
+                byId[layerId] = { ...layer, parameterTracks: tracks }
+              }
+              require("@/lib/animation/timeline").clearSamplingCache()
+              return { ...ss, layers: { ...ss.layers, byId } }
+            }
+            invert(): Command {
+              return new UpsertTrackKeyframeCommand()
+            }
+            estimateSize(): number {
+              return 16
+            }
+            serialize(): any {
+              return { type: "deleteTrackKeyframe", key }
+            }
+          })()
+        }
+        estimateSize(): number {
+          return 64
+        }
+        serialize(): any {
+          return { type: "upsertTrackKeyframe", key, time, value }
+        }
+      })()
+      historyRef.current?.execute(cmd)
+    },
+    []
+  )
+
+  const deleteKeyframe = React.useCallback(
+    (
+      layerId: LayerId,
+      target: "filter" | "adjustment",
+      key: string,
+      time?: number
+    ) => {
+      const cmd = new (class DeleteTrackKeyframeCommand implements Command {
+        meta: CommandMeta = {
+          label: `Delete Keyframe ${key}`,
+          scope: "global",
+          timestamp: Date.now(),
+          coalescable: false,
+        }
+        apply(s: CanonicalEditorState): CanonicalEditorState {
+          const byId = { ...s.layers.byId }
+          const layer = byId[layerId] as any
+          if (!layer) return s
+          const { deleteKeyframe } = require("@/lib/animation/timeline")
+          const t = typeof time === "number" ? time : s.timeline.playheadTime
+          if (target === "filter") {
+            const tracks = { ...(layer.filterTracks || {}) }
+            if (tracks[key]) tracks[key] = deleteKeyframe(tracks[key], t)
+            byId[layerId] = { ...layer, filterTracks: tracks }
+          } else {
+            const tracks = { ...(layer.parameterTracks || {}) }
+            if (tracks[key]) tracks[key] = deleteKeyframe(tracks[key], t)
+            byId[layerId] = { ...layer, parameterTracks: tracks }
+          }
+          require("@/lib/animation/timeline").clearSamplingCache()
+          return { ...s, layers: { ...s.layers, byId } }
+        }
+        invert(): Command {
+          return new (class RestoreKeyframeCommand implements Command {
+            meta: CommandMeta = {
+              label: `Restore Keyframe ${key}`,
+              scope: "global",
+              timestamp: Date.now(),
+              coalescable: false,
+            }
+            apply(s: CanonicalEditorState): CanonicalEditorState {
+              // This is a placeholder - in a real implementation, we would need to store
+              // the previous keyframe state before deletion to restore it
+              return s
+            }
+            invert(): Command {
+              return new DeleteTrackKeyframeCommand()
+            }
+            estimateSize(): number {
+              return 1
+            }
+            serialize() {
+              return { type: "restoreKeyframe", key, time }
+            }
+          })()
+        }
+        estimateSize(): number {
+          return 16
+        }
+        serialize(): any {
+          return { type: "deleteTrackKeyframe", key, time }
+        }
+      })()
+      historyRef.current?.execute(cmd)
+    },
+    []
+  )
+
+  const setKeyframeEasing = React.useCallback(
+    (
+      layerId: LayerId,
+      target: "filter" | "adjustment",
+      key: string,
+      time: number,
+      easing: string,
+      interpolation?: "stepped" | "linear" | "bezier"
+    ) => {
+      const cmd = new (class SetKeyframeEasingCommand implements Command {
+        meta: CommandMeta = {
+          label: `Set Easing ${key}`,
+          scope: "global",
+          timestamp: Date.now(),
+          coalescable: false,
+        }
+        private prev?: any
+        apply(s: CanonicalEditorState): CanonicalEditorState {
+          const byId = { ...s.layers.byId }
+          const layer = byId[layerId] as any
+          if (!layer) return s
+          const t = Number(time)
+          const { upsertKeyframe } = require("@/lib/animation/timeline")
+          if (target === "filter") {
+            const tracks = { ...(layer.filterTracks || {}) }
+            const tr = tracks[key]
+            if (tr) {
+              // store previous easing of exact time if exists
+              const k = (tr.keyframes || []).find(
+                (k: any) => Math.abs(k.time - t) < 1e-6
+              )
+              this.prev = k
+                ? { easing: k.easing, interpolation: k.interpolation }
+                : undefined
+              tracks[key] = upsertKeyframe(
+                tr,
+                t,
+                k
+                  ? k.value
+                  : require("@/lib/animation/timeline").sampleTrack(tr, t),
+                { easing: easing as any, interpolation }
+              )
+            }
+            byId[layerId] = { ...layer, filterTracks: tracks }
+          } else {
+            const tracks = { ...(layer.parameterTracks || {}) }
+            const tr = tracks[key]
+            if (tr) {
+              const k = (tr.keyframes || []).find(
+                (k: any) => Math.abs(k.time - t) < 1e-6
+              )
+              this.prev = k
+                ? { easing: k.easing, interpolation: k.interpolation }
+                : undefined
+              tracks[key] = upsertKeyframe(
+                tr,
+                t,
+                k
+                  ? k.value
+                  : require("@/lib/animation/timeline").sampleTrack(tr, t),
+                { easing: easing as any, interpolation }
+              )
+            }
+            byId[layerId] = { ...layer, parameterTracks: tracks }
+          }
+          require("@/lib/animation/timeline").clearSamplingCache()
+          return { ...s, layers: { ...s.layers, byId } }
+        }
+        invert(): Command {
+          const prevEasing = this.prev
+          return new (class RestoreKeyframeEasingCommand implements Command {
+            meta: CommandMeta = {
+              label: `Restore Easing ${key}`,
+              scope: "global",
+              timestamp: Date.now(),
+              coalescable: false,
+            }
+            apply(s: CanonicalEditorState): CanonicalEditorState {
+              const byId = { ...s.layers.byId }
+              const layer = byId[layerId] as any
+              if (!layer || !prevEasing) return s
+              const t = Number(time)
+              const { upsertKeyframe } = require("@/lib/animation/timeline")
+              if (target === "filter") {
+                const tracks = { ...(layer.filterTracks || {}) }
+                const tr = tracks[key]
+                if (tr) {
+                  const k = (tr.keyframes || []).find(
+                    (k: any) => Math.abs(k.time - t) < 1e-6
+                  )
+                  if (k) {
+                    tracks[key] = upsertKeyframe(tr, t, k.value, {
+                      easing: prevEasing.easing,
+                      interpolation: prevEasing.interpolation,
+                    })
+                  }
+                }
+                byId[layerId] = { ...layer, filterTracks: tracks }
+              } else {
+                const tracks = { ...(layer.parameterTracks || {}) }
+                const tr = tracks[key]
+                if (tr) {
+                  const k = (tr.keyframes || []).find(
+                    (k: any) => Math.abs(k.time - t) < 1e-6
+                  )
+                  if (k) {
+                    tracks[key] = upsertKeyframe(tr, t, k.value, {
+                      easing: prevEasing.easing,
+                      interpolation: prevEasing.interpolation,
+                    })
+                  }
+                }
+                byId[layerId] = { ...layer, parameterTracks: tracks }
+              }
+              require("@/lib/animation/timeline").clearSamplingCache()
+              return { ...s, layers: { ...s.layers, byId } }
+            }
+            invert(): Command {
+              return new SetKeyframeEasingCommand()
+            }
+            estimateSize(): number {
+              return 32
+            }
+            serialize(): any {
+              return {
+                type: "restoreKeyframeEasing",
+                key,
+                time,
+                easing: prevEasing?.easing,
+                interpolation: prevEasing?.interpolation,
+              }
+            }
+          })()
+        }
+        estimateSize(): number {
+          return 32
+        }
+        serialize(): any {
+          return { type: "setKeyframeEasing", key, time, easing, interpolation }
+        }
+      })()
+      historyRef.current?.execute(cmd)
+    },
+    []
+  )
+
   const rotateDocument = React.useCallback((rotation: number) => {
     // Prepare image-layer rotations for document rotate
     const currentLayers = canonicalRef.current.layers
@@ -794,7 +1175,15 @@ export function EditorProvider({
       const layer = currentLayers.byId[layerId]
       if (layer.type === "image") {
         const imageLayer = layer as any
-        previousRotations[layerId] = imageLayer.filters?.rotate || 0
+        try {
+          const tracks = (imageLayer as any).filterTracks || {}
+          const { sampleTrack } = require("@/lib/animation/timeline")
+          previousRotations[layerId] = tracks.rotate
+            ? Number(sampleTrack(tracks.rotate, 0)) || 0
+            : 0
+        } catch {
+          previousRotations[layerId] = 0
+        }
       }
     }
 
@@ -817,9 +1206,22 @@ export function EditorProvider({
         const layer = currentLayers.byId[layerId]
         if (layer.type === "image") {
           const imageLayer = layer as any
-          previousFlips[layerId] = {
-            flipHorizontal: Boolean(imageLayer.filters?.flipHorizontal),
-            flipVertical: Boolean(imageLayer.filters?.flipVertical),
+          try {
+            const tracks = (imageLayer as any).filterTracks || {}
+            const { sampleTrack } = require("@/lib/animation/timeline")
+            previousFlips[layerId] = {
+              flipHorizontal: tracks.flipHorizontal
+                ? Boolean(sampleTrack(tracks.flipHorizontal, 0))
+                : false,
+              flipVertical: tracks.flipVertical
+                ? Boolean(sampleTrack(tracks.flipVertical, 0))
+                : false,
+            }
+          } catch {
+            previousFlips[layerId] = {
+              flipHorizontal: false,
+              flipVertical: false,
+            }
           }
         }
       }
@@ -950,6 +1352,12 @@ export function EditorProvider({
       toggleGroupCollapse,
       toggleLock,
       toggleVisibility,
+      // Timeline
+      setPlayheadTime,
+      setTimebase,
+      addKeyframe,
+      deleteKeyframe,
+      setKeyframeEasing,
       ungroupLayer,
       updateAdjustmentParameters,
       updateLayer,
@@ -968,6 +1376,11 @@ export function EditorProvider({
       documentLayerDimensions,
       runtime,
       renderType,
+      setPlayheadTime,
+      setTimebase,
+      addKeyframe,
+      deleteKeyframe,
+      setKeyframeEasing,
       addAdjustmentLayer,
       addEmptyLayer,
       addImageLayer,

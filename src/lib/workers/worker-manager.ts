@@ -573,7 +573,11 @@ export class WorkerManager {
       opacity: number
       blendMode: string
     }>,
-    globalParameters?: Record<string, number | { value: number; color: string }>
+    globalParameters?: Record<
+      string,
+      number | { value: number; color: string }
+    >,
+    playheadTime?: number
   ): Promise<string> {
     const taskId = this.generateMessageId()
 
@@ -614,6 +618,7 @@ export class WorkerManager {
         colorSpace: typeof colorSpace === "number" ? colorSpace : 0,
         globalLayers,
         globalParameters,
+        playheadTime: typeof playheadTime === "number" ? playheadTime : 0,
       },
       timestamp: Date.now(),
       retryCount: 0,

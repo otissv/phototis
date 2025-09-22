@@ -321,7 +321,8 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
       globalParameters?: Record<
         string,
         number | { value: number; color: string }
-      >
+      >,
+      playheadTime?: number
     ): Promise<string | null> => {
       const manager = workerManagerRef.current
       if (!manager || !manager.isReady()) {
@@ -456,7 +457,8 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
                 colorSpaceFlag,
                 graph,
                 globalLayers,
-                globalParameters
+                globalParameters,
+                playheadTime
               )
 
               console.log("🎨 [Worker] Starting task:", { taskId })

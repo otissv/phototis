@@ -8,6 +8,7 @@ import { BLEND_MODE_MAP } from "./blend-modes/blend-modes"
 import type { BlendMode } from "./blend-modes/types.blend"
 // Legacy monolithic shaders removed; using v2 ShaderManager only
 import type { ImageEditorToolsState } from "@/lib/tools/tools-state"
+import { sampleTrack, type Track } from "@/lib/animation/timeline"
 import type { EditorLayer as Layer } from "@/lib/editor/state"
 // Legacy ShaderManager removed in v2 migration
 import { RenderConfig } from "./render-config"
@@ -1139,7 +1140,7 @@ void main() {
       id: string
       type: "adjustment" | "solid" | "mask"
       adjustmentType?: string
-      parameters?: Record<string, any>
+      parameterTracks?: Record<string, Track<any>>
       color?: [number, number, number, number]
       enabled?: boolean
       inverted?: boolean
@@ -1147,7 +1148,11 @@ void main() {
       opacity: number
       blendMode: string
     }>,
-    globalParameters?: Record<string, number | { value: number; color: string }>
+    globalParameters?: Record<
+      string,
+      number | { value: number; color: string }
+    >,
+    playheadTime?: number
   ): void {
     if (!this.gl || !this.shaderManagerV2 || !this.compositingProgram) {
       return
@@ -1261,48 +1266,21 @@ void main() {
           continue
         }
 
-        // Base tools for this image layer: start with safe defaults and merge
-        // - effect-type keys from image filters
-        // - orientation keys from image filters (so non-selected layers keep their own transforms)
-        const EFFECT_KEYS: Array<keyof Partial<ImageEditorToolsState>> = [
-          "blur",
-          "blurType",
-          "blurDirection",
-          "blurCenter",
-          "noise",
-          "grain",
-        ]
-        const ORIENTATION_KEYS: Array<keyof Partial<ImageEditorToolsState>> = [
-          "flipHorizontal",
-          "flipVertical",
-          "rotate",
-          "scale",
-        ]
-        const layerToolsValues = applyGlobalParameters(withDefaults(undefined))
-        const imgFilters =
-          (layer.filters as Partial<ImageEditorToolsState>) || {}
-        for (const k of EFFECT_KEYS) {
-          if (Object.prototype.hasOwnProperty.call(imgFilters, k)) {
-            ;(layerToolsValues as any)[k] = (imgFilters as any)[k]
+        // Sample this image layer's own filterTracks at playhead time
+        const t = typeof playheadTime === "number" ? playheadTime : 0
+        const tracks = ((layer as any).filterTracks || {}) as Record<
+          string,
+          Track<any>
+        >
+        const sampledParams: Record<string, any> = {}
+        try {
+          for (const [k, tr] of Object.entries(tracks)) {
+            sampledParams[k] = sampleTrack(tr, t)
           }
-        }
-
-        // If this is the selected layer, merge in interactive toolsValues (e.g., flips/rotate/zoom)
-        if (layer.id === selectedLayerId) {
-          const selectedDefaults = withDefaults(toolsValues)
-          const INTERACTIVE_KEYS: Array<keyof Partial<ImageEditorToolsState>> =
-            ["flipHorizontal", "flipVertical", "rotate", "scale", "zoom"]
-          for (const k of INTERACTIVE_KEYS) {
-            ;(layerToolsValues as any)[k] = (selectedDefaults as any)[k]
-          }
-        } else {
-          // For non-selected layers, preserve their own orientation (rotate/flip/scale) from filters
-          for (const k of ORIENTATION_KEYS) {
-            if (Object.prototype.hasOwnProperty.call(imgFilters, k)) {
-              ;(layerToolsValues as any)[k] = (imgFilters as any)[k]
-            }
-          }
-        }
+        } catch {}
+        const layerToolsValues = applyGlobalParameters(
+          withDefaults(sampledParams as any)
+        )
 
         // Render this image layer content at full opacity
         const renderedLayerTexture = this.renderLayer(
@@ -1397,10 +1375,22 @@ void main() {
           if (child.type === "image") {
             const childTex = layerTextures.get(child.id)
             if (!childTex) continue
+            // Sample child image layer tracks at playhead time
+            const t = typeof playheadTime === "number" ? playheadTime : 0
+            const childTracks = ((child as any).filterTracks || {}) as Record<
+              string,
+              Track<any>
+            >
+            const childSampled: Record<string, any> = {}
+            try {
+              for (const [k, tr] of Object.entries(childTracks)) {
+                childSampled[k] = sampleTrack(tr, t)
+              }
+            } catch {}
             const childRendered = this.renderLayer(
               child as any,
               childTex,
-              withDefaults(undefined),
+              withDefaults(childSampled as any),
               canvasWidth,
               canvasHeight,
               layerDimensions
@@ -1434,7 +1424,15 @@ void main() {
             }
           } else if (child.type === "adjustment") {
             if (!groupAccum) continue
-            const adjParams = (child as any).parameters || {}
+            const tracks = ((child as any).parameterTracks || {}) as Record<
+              string,
+              Track<any>
+            >
+            const t = typeof playheadTime === "number" ? playheadTime : 0
+            const adjParams: Record<string, any> = {}
+            for (const [k, tr] of Object.entries(tracks)) {
+              adjParams[k] = sampleTrack(tr, t)
+            }
             const adjTexture = this.renderAdjustmentToTexture(
               groupAccum,
               withDefaults(adjParams),
@@ -1499,7 +1497,15 @@ void main() {
         }
 
         // Build tool values from adjustment parameters using plugin mapping
-        const adjustmentParams = (layer.parameters || {}) as Record<string, any>
+        const t = typeof playheadTime === "number" ? playheadTime : 0
+        const tracks = ((layer as any).parameterTracks || {}) as Record<
+          string,
+          Track<any>
+        >
+        const adjustmentParams: Record<string, any> = {}
+        for (const [k, tr] of Object.entries(tracks)) {
+          adjustmentParams[k] = sampleTrack(tr, t)
+        }
         const adjustmentTools = withDefaults(undefined)
         try {
           // dynamic require to avoid top-level await and keep main bundle small
@@ -1580,10 +1586,15 @@ void main() {
       for (const globalLayer of orderedGlobalLayers) {
         if (globalLayer.type === "adjustment") {
           // Build tool values from global adjustment parameters
-          const adjustmentParams = (globalLayer.parameters || {}) as Record<
+          const t = typeof playheadTime === "number" ? playheadTime : 0
+          const tracks = ((globalLayer as any).parameterTracks || {}) as Record<
             string,
-            any
+            Track<any>
           >
+          const adjustmentParams: Record<string, any> = {}
+          for (const [k, tr] of Object.entries(tracks)) {
+            adjustmentParams[k] = sampleTrack(tr, t)
+          }
           const adjustmentTools = withDefaults(undefined)
           try {
             // dynamic require to avoid top-level await and keep main bundle small

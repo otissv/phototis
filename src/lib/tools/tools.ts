@@ -52,6 +52,9 @@ export type ToolValueKeys =
   | AdjustmentType
   | RotateType
   | DimensionsType
+  | DimensionsCanvasType
+  | EffectsType
+  | MoveType
   | CropType
   | ScaleType
   | UpscaleType
@@ -201,6 +204,30 @@ export const TOOL_VALUES: Record<ToolValueKeys, ToolValueTypes> = {
     step: 0.1,
     defaultValue: 1.0,
   },
+  blurType: {
+    min: 0,
+    max: 3,
+    step: 1,
+    defaultValue: 0,
+  },
+  blurDirection: {
+    min: 0,
+    max: 360,
+    step: 1,
+    defaultValue: 0,
+  },
+  blurCenter: {
+    min: 0,
+    max: 1,
+    step: 0.01,
+    defaultValue: 0.5,
+  },
+  grain: {
+    min: 0,
+    max: 100,
+    step: 1,
+    defaultValue: 0,
+  },
   tint: {
     min: -100,
     max: 100,
@@ -260,6 +287,18 @@ export const TOOL_VALUES: Record<ToolValueKeys, ToolValueTypes> = {
       overlay: "thirdGrid",
     },
   },
+  move: {
+    width: 0,
+    height: 0,
+    x: 0,
+    y: 0,
+    defaultValue: {
+      width: 0,
+      height: 0,
+      x: 0,
+      y: 0,
+    },
+  },
 }
 
 export type DimensionsToolsType = {
@@ -297,6 +336,35 @@ export type UpscaleToolsType = {
   upscale: number
 }
 
+export type DimensionsCanvasToolsType = {
+  dimensionsCanvas: {
+    width: number
+    height: number
+    x: number
+    y: number
+  }
+}
+
+export type EffectsToolsType = {
+  blur: number
+  blurType: number
+  blurDirection: number
+  blurCenter: number
+  noise: number
+  grain: number
+  sharpen: number
+  sepia: number
+}
+
+export type MoveToolsType = {
+  move: {
+    width: number
+    height: number
+    x: number
+    y: number
+  }
+}
+
 export type AdjustLayersType = {
   brightness: number
   contrast: number
@@ -332,3 +400,6 @@ export type DimensionsType = keyof DimensionsToolsType
 export type CropType = keyof CropToolsType
 export type ScaleType = keyof ScaleToolsType
 export type UpscaleType = keyof UpscaleToolsType
+export type DimensionsCanvasType = keyof DimensionsCanvasToolsType
+export type EffectsType = keyof EffectsToolsType
+export type MoveType = keyof MoveToolsType

@@ -70,6 +70,7 @@ interface RenderMessage extends WorkerMessage {
       blendMode: string
     }>
     globalParameters?: Record<string, number | { value: number; color: string }>
+    playheadTime?: number
   }
 }
 
@@ -993,11 +994,16 @@ async function renderLayers(
     // Convert layerDimensions array to Map for easier access
     const layerDimensionsMap = new Map(layerDimensions)
 
-    // Update color space flag if provided in message data
+    // Update color space flag and playhead time if provided in message data
     try {
       const m: any = (self as any).__lastMessageData
       if (m && typeof m.colorSpace === "number")
         docColorSpaceFlag = m.colorSpace
+      if (m && typeof m.playheadTime === "number") {
+        ;(self as any).__currentPlayheadTime = m.playheadTime
+      } else {
+        ;(self as any).__currentPlayheadTime = 0
+      }
     } catch {}
 
     // Validate canvas dimensions
@@ -1207,7 +1213,10 @@ async function renderLayers(
           canvasHeight,
           layerDimensionsMap,
           renderMessage.data.globalLayers,
-          renderMessage.data.globalParameters
+          renderMessage.data.globalParameters,
+          typeof renderMessage.data.playheadTime === "number"
+            ? renderMessage.data.playheadTime
+            : 0
         )
 
         const result = (hybridRendererInstance as any).fboManager?.getFBO?.(
