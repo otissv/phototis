@@ -1,6 +1,7 @@
+// KF-MIGRATE: All effective filters should come from sampled Tracks; remove reliance on initialToolsState at runtime.
 "use client"
 
-import React, { useId } from "react"
+import { useId, useRef, useState, useCallback, useMemo, useEffect } from "react"
 import { PlusIcon, MinusIcon, Menu } from "lucide-react"
 
 import { Button } from "@/ui/button"
@@ -10,12 +11,11 @@ import { ImageEditorCanvas } from "@/components/canvas.image-editor"
 import { ImageEditorSidebar } from "@/components/sidebar.image-editor"
 import { ImageEditorFooter } from "@/components/tools.image-editor"
 import {
+  imageEditorToolsReducer,
   initialToolsState,
   type ImageEditorToolsActions,
 } from "@/lib/tools/tools-state"
-import { sampleToolsAtTime } from "@/lib/tools/tracks"
 import { SetActiveToolCommand } from "@/lib/editor/commands"
-
 import { EditorProvider, useEditorContext } from "@/lib/editor/context"
 import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover"
 import { ImageEditorPanels } from "@/components/panels"
@@ -43,14 +43,14 @@ function ImageEditorInner({
   allowAddMultipleImages = false,
   ...props
 }: ImageEditorProps) {
-  const canvasRef = React.useRef<HTMLCanvasElement | null>(null)
-  const drawFnRef = React.useRef<() => void>(() => {})
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const drawFnRef = useRef<() => void>(() => {})
 
-  const [isSidebarOpen, setIsSidebarOpen] = React.useState(false)
-  const [isPanelsOpen, setIsPanelsOpen] = React.useState(false)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const [isPanelsOpen, setIsPanelsOpen] = useState(false)
   const id = useId()
 
-  const [progress, setProgress] = React.useState(0)
+  const [progress, setProgress] = useState(0)
 
   const {
     state,
@@ -63,65 +63,54 @@ function ImageEditorInner({
     removeLayer,
     renderType,
     setRenderType,
+    selectLayer,
     selectLayerNonUndoable,
     setZoomPercent,
     updateLayer,
-    addKeyframe,
   } = useEditorContext()
 
   // Get the currently selected layer's filters
-  const selectedLayer = React.useMemo(() => {
+  const selectedLayer = useMemo(() => {
     return getSelectedLayer() || null
   }, [getSelectedLayer])
 
-  const toolsValues = React.useMemo(() => {
-    const t = state.canonical.timeline.playheadTime || 0
+  const toolsValues = useMemo(() => {
+    // If document layer is selected, use document filters
     if (selectedLayer?.id === "document" && selectedLayer.type === "document") {
-      const tracks = (selectedLayer as any).filterTracks
-      return tracks ? sampleToolsAtTime(tracks, t) : initialToolsState
+      return (selectedLayer as any).filters || initialToolsState
     }
+    // For image layers, use their filters
     if (selectedLayer?.type === "image") {
-      const tracks = (selectedLayer as any).filterTracks
-      return tracks ? sampleToolsAtTime(tracks, t) : initialToolsState
+      return (selectedLayer as any).filters || initialToolsState
     }
+    // For other layer types, return initial state
     return initialToolsState
-  }, [selectedLayer, state.canonical.timeline.playheadTime])
+  }, [selectedLayer])
 
-  const dispatch = React.useCallback(
+  const dispatch = useCallback(
     (action: ImageEditorToolsActions | ImageEditorToolsActions[]) => {
       const current = selectedLayer
       const selectedId = getSelectedLayerId()
+
       if (!current || !selectedId) return
+
+      // Only allow filter updates for image and document layers
       if (current.type !== "image" && current.type !== "document") return
-      const t = state.canonical.timeline.playheadTime || 0
 
-      const applyAction = (act: any) => {
-        if (act.type === "dimensions") {
-          addKeyframe(selectedId, "filter", "dimensions", act.payload, t)
-        } else if (act.type === "crop") {
-          addKeyframe(selectedId, "filter", "crop", act.payload, t)
-        } else if (act.type === "solid") {
-          addKeyframe(selectedId, "filter", "solid", act.payload, t)
-        } else {
-          addKeyframe(selectedId, "filter", act.type, act.payload, t)
-        }
-      }
+      const currentFilters = (current as any).filters || initialToolsState
+      const newFilters = Array.isArray(action)
+        ? action.reduce((acc, curr) => {
+            return imageEditorToolsReducer(acc, curr)
+          }, currentFilters)
+        : imageEditorToolsReducer(currentFilters, action)
 
-      if (Array.isArray(action)) {
-        action.forEach(applyAction)
-      } else {
-        applyAction(action)
-      }
+      // Cast to any to bypass type checking for filters property
+      updateLayer(selectedId, { filters: newFilters } as any)
     },
-    [
-      selectedLayer,
-      getSelectedLayerId,
-      addKeyframe,
-      state.canonical.timeline.playheadTime,
-    ]
+    [selectedLayer, getSelectedLayerId, updateLayer]
   )
 
-  const value = React.useMemo(() => {
+  const value = useMemo(() => {
     switch (activeTool) {
       case "rotate":
         return toolsValues.rotate
@@ -134,7 +123,7 @@ function ImageEditorInner({
     }
   }, [activeTool, toolsValues.rotate, toolsValues.scale, toolsValues.crop])
 
-  const handleSelectedToolChange = React.useCallback(
+  const handleSelectedToolChange = useCallback(
     (tool: SidebarToolsKeys) => {
       try {
         history.begin(`Select ${capitalize(tool)}`)
@@ -147,17 +136,24 @@ function ImageEditorInner({
     [history, activeTool]
   )
 
-  const handleOnProgress = React.useCallback((progress: number) => {
+  const handleOnProgress = useCallback((progress: number) => {
     setProgress(progress)
   }, [])
 
-  const handleDrawReady = React.useCallback((d: () => void) => {
+  const handleDrawReady = useCallback((d: () => void) => {
     drawFnRef.current = d
   }, [])
 
-  // onImageDrop is handled at the outer component level; no local wrapper needed
+  const handleImageDrop = useCallback(
+    (file: File) => {
+      // Forward to provider's handler by calling through Canvas (which now handles internally)
+      // Kept for API compatibility; no-op here
+      onImageDrop?.(file)
+    },
+    [onImageDrop]
+  )
 
-  React.useEffect(() => {
+  useEffect(() => {
     try {
       if (typeof window !== "undefined") {
         window.localStorage.setItem("phototis:renderType", renderType)
@@ -165,7 +161,7 @@ function ImageEditorInner({
     } catch {}
   }, [renderType])
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!getSelectedLayerId()) {
       const first = getOrderedLayers()[0]
       if (first) selectLayerNonUndoable(first.id)
@@ -173,7 +169,7 @@ function ImageEditorInner({
   }, [getOrderedLayers, getSelectedLayerId, selectLayerNonUndoable])
 
   // Keep drag state observable to parent if requested
-  React.useEffect(() => {
+  useEffect(() => {
     // Provide a thumbnail provider to history to capture tiny previews per step
     const makeThumb = (): string | null => {
       const canvas = canvasRef.current
@@ -198,13 +194,13 @@ function ImageEditorInner({
     }
   }, [history])
 
-  React.useEffect(() => {
+  useEffect(() => {
     onDragStateChange?.(state.ephemeral.interaction.isDragging)
   }, [onDragStateChange, state.ephemeral.interaction.isDragging])
 
   // Global keyboard shortcuts
   // biome-ignore lint/correctness/useExhaustiveDependencies: history methods are stable via internal refs; intentional minimal deps
-  React.useEffect(() => {
+  useEffect(() => {
     const isTextInput = (el: EventTarget | null): boolean => {
       const node = el as HTMLElement | null
       if (!node) return false
@@ -456,7 +452,7 @@ function ZoomControls({
   onZoomChange: (zoom: number) => void
   value: number
 }) {
-  const handleZoom = React.useCallback(
+  const handleZoom = useCallback(
     (operator: "plus" | "minus") => () => {
       const payload = operator === "plus" ? value + 25 : value - 25
       if (payload < 13) {
@@ -497,7 +493,7 @@ export function ImageEditor({
   onDragStateChange,
   ...props
 }: ImageEditorProps) {
-  const [dimensions, setDimensions] = React.useState<
+  const [dimensions, setDimensions] = useState<
     | {
         width: number
         height: number
@@ -507,7 +503,7 @@ export function ImageEditor({
     | []
   >([])
 
-  React.useEffect(() => {
+  useEffect(() => {
     const fetchDimensions = async (image: File) => {
       const { width, height } = await getImageDimensions(image)
       return { size: width * height, width, height, name: image.name }
@@ -529,7 +525,7 @@ export function ImageEditor({
     }
 
     getCanvasDimensions(images)
-  }, [images, dimensions])
+  }, [dimensions])
 
   return dimensions.length > 0 ? (
     <EditorProvider images={images} dimensions={dimensions}>

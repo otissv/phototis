@@ -1,6 +1,14 @@
 "use client"
 
-import * as React from "react"
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  type Dispatch,
+  type SetStateAction,
+  type RefObject,
+} from "react"
 import { CropIcon, ChevronDown } from "lucide-react"
 
 import {
@@ -18,8 +26,8 @@ import {
 import type { CropToolsType } from "@/lib/tools/tools"
 import { Input } from "@/ui/input"
 import type { EditorContextValue } from "@/lib/editor/context"
-import type { LayerDimensions } from "../canvas.image-editor"
-import type { CropFooterProps } from "../tools.image-editor"
+import type { LayerDimensions } from "@/components/canvas.image-editor"
+import type { CropFooterProps } from "@/components/tools.image-editor"
 
 function CropButton({
   onSelectedToolChange,
@@ -45,11 +53,11 @@ function CropControls({
   value,
   dispatch,
 }: Omit<CropFooterProps, "onSelectedToolChange">) {
-  const [overlay, setOverlay] = React.useState(value.overlay)
-  const [width, setWidth] = React.useState(value.width)
-  const [height, setHeight] = React.useState(value.height)
+  const [overlay, setOverlay] = useState(value.overlay)
+  const [width, setWidth] = useState(value.width)
+  const [height, setHeight] = useState(value.height)
 
-  React.useEffect(() => {
+  useEffect(() => {
     setOverlay(value.overlay)
     setWidth(value.width)
     setHeight(value.height)
@@ -94,14 +102,14 @@ function CropControls({
     } catch {}
   }
 
-  const handleSave = React.useCallback(() => {
+  const handleSave = useCallback(() => {
     // Notify canvas to commit crop on the selected layer
     const ev = new CustomEvent("phototis:commit-crop")
     window.dispatchEvent(ev)
   }, [])
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: dispatch causes infinite loop
-  React.useEffect(() => {
+  useEffect(() => {
     // Sync width/height when overlay rectangle changes on canvas
     const handler = (e: Event) => {
       try {
@@ -192,8 +200,8 @@ function useCrop({
   history,
 }: {
   cropRect: { x: number; y: number; width: number; height: number } | null
-  setCropRect: React.Dispatch<
-    React.SetStateAction<{
+  setCropRect: Dispatch<
+    SetStateAction<{
       x: number
       y: number
       width: number
@@ -201,21 +209,21 @@ function useCrop({
     } | null>
   >
   state: EditorContextValue["state"]
-  layerDimensionsRef: React.RefObject<Map<string, LayerDimensions>>
+  layerDimensionsRef: RefObject<Map<string, LayerDimensions>>
   selectedLayerId: string
   canvasDimensions: { width: number; height: number }
-  overlayRef: React.RefObject<HTMLCanvasElement | null>
-  selectedFiltersRef: React.RefObject<any>
-  imageDataCacheRef: React.RefObject<Map<string, ImageData>>
-  glRef: React.RefObject<WebGLRenderingContext | null>
-  textureCacheRef: React.RefObject<Map<string, WebGLTexture>>
+  overlayRef: RefObject<HTMLCanvasElement | null>
+  selectedFiltersRef: RefObject<any>
+  imageDataCacheRef: RefObject<Map<string, ImageData>>
+  glRef: RefObject<WebGLRenderingContext | null>
+  textureCacheRef: RefObject<Map<string, WebGLTexture>>
   updateLayer: (id: string, layer: any) => void
-  drawRef: React.RefObject<() => void>
+  drawRef: RefObject<() => void>
   history: EditorContextValue["history"]
 }) {
   // Reset crop rect each time the crop tool is selected (transition into crop)
-  const prevToolRef = React.useRef<string | null>(null)
-  React.useEffect(() => {
+  const prevToolRef = useRef<string | null>(null)
+  useEffect(() => {
     const current = state.canonical.activeTool.tool
     const prev = prevToolRef.current
     if (current === "crop" && prev !== "crop") {
@@ -285,7 +293,7 @@ function useCrop({
   ])
 
   // Draw crop overlay grid on overlay canvas
-  React.useEffect(() => {
+  useEffect(() => {
     const activeTool = state.canonical.activeTool.tool
     const canvas = overlayRef.current
     if (!canvas) return
@@ -455,7 +463,7 @@ function useCrop({
   ])
 
   // Sync cropRect size from tool inputs (width/height) while preserving center
-  React.useEffect(() => {
+  useEffect(() => {
     if (state.canonical.activeTool.tool !== "crop") return
     if (!cropRect) return
     const c = (selectedFiltersRef.current as any)?.crop
@@ -493,7 +501,7 @@ function useCrop({
   ])
 
   // Directly respond to control input events to update overlay immediately
-  React.useEffect(() => {
+  useEffect(() => {
     const handler = (e: Event) => {
       if (state.canonical.activeTool.tool !== "crop") return
       const detail = (e as CustomEvent).detail as {
@@ -539,7 +547,7 @@ function useCrop({
   ])
 
   // Commit crop handler (triggered by UI Save)
-  const commitCrop = React.useCallback(async () => {
+  const commitCrop = useCallback(async () => {
     if (!cropRect) return
 
     const imageData = imageDataCacheRef.current.get(selectedLayerId)
@@ -671,14 +679,14 @@ function useCrop({
   ])
 
   // Listen for commit event from controls
-  React.useEffect(() => {
+  useEffect(() => {
     const handler = () => void commitCrop()
     window.addEventListener("phototis:commit-crop", handler)
     return () => window.removeEventListener("phototis:commit-crop", handler)
   }, [commitCrop])
 
   // Re-render overlay when overlay grid option changes (from controls)
-  React.useEffect(() => {
+  useEffect(() => {
     const handler = (e: Event) => {
       try {
         const ov = (e as CustomEvent).detail?.overlay as
@@ -705,7 +713,7 @@ function useCrop({
   }, [updateLayer, selectedLayerId, state.canonical.layers.byId, setCropRect])
 
   // Respond to request-crop-rect from controls to initialize inputs on first open
-  React.useEffect(() => {
+  useEffect(() => {
     const handleRequest = () => {
       if (!cropRect) return
       try {

@@ -2,9 +2,10 @@
 
 import { useCallback, useState, useEffect } from "react"
 import { useDropzone } from "react-dropzone"
+import { ImageIcon, Upload } from "lucide-react"
+
 import { cn } from "@/lib/utils"
 import { Card } from "@/ui/card"
-import { ImageIcon, Upload } from "lucide-react"
 
 interface DropzoneProps {
   onFilesAccepted: (files: File[]) => void

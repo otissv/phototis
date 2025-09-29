@@ -1,17 +1,15 @@
 "use client"
 
+import { Fragment } from "react"
 import { Eclipse, Palette, Sun, Droplets, Sparkles } from "lucide-react"
 
 import { TOOL_VALUES, type ToolValueColorType } from "@/lib/tools/tools"
 import { getAdjustmentPlugin } from "@/lib/editor/adjustments/registry"
-import { useEditorContext } from "@/lib/editor/context"
-import { sampleTrack } from "@/lib/animation/timeline"
-import { Color } from "@/components/color"
-import { colorPalette } from "@/components/color-palette"
+import { Color } from "@/components/ui/color"
+import { colorPalette } from "@/components/ui/color-palette"
 import type { AdjustmentLayer } from "@/lib/editor/state"
-import { ToggleSwitch } from "../toggle-switch"
+import { ToggleSwitch } from "../ui/toggle-switch"
 import { cn } from "@/lib/utils"
-import { Fragment } from "react"
 
 // Helper function to get appropriate icon for adjustment types
 export function getAdjustmentIcon(adjustmentType: string) {
@@ -52,8 +50,6 @@ export function AdjustmentLayerEditor({
   layer,
   onUpdate,
 }: AdjustmentLayerEditorProps) {
-  const { state } = useEditorContext()
-  const playheadTime = state.canonical.timeline.playheadTime || 0
   const handleParameterChange = (
     key: string,
     value: number | { value: number; color: string }
@@ -249,19 +245,7 @@ export function AdjustmentLayerEditor({
 
   const plugin = getAdjustmentPlugin(layer.adjustmentType as any)
   const ui = plugin?.uiSchema
-  const params = (() => {
-    const tracks: Record<string, any> = (layer as any).parameterTracks || {}
-    const out: Record<string, any> = {}
-    // Prefer sampling keys present in the plugin defaults/UI; fallback to all tracks
-    const keys: string[] = ui ? ui.map((c: any) => c.key) : Object.keys(tracks)
-    for (const key of keys) {
-      const tr = tracks[key]
-      if (tr) {
-        out[key] = sampleTrack(tr, playheadTime)
-      }
-    }
-    return out
-  })()
+  const params = layer.parameters
 
   return (
     <div className='flex items-center rounded-b-sm min-h-10 border'>

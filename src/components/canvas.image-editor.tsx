@@ -1,21 +1,23 @@
 "use client"
 
-import React, { useId } from "react"
+import { useId, useRef, useState, useCallback, useEffect, useMemo } from "react"
 import { cn } from "@/lib/utils"
 import { motion, useMotionValue, useTransform } from "motion/react"
 import { useDebounce } from "use-debounce"
 
 import type { ImageEditorToolsState } from "@/lib/tools/tools-state"
 import { initialToolsState } from "@/lib/tools/tools-state"
-import { sampleToolsAtTime } from "@/lib/tools/tracks"
 import type { EditorLayer } from "@/lib/editor/state"
 import { useEditorContext } from "@/lib/editor/context"
-import { ShaderManagerV2 } from "@/lib/shaders/v2/manager"
-import { GlobalShaderRegistryV2 } from "@/lib/shaders/v2/registry"
-import { HybridRenderer } from "@/lib/shaders/hybrid-renderer"
-import { RenderConfig } from "@/lib/shaders/render-config"
+import { ShaderManager } from "@/lib/shaders/manager.shader"
+import { GlobalShaderRegistryV2 } from "@/lib/shaders/registry.shader"
+import { HybridRenderer } from "@/lib/renderer/hybrid.renderer"
+import { RenderConfig } from "@/lib/renderer/render-config.renderer"
 import { useWorkerRenderer } from "@/components/hooks/useWorkerRenderer"
-import { TaskPriority, WorkerManager } from "@/lib/workers/worker-manager"
+import {
+  TaskPriority,
+  WorkerManager,
+} from "@/lib/renderer/worker-manager.renderer"
 import { CanvasStateManager } from "@/lib/canvas-state-manager"
 import { useCrop } from "@/components/tools/crop.tools"
 import { useMove } from "@/components/tools/move.tools"
@@ -61,23 +63,22 @@ export function ImageEditorCanvas({
     renderType,
     updateLayer,
     updateLayerNonUndoable,
-    addKeyframe,
   } = useEditorContext()
 
   const selectedLayerId = getSelectedLayerId() || "document"
   const isDragActive = state.ephemeral.interaction.isDragging
-  const glRef = React.useRef<WebGL2RenderingContext | null>(null)
-  const programRef = React.useRef<WebGLProgram | null>(null)
-  const textureRef = React.useRef<WebGLTexture | null>(null)
-  const positionBufferRef = React.useRef<WebGLBuffer | null>(null)
-  const texCoordBufferRef = React.useRef<WebGLBuffer | null>(null)
-  const hybridRendererRef = React.useRef<HybridRenderer | null>(null)
-  const [processing, setProcessing] = React.useState(0)
-  const [isElementDragging, setIsElementDragging] = React.useState(false)
+  const glRef = useRef<WebGL2RenderingContext | null>(null)
+  const programRef = useRef<WebGLProgram | null>(null)
+  const textureRef = useRef<WebGLTexture | null>(null)
+  const positionBufferRef = useRef<WebGLBuffer | null>(null)
+  const texCoordBufferRef = useRef<WebGLBuffer | null>(null)
+  const hybridRendererRef = useRef<HybridRenderer | null>(null)
+  const [processing, setProcessing] = useState(0)
+  const [isElementDragging, setIsElementDragging] = useState(false)
   const id = useId()
 
   // Helper function to flatten grouped layers for signature calculation
-  const flattenLayersForSignature = React.useCallback(
+  const flattenLayersForSignature = useCallback(
     (layers: EditorLayer[]): EditorLayer[] => {
       const flattened: EditorLayer[] = []
 
@@ -114,19 +115,16 @@ export function ImageEditorCanvas({
   )
 
   // Get top-level layers for signature calculation (preserves hierarchical structure)
-  const topLevelLayers = React.useMemo(
-    () => getOrderedLayers(),
-    [getOrderedLayers]
-  )
+  const topLevelLayers = useMemo(() => getOrderedLayers(), [getOrderedLayers])
 
   // Flatten all layers including nested group children for comprehensive change detection
-  const canonicalLayers = React.useMemo(() => {
+  const canonicalLayers = useMemo(() => {
     return flattenLayersForSignature(topLevelLayers)
   }, [topLevelLayers, flattenLayersForSignature])
 
   // Worker-based rendering system
   // Memoize worker config so hook callbacks remain stable across renders
-  const workerRendererConfig = React.useMemo(
+  const workerRendererConfig = useMemo(
     () => ({
       enableProgressiveRendering: true,
       progressiveLevels: [0.25, 0.5, 1.0] as number[],
@@ -152,33 +150,33 @@ export function ImageEditorCanvas({
   } = useWorkerRenderer(workerRendererConfig)
 
   // Stable refs for worker state to avoid re-render loops in draw
-  const isWorkerReadyRef = React.useRef(false)
-  const isWorkerProcessingRef = React.useRef(false)
-  const isWorkerInitializingRef = React.useRef(false)
+  const isWorkerReadyRef = useRef(false)
+  const isWorkerProcessingRef = useRef(false)
+  const isWorkerInitializingRef = useRef(false)
 
-  React.useEffect(() => {
+  useEffect(() => {
     isWorkerReadyRef.current = isWorkerReady
   }, [isWorkerReady])
 
-  React.useEffect(() => {
+  useEffect(() => {
     isWorkerProcessingRef.current = isWorkerProcessing
   }, [isWorkerProcessing])
 
-  React.useEffect(() => {
+  useEffect(() => {
     isWorkerInitializingRef.current = isWorkerInitializing
   }, [isWorkerInitializing])
 
   // Local guard to prevent double-queuing while we await queueing a worker task
-  const isQueueingRenderRef = React.useRef(false)
+  const isQueueingRenderRef = useRef(false)
 
   // Centralized draw trigger system
-  const drawDebounceTimerRef = React.useRef<ReturnType<
-    typeof setTimeout
-  > | null>(null)
-  const drawTriggerReasonsRef = React.useRef<Set<string>>(new Set())
+  const drawDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  )
+  const drawTriggerReasonsRef = useRef<Set<string>>(new Set())
 
   // Single entry point for all draw triggers
-  const triggerDraw = React.useCallback((reason: string) => {
+  const triggerDraw = useCallback((reason: string) => {
     drawTriggerReasonsRef.current.add(reason)
 
     if (drawDebounceTimerRef.current) {
@@ -197,13 +195,13 @@ export function ImageEditorCanvas({
   }, [])
 
   // If a draw is requested while the worker is busy, remember to redraw after it finishes
-  const pendingRenderRef = React.useRef<string | null>(null)
-  const pendingRenderTimerRef = React.useRef<ReturnType<
-    typeof setTimeout
-  > | null>(null)
+  const pendingRenderRef = useRef<string | null>(null)
+  const pendingRenderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  )
 
   // Once the worker is idle again, process any pending render request
-  React.useEffect(() => {
+  useEffect(() => {
     if (!isWorkerProcessing && pendingRenderRef.current) {
       // Clear and trigger a fresh draw with the latest state
       pendingRenderRef.current = null
@@ -216,31 +214,22 @@ export function ImageEditorCanvas({
   }, [isWorkerProcessing, triggerDraw])
 
   // Direct image data cache for WebGL textures
-  const imageDataCacheRef = React.useRef<Map<string, ImageData>>(new Map())
-  const textureCacheRef = React.useRef<Map<string, WebGLTexture>>(new Map())
+  const imageDataCacheRef = useRef<Map<string, ImageData>>(new Map())
+  const textureCacheRef = useRef<Map<string, WebGLTexture>>(new Map())
 
   // Layer dimensions cache
-  const layerDimensionsRef = React.useRef<Map<string, LayerDimensions>>(
-    new Map()
-  )
+  const layerDimensionsRef = useRef<Map<string, LayerDimensions>>(new Map())
 
   // Sync layerDimensionsRef with current layers (including children of groups)
-  React.useEffect(() => {
+  useEffect(() => {
     // Iterate over the flattened list so grouped children are included
     for (const layer of canonicalLayers) {
       if (layer.type !== "image") continue
       const imageLayer = layer as any
-      const t = state.canonical.timeline.playheadTime || 0
-      let dimensions: any = null
-      try {
-        const tr = (imageLayer.filterTracks || {}).dimensions
-        if (tr) {
-          const { sampleTrack } = require("@/lib/animation/timeline")
-          dimensions = sampleTrack(tr, t)
-        }
-      } catch {}
+      const filters = imageLayer.filters || {}
+      const dimensions = filters.dimensions || {}
 
-      if (dimensions && dimensions.width && dimensions.height) {
+      if (dimensions.width && dimensions.height) {
         const layerId = layer.id
         const currentDims = layerDimensionsRef.current.get(layerId)
         const newDims = {
@@ -271,17 +260,17 @@ export function ImageEditorCanvas({
         layerDimensionsRef.current.delete(layerId)
       }
     }
-  }, [canonicalLayers, state.canonical.timeline.playheadTime])
+  }, [canonicalLayers])
 
   // Canvas dimensions state - mirror canonical.document
-  const [canvasDimensions, setCanvasDimensions] = React.useState({
+  const [canvasDimensions, setCanvasDimensions] = useState({
     width: state.canonical.document.width,
     height: state.canonical.document.height,
     canvasPosition: state.canonical.document.canvasPosition,
   })
 
   // Keep canvas in sync with canonical.document changes
-  React.useEffect(() => {
+  useEffect(() => {
     const width = state.canonical.document.width
     const height = state.canonical.document.height
     const canvasPosition = state.canonical.document.canvasPosition
@@ -313,7 +302,7 @@ export function ImageEditorCanvas({
   ])
 
   // Ensure worker canvas is resized once the worker becomes ready
-  React.useEffect(() => {
+  useEffect(() => {
     if (!isWorkerReady) return
     const width = canvasDimensions.width
     const height = canvasDimensions.height
@@ -326,16 +315,16 @@ export function ImageEditorCanvas({
   ])
 
   // Track canvases we've already initialized to avoid duplicate init
-  const initializedCanvasesRef = React.useRef<WeakSet<HTMLCanvasElement>>(
+  const initializedCanvasesRef = useRef<WeakSet<HTMLCanvasElement>>(
     new WeakSet()
   )
   // Track in-progress initialization to avoid overlapping attempts
-  const initializingCanvasesRef = React.useRef<WeakSet<HTMLCanvasElement>>(
+  const initializingCanvasesRef = useRef<WeakSet<HTMLCanvasElement>>(
     new WeakSet()
   )
 
   // Initialize worker-based rendering system once per canvas
-  React.useEffect(() => {
+  useEffect(() => {
     const canvas = canvasRef?.current
     if (!canvas) return
     // Skip if already initialized or worker is ready
@@ -395,27 +384,64 @@ export function ImageEditorCanvas({
   const viewportScale = useMotionValue(1)
 
   // Current viewport state for calculations
-  const [viewport, setViewport] = React.useState<ViewportState>({
+  const [viewport, setViewport] = useState<ViewportState>({
     x: 0,
     y: 0,
     scale: 1,
   })
 
-  // Get the effective filters for the selected layer by sampling its filterTracks at playhead time
-  const effectiveFilters = React.useMemo(() => {
-    const t = state.canonical.timeline.playheadTime || 0
+  // Get the effective filters for the selected layer (including adjustment layers above it)
+  const effectiveFilters = useMemo(() => {
     if (!selectedLayerId) return initialToolsState
+
     const selectedLayer = state.canonical.layers.byId[selectedLayerId]
     if (!selectedLayer) return initialToolsState
-    if (selectedLayer.type === "image" || selectedLayer.type === "document") {
-      const tracks = (selectedLayer as any).filterTracks
-      return tracks ? sampleToolsAtTime(tracks, t) : initialToolsState
+
+    // Start with the selected layer's own filters
+    let effects: ImageEditorToolsState = { ...initialToolsState }
+
+    if (selectedLayer.type === "image") {
+      const imageLayer = selectedLayer as any
+      if (imageLayer.filters) {
+        effects = { ...effects, ...imageLayer.filters }
+      }
+    } else if (selectedLayer.type === "document") {
+      // For document layer, apply document-level transformations to all layers
+      const documentLayer = selectedLayer as any
+      if (documentLayer.filters) {
+        effects = { ...effects, ...documentLayer.filters }
+      }
     }
-    return initialToolsState
+
+    // Apply adjustment layers that are above the selected layer
+    const selectedIndex = state.canonical.layers.order.indexOf(selectedLayerId)
+    if (selectedIndex >= 0) {
+      for (
+        let i = selectedIndex + 1;
+        i < state.canonical.layers.order.length;
+        i++
+      ) {
+        const layerId = state.canonical.layers.order[i]
+        const layer = state.canonical.layers.byId[layerId]
+
+        if (layer?.type === "adjustment" && layer.visible) {
+          const adjustment = layer as any
+          if (adjustment.parameters) {
+            Object.entries(adjustment.parameters).forEach(([key, value]) => {
+              if (key in effects) {
+                ;(effects as any)[key] = value
+              }
+            })
+          }
+        }
+      }
+    }
+
+    return effects
   }, [
     selectedLayerId,
+    state.canonical.layers.order,
     state.canonical.layers.byId,
-    state.canonical.timeline.playheadTime,
   ])
 
   // Use effective filters instead of just selected layer filters
@@ -423,29 +449,27 @@ export function ImageEditorCanvas({
   const [throttledToolsValues] = useDebounce(effectiveFilters, 16)
 
   // Track if we're currently drawing to prevent overlapping draws
-  const isDrawingRef = React.useRef(false)
+  const isDrawingRef = useRef(false)
 
   // Smooth transition state for tool values
   const [smoothToolsValues, setSmoothToolsValues] =
-    React.useState<ImageEditorToolsState>(effectiveFilters)
-  const animationRef = React.useRef<Map<string, number>>(new Map())
+    useState<ImageEditorToolsState>(effectiveFilters)
+  const animationRef = useRef<Map<string, number>>(new Map())
 
   // Keep latest filters in refs so draw() sees current values without needing to rebind
-  const selectedFiltersRef =
-    React.useRef<ImageEditorToolsState>(effectiveFilters)
-  React.useEffect(() => {
+  const selectedFiltersRef = useRef<ImageEditorToolsState>(effectiveFilters)
+  useEffect(() => {
     selectedFiltersRef.current = effectiveFilters
   }, [effectiveFilters])
 
-  const smoothToolsValuesRef =
-    React.useRef<ImageEditorToolsState>(smoothToolsValues)
-  React.useEffect(() => {
+  const smoothToolsValuesRef = useRef<ImageEditorToolsState>(smoothToolsValues)
+  useEffect(() => {
     smoothToolsValuesRef.current = smoothToolsValues
   }, [smoothToolsValues])
 
   // Animate tool values smoothly when they change
   // biome-ignore lint/correctness/useExhaustiveDependencies: smoothToolsValues cause infinite loop
-  React.useEffect(() => {
+  useEffect(() => {
     const toolKeys = Object.keys(
       effectiveFilters
     ) as (keyof typeof effectiveFilters)[]
@@ -508,7 +532,7 @@ export function ImageEditorCanvas({
 
   // Force redraw on flip/rotate changes (these are instant toggles and should reflect immediately)
   // biome-ignore lint/correctness/useExhaustiveDependencies: we only want to react to orientation tools here
-  React.useEffect(() => {
+  useEffect(() => {
     // Avoid spamming draws during drags; draw loop already handles that case
     if (isDragActive) return
     triggerDraw("orientation-tools")
@@ -523,13 +547,13 @@ export function ImageEditorCanvas({
 
   // Redraw when debounced tool values change (includes adjustment parameters)
   // biome-ignore lint/correctness/useExhaustiveDependencies: we only want to react to debounced tools here
-  React.useEffect(() => {
+  useEffect(() => {
     if (isDragActive) return
     triggerDraw("debounced-tools")
   }, [debouncedToolsValues, isDragActive, triggerDraw])
 
   // Cleanup animations on unmount
-  React.useEffect(() => {
+  useEffect(() => {
     return () => {
       animationRef.current.forEach((animationId) => {
         cancelAnimationFrame(animationId)
@@ -539,7 +563,7 @@ export function ImageEditorCanvas({
   }, [])
 
   // Cleanup hybrid renderer on unmount
-  React.useEffect(() => {
+  useEffect(() => {
     return () => {
       if (hybridRendererRef.current) {
         hybridRendererRef.current.cleanup()
@@ -556,17 +580,17 @@ export function ImageEditorCanvas({
   const viewportRotation = state.canonical.viewport.rotation ?? 0
 
   // Container ref for viewport calculations
-  const containerRef = React.useRef<HTMLDivElement>(null)
-  const overlayRef = React.useRef<HTMLCanvasElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const overlayRef = useRef<HTMLCanvasElement>(null)
 
   // Crop tool interaction state (canvas-space pixel coords)
-  const [cropRect, setCropRect] = React.useState<{
+  const [cropRect, setCropRect] = useState<{
     x: number
     y: number
     width: number
     height: number
   } | null>(null)
-  const cropDragRef = React.useRef<{
+  const cropDragRef = useRef<{
     mode: "move" | "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw" | null
     startX: number
     startY: number
@@ -574,7 +598,7 @@ export function ImageEditorCanvas({
   } | null>(null)
 
   // Create a comprehensive signature representing all layer operations that should trigger rendering
-  const layersSignature = React.useMemo(() => {
+  const layersSignature = useMemo(() => {
     // Create a signature that covers all layer operations:
     // 1. Top-level layer order (including new layers)
     // 2. Group structure and children order
@@ -601,20 +625,9 @@ export function ImageEditorCanvas({
             }`
           }
         } else if ((l as any).type === "adjustment") {
-          try {
-            const t = state.canonical.timeline.playheadTime || 0
-            const tracks = ((l as any).parameterTracks || {}) as Record<
-              string,
-              any
-            >
-            const { sampleTrack } = require("@/lib/animation/timeline")
-            const entries = Object.entries(tracks)
-              .map(([k, tr]) => `${k}:${sampleTrack(tr, t)}`)
-              .sort()
-            adjSig = `adj:${entries.join("|")}`
-          } catch {
-            adjSig = "adj:"
-          }
+          const params = ((l as any).parameters || {}) as Record<string, number>
+          const keys = Object.keys(params).sort()
+          adjSig = `adj:${keys.map((k) => `${k}:${params[k]}`).join("|")}`
         } else if (l.type === "group") {
           const groupLayer = l as any
           // Include group children order and their properties
@@ -632,19 +645,10 @@ export function ImageEditorCanvas({
         // Include orientation signature so flips/rotation changes trigger redraws
         let orientSig = "orient:0:0:0"
         try {
-          const t = state.canonical.timeline.playheadTime || 0
-          const tracks: any = (l as any).filterTracks || {}
-          const { sampleTrack } = require("@/lib/animation/timeline")
-          const fhv = tracks.flipHorizontal
-            ? sampleTrack(tracks.flipHorizontal, t)
-            : 0
-          const fvv = tracks.flipVertical
-            ? sampleTrack(tracks.flipVertical, t)
-            : 0
-          const rotv = tracks.rotate ? sampleTrack(tracks.rotate, t) : 0
-          const fh = fhv ? 1 : 0
-          const fv = fvv ? 1 : 0
-          const rot = Math.round(Number(rotv || 0))
+          const f: any = (l as any).filters || {}
+          const fh = f.flipHorizontal ? 1 : 0
+          const fv = f.flipVertical ? 1 : 0
+          const rot = typeof f.rotate === "number" ? Math.round(f.rotate) : 0
           orientSig = `orient:${fh}:${fv}:${rot}`
         } catch {}
 
@@ -677,19 +681,9 @@ export function ImageEditorCanvas({
           l.opacity,
           l.blendMode,
           l.type === "adjustment"
-            ? (() => {
-                try {
-                  const tracks: any = (l as any).parameterTracks || {}
-                  const t = state.canonical.timeline.playheadTime || 0
-                  const { sampleTrack } = require("@/lib/animation/timeline")
-                  const entries = Object.entries(tracks).map(
-                    ([k, tr]: any) => `${k}:${sampleTrack(tr, t)}`
-                  )
-                  return `adj:${entries.join("|")}`
-                } catch {
-                  return "adj:"
-                }
-              })()
+            ? `adj:${Object.entries(l.parameters || {})
+                .map(([k, v]) => `${k}:${v}`)
+                .join("|")}`
             : "",
           l.type === "solid" ? `solid:${l.color?.join(",") || ""}` : "",
           l.type === "mask"
@@ -715,11 +709,10 @@ export function ImageEditorCanvas({
     topLevelLayers,
     state.canonical.document.globalLayers,
     state.canonical.document.globalParameters,
-    state.canonical.timeline.playheadTime,
   ])
 
   // Update WebGL viewport when canvas dimensions change
-  React.useEffect(() => {
+  useEffect(() => {
     const gl = glRef.current
     const canvas = canvasRef?.current
 
@@ -734,7 +727,7 @@ export function ImageEditorCanvas({
   }, [canvasDimensions.width, canvasDimensions.height, canvasRef?.current])
 
   // Helper function to load image data from various sources (Blob/File or string URL)
-  const loadImageDataFromFile = React.useCallback(
+  const loadImageDataFromFile = useCallback(
     async (source: File | Blob | string): Promise<ImageData | null> => {
       return new Promise((resolve) => {
         const canvas = document.createElement("canvas")
@@ -814,7 +807,7 @@ export function ImageEditorCanvas({
   // Remove main image prop loading. Background handled via layer loading below
 
   // Initialize hybrid renderer when WebGL context is ready
-  React.useEffect(() => {
+  useEffect(() => {
     if (!canvasRef?.current || !glRef.current) {
       return
     }
@@ -844,7 +837,7 @@ export function ImageEditorCanvas({
 
   // Handle layer-specific image data loading
   // biome-ignore lint/correctness/useExhaustiveDependencies: loadImageDataFromFile cause infinite loop
-  React.useEffect(() => {
+  useEffect(() => {
     // Prevent updates during drag operations
     if (isDragActive) return
 
@@ -907,27 +900,25 @@ export function ImageEditorCanvas({
                 layerY = (currentCanvasHeight - imageData.height) / 2
               }
 
-              try {
-                const currentTracks = (layer as any).filterTracks || {}
-                const { upsertToolKeyframes } = require("@/lib/tools/tracks")
-                const nextTracks = upsertToolKeyframes(currentTracks, 0, {
+              updateLayerNonUndoable(layer.id, {
+                filters: {
+                  ...layer.filters,
                   dimensions: {
+                    ...layer.filters.dimensions,
                     width: imageData.width,
                     height: imageData.height,
                     x: layerX,
                     y: layerY,
                   },
                   crop: {
+                    ...layer.filters.crop,
                     width: imageData.width,
                     height: imageData.height,
                     x: layerX,
                     y: layerY,
                   },
-                })
-                updateLayerNonUndoable(layer.id, {
-                  filterTracks: nextTracks,
-                } as any)
-              } catch {}
+                },
+              } as any)
             }
 
             const layerDimensions: LayerDimensions = {
@@ -964,18 +955,17 @@ export function ImageEditorCanvas({
     canvasDimensions.width,
     canvasDimensions.height,
     isDragActive,
-    state.canonical.timeline.playheadTime,
   ])
 
   // Handle viewport updates based on zoom
-  React.useEffect(() => {
+  useEffect(() => {
     const zoom = effectiveFilters.zoom / 100
     viewportScale.set(zoom)
     setViewport((prev) => ({ ...prev, scale: zoom }))
   }, [effectiveFilters.zoom, viewportScale])
 
   // Center viewport when canvas dimensions change (default)
-  React.useEffect(() => {
+  useEffect(() => {
     if (!containerRef.current) return
 
     const container = containerRef.current
@@ -1004,12 +994,12 @@ export function ImageEditorCanvas({
   ])
 
   // Create a ref to access current canonical state to avoid dependency issues
-  const canonicalStateRef = React.useRef(state.canonical)
-  React.useEffect(() => {
+  const canonicalStateRef = useRef(state.canonical)
+  useEffect(() => {
     canonicalStateRef.current = state.canonical
   }, [state.canonical])
 
-  const handleWheel = React.useCallback(
+  const handleWheel = useCallback(
     (e: React.WheelEvent) => {
       // Only handle wheel events when Ctrl key is held down
       if (!e.ctrlKey) return
@@ -1040,7 +1030,7 @@ export function ImageEditorCanvas({
   )
 
   // Double-click to reset viewport
-  const handleDoubleClick = React.useCallback(() => {
+  const handleDoubleClick = useCallback(() => {
     // Function to reset viewport with smooth animation
     viewportX.set(0)
     viewportY.set(0)
@@ -1054,7 +1044,7 @@ export function ImageEditorCanvas({
   }, [viewportX, viewportY, viewportScale])
 
   // Initialize WebGL context and shaders
-  React.useEffect(() => {
+  useEffect(() => {
     if (!canvasRef?.current) return
 
     const canvas = canvasRef.current
@@ -1153,7 +1143,7 @@ export function ImageEditorCanvas({
   }, [canvasRef?.current, isWorkerReady, isWorkerInitializing, renderType])
 
   // Helper function to create WebGL texture from ImageData
-  const createTextureFromImageData = React.useCallback(
+  const createTextureFromImageData = useCallback(
     (imageData: ImageData): WebGLTexture | null => {
       const gl = glRef.current
       if (!gl) return null
@@ -1183,7 +1173,7 @@ export function ImageEditorCanvas({
   )
 
   // Helper function to load texture for a layer
-  const loadLayerTexture = React.useCallback(
+  const loadLayerTexture = useCallback(
     async (layer: EditorLayer): Promise<WebGLTexture | null> => {
       const gl = glRef.current
       if (!gl) return null
@@ -1237,7 +1227,7 @@ export function ImageEditorCanvas({
   )
 
   // Ensure HybridRenderer is created and initialized (idempotent)
-  const ensureHybridInitialized = React.useCallback((): boolean => {
+  const ensureHybridInitialized = useCallback((): boolean => {
     const gl = glRef.current
     const canvas = canvasRef?.current
     if (!gl || !canvas) return false
@@ -1418,9 +1408,9 @@ export function ImageEditorCanvas({
           })
         } catch {}
 
-        // Call ShaderManagerV2.prepareForMode('worker') to follow handshake
+        // Call ShaderManager.prepareForMode('worker') to follow handshake
         try {
-          const sm2 = new ShaderManagerV2(GlobalShaderRegistryV2)
+          const sm2 = new ShaderManager(GlobalShaderRegistryV2)
           sm2.prepareForMode("worker", canonicalLayers)
         } catch {}
 
@@ -1440,7 +1430,7 @@ export function ImageEditorCanvas({
             false, // interactive
             state.canonical.document.globalLayers,
             state.canonical.document.globalParameters,
-            state.canonical.timeline.playheadTime || 0
+            state.canonical.playheadTime
           )
 
           if (taskId) {
@@ -1693,7 +1683,7 @@ export function ImageEditorCanvas({
   }
 
   // Fallback rendering function for the new layer type system
-  const renderLayersFallback = React.useCallback(
+  const renderLayersFallback = useCallback(
     async (
       layers: EditorLayer[],
       layerTextures: Map<string, WebGLTexture>,
@@ -1751,9 +1741,9 @@ export function ImageEditorCanvas({
   )
 
   // Keep a stable reference to the latest draw function (no state update -> no render loop)
-  const drawRef = React.useRef<() => void>(() => {})
+  const drawRef = useRef<() => void>(() => {})
   // biome-ignore lint/correctness/useExhaustiveDependencies: keep drawRef updated on relevant changes without depending on draw itself
-  React.useEffect(() => {
+  useEffect(() => {
     drawRef.current = draw
   }, [
     layersSignature,
@@ -1766,7 +1756,7 @@ export function ImageEditorCanvas({
   ])
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: draw cause infinite loop
-  React.useEffect(() => {
+  useEffect(() => {
     const hasWebGLReady =
       !!glRef.current &&
       !!programRef.current &&
@@ -1780,19 +1770,19 @@ export function ImageEditorCanvas({
   }, [isWorkerReady, triggerDraw])
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: draw cause infinite loop
-  React.useEffect(() => {
+  useEffect(() => {
     onDrawReady?.(() => draw())
   }, [])
 
   // Redraw when layer properties that affect visibility/compositing change
-  React.useEffect(() => {
+  useEffect(() => {
     if (isDragActive) return
     if (!layersSignature) return
     triggerDraw("layer-properties")
   }, [isDragActive, layersSignature, triggerDraw])
 
   // Force a draw once worker is ready and layers exist (avoid depending on draw to prevent loops)
-  React.useEffect(() => {
+  useEffect(() => {
     if (!isWorkerReady) return
     if (canonicalLayers.length === 0) return
     triggerDraw("worker-ready-with-layers")
@@ -1800,7 +1790,7 @@ export function ImageEditorCanvas({
   }, [isWorkerReady, canonicalLayers.length, triggerDraw])
 
   // Drag and drop handlers
-  const handleDragOver = React.useCallback(
+  const handleDragOver = useCallback(
     (e: React.DragEvent) => {
       if (isElementDragging) return
       e.preventDefault()
@@ -1813,7 +1803,7 @@ export function ImageEditorCanvas({
     [isElementDragging]
   )
 
-  const handleDragLeave = React.useCallback(
+  const handleDragLeave = useCallback(
     (e: React.DragEvent) => {
       if (isElementDragging) return
       e.preventDefault()
@@ -1826,7 +1816,7 @@ export function ImageEditorCanvas({
     [isElementDragging]
   )
 
-  const handleDrop = React.useCallback(
+  const handleDrop = useCallback(
     (e: React.DragEvent) => {
       if (isElementDragging) return
       e.preventDefault()
@@ -1846,97 +1836,6 @@ export function ImageEditorCanvas({
       }
     },
     [onImageDrop, isElementDragging]
-  )
-
-  const handlePointerDown = React.useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      e.preventDefault()
-      e.stopPropagation()
-      const rect = (
-        e.currentTarget.parentElement as HTMLElement
-      ).getBoundingClientRect()
-      // Determine handle by target dataset
-      const target = e.target as HTMLElement
-      const handle = (target.getAttribute("data-handle") as any) || "move"
-      cropDragRef.current = {
-        mode: handle,
-        startX: e.clientX - rect.left,
-        startY: e.clientY - rect.top,
-        startRect: { ...cropRect },
-      }
-      ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-    },
-    [cropRect]
-  )
-
-  const handlePointerMove = React.useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      const drag = cropDragRef.current
-      if (!drag) return
-      const container = e.currentTarget.parentElement as HTMLElement
-      const bounds = container.getBoundingClientRect()
-      const px = e.clientX - bounds.left
-      const py = e.clientY - bounds.top
-      const { startX, startY, startRect } = drag
-      const mode = drag.mode || "move"
-      let nx = startRect.x
-      let ny = startRect.y
-      let nw = startRect.width
-      let nh = startRect.height
-      const dx = px - startX
-      const dy = py - startY
-      const minSize = 8
-      const clamp = (v: number, min: number, max: number) =>
-        Math.max(min, Math.min(max, v))
-      if (mode === "move") {
-        nx = clamp(startRect.x + dx, 0, canvasDimensions.width - nw)
-        ny = clamp(startRect.y + dy, 0, canvasDimensions.height - nh)
-      } else {
-        const left = startRect.x
-        const top = startRect.y
-        const right = startRect.x + startRect.width
-        const bottom = startRect.y + startRect.height
-        let nleft = left
-        let ntop = top
-        let nright = right
-        let nbottom = bottom
-        if (mode.includes("w")) nleft = clamp(left + dx, 0, right - minSize)
-        if (mode.includes("e"))
-          nright = clamp(right + dx, left + minSize, canvasDimensions.width)
-        if (mode.includes("n")) ntop = clamp(top + dy, 0, bottom - minSize)
-        if (mode.includes("s"))
-          nbottom = clamp(bottom + dy, top + minSize, canvasDimensions.height)
-        nx = nleft
-        ny = ntop
-        nw = nright - nleft
-        nh = nbottom - ntop
-      }
-      setCropRect({
-        x: Math.round(nx),
-        y: Math.round(ny),
-        width: Math.round(nw),
-        height: Math.round(nh),
-      })
-      try {
-        window.dispatchEvent(
-          new CustomEvent("phototis:crop-rect-changed", {
-            detail: {
-              width: Math.round(nw),
-              height: Math.round(nh),
-            },
-          })
-        )
-      } catch {}
-    },
-    [canvasDimensions.width, canvasDimensions.height, cropRect]
-  )
-
-  const handlePointerUp = React.useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      cropDragRef.current = null
-      ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
-    },
-    []
   )
 
   useCrop({
@@ -1968,7 +1867,6 @@ export function ImageEditorCanvas({
     drawRef,
     history,
     scale: viewport.scale,
-    addKeyframe,
   })
 
   return (
@@ -2044,9 +1942,98 @@ export function ImageEditorCanvas({
               cursor:
                 cropDragRef.current?.mode === "move" ? "grabbing" : "move",
             }}
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
+            onPointerDown={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              const rect = (
+                e.currentTarget.parentElement as HTMLElement
+              ).getBoundingClientRect()
+              // Determine handle by target dataset
+              const target = e.target as HTMLElement
+              const handle =
+                (target.getAttribute("data-handle") as any) || "move"
+              cropDragRef.current = {
+                mode: handle,
+                startX: e.clientX - rect.left,
+                startY: e.clientY - rect.top,
+                startRect: { ...cropRect },
+              }
+              ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+            }}
+            onPointerMove={(e) => {
+              const drag = cropDragRef.current
+              if (!drag) return
+              const container = e.currentTarget.parentElement as HTMLElement
+              const bounds = container.getBoundingClientRect()
+              const px = e.clientX - bounds.left
+              const py = e.clientY - bounds.top
+              const { startX, startY, startRect } = drag
+              const mode = drag.mode || "move"
+              let nx = startRect.x
+              let ny = startRect.y
+              let nw = startRect.width
+              let nh = startRect.height
+              const dx = px - startX
+              const dy = py - startY
+              const minSize = 8
+              const clamp = (v: number, min: number, max: number) =>
+                Math.max(min, Math.min(max, v))
+              if (mode === "move") {
+                nx = clamp(startRect.x + dx, 0, canvasDimensions.width - nw)
+                ny = clamp(startRect.y + dy, 0, canvasDimensions.height - nh)
+              } else {
+                const left = startRect.x
+                const top = startRect.y
+                const right = startRect.x + startRect.width
+                const bottom = startRect.y + startRect.height
+                let nleft = left
+                let ntop = top
+                let nright = right
+                let nbottom = bottom
+                if (mode.includes("w"))
+                  nleft = clamp(left + dx, 0, right - minSize)
+                if (mode.includes("e"))
+                  nright = clamp(
+                    right + dx,
+                    left + minSize,
+                    canvasDimensions.width
+                  )
+                if (mode.includes("n"))
+                  ntop = clamp(top + dy, 0, bottom - minSize)
+                if (mode.includes("s"))
+                  nbottom = clamp(
+                    bottom + dy,
+                    top + minSize,
+                    canvasDimensions.height
+                  )
+                nx = nleft
+                ny = ntop
+                nw = nright - nleft
+                nh = nbottom - ntop
+              }
+              setCropRect({
+                x: Math.round(nx),
+                y: Math.round(ny),
+                width: Math.round(nw),
+                height: Math.round(nh),
+              })
+              try {
+                window.dispatchEvent(
+                  new CustomEvent("phototis:crop-rect-changed", {
+                    detail: {
+                      width: Math.round(nw),
+                      height: Math.round(nh),
+                    },
+                  })
+                )
+              } catch {}
+            }}
+            onPointerUp={(e) => {
+              cropDragRef.current = null
+              ;(e.currentTarget as HTMLElement).releasePointerCapture(
+                e.pointerId
+              )
+            }}
           >
             {(["nw", "n", "ne", "e", "se", "s", "sw", "w"] as const).map(
               (h) => (
@@ -2081,6 +2068,19 @@ export function ImageEditorCanvas({
             )}
           </div>
         )}
+        {/* Drag overlay indicator */}
+        {/* <div
+          className={cn(
+            "absolute inset-0 pointer-events-none flex items-center justify-center opacity-0 transition-opacity duration-200",
+            "bg-blue-500/20 border-dashed border-blue-500 backdrop-blur-sm",
+            "ring-inset ring-1 ring-blue-500"
+          )}
+          id='drag-overlay'
+          style={{
+            width: canvasDimensions.width,
+            height: canvasDimensions.height,
+          }}
+        /> */}
       </motion.div>
 
       {/* Worker error indicator */}
@@ -2099,13 +2099,6 @@ export function ImageEditorCanvas({
               Cancel
             </button>
           </div>
-        </div>
-      )}
-
-      {/* Legacy processing indicator */}
-      {processing > 0 && (
-        <div className='absolute inset-0 flex items-center justify-center'>
-          <div className='text-sm '>Upscaling {processing}%</div>
         </div>
       )}
     </div>

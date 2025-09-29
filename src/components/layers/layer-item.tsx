@@ -1,7 +1,8 @@
 "use client"
 
-import { ChevronDown } from "lucide-react"
+import { type ComponentProps, useState } from "react"
 
+import { ChevronDown } from "lucide-react"
 import { Button } from "@/ui/button"
 import {
   Collapsible,
@@ -9,10 +10,8 @@ import {
   CollapsibleTrigger,
 } from "@/ui/collapsible"
 import { cn } from "@/lib/utils"
-import React from "react"
 
-export interface LayerItemProps
-  extends React.ComponentProps<typeof Collapsible> {
+export interface LayerItemProps extends ComponentProps<typeof Collapsible> {
   triggerClassName?: string
   contentClassName?: string
 }
@@ -23,7 +22,7 @@ export function LayerItem({
   contentClassName,
   ...props
 }: LayerItemProps) {
-  const [isOpen, setIsOpen] = React.useState(false)
+  const [isOpen, setIsOpen] = useState(false)
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen} {...props}>

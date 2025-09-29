@@ -1,12 +1,12 @@
 "use client"
 
-import React from "react"
+import { useCallback } from "react"
 
 export function useWebGLDownload(
   canvasRef: React.RefObject<HTMLCanvasElement | null>,
   drawFnRef: React.RefObject<() => void>
 ) {
-  return React.useCallback(
+  return useCallback(
     (mimeType: string, quality = 1.0) => {
       requestAnimationFrame(() => {
         const canvas = canvasRef.current

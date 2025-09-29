@@ -3,7 +3,7 @@
 import { ChevronDown } from "lucide-react"
 
 import { useCurrentLayer } from "@/components/hooks/useCurrentLayer"
-import { BlendMode } from "@/lib/shaders/blend-modes/types.blend"
+import type { BlendMode } from "@/lib/shaders/blend-modes/types.blend"
 import { Button } from "@/ui/button"
 import {
   DropdownMenu,

@@ -1,7 +1,6 @@
 "use client"
 
-import React from "react"
-
+import { useContext, useCallback, useRef, useEffect } from "react"
 import { useDrag, useDrop } from "react-dnd"
 
 import { cn } from "@/lib/utils"
@@ -11,7 +10,7 @@ import {
   type DragItem,
 } from "@/components/layers/draggable-layer"
 import { useEditorContext } from "@/lib/editor/context"
-import { LayerContext } from "./layer-panel"
+import { LayerContext } from "@/components/layers/layer-panel"
 
 export interface GroupChildrenContainerProps {
   groupLayer: EditorLayer
@@ -64,10 +63,10 @@ export function GroupChildItem({
   onMoveChild,
   onSelect,
 }: GroupChildItemProps) {
-  const { dropHandled } = React.useContext(LayerContext)
+  const { dropHandled } = useContext(LayerContext)
   const { updateLayer, removeLayer, reorderLayer } = useEditorContext()
 
-  const handleUpdateChild = React.useCallback(
+  const handleUpdateChild = useCallback(
     (patch: Partial<EditorLayer>) => {
       const parent = groupLayer as any
       const currentChildren = Array.isArray(parent.children)
@@ -89,7 +88,7 @@ export function GroupChildItem({
     [groupLayer, child, updateLayer]
   )
 
-  const handleDeleteChild = React.useCallback(() => {
+  const handleDeleteChild = useCallback(() => {
     const parent = groupLayer as any
     const currentChildren = Array.isArray(parent.children)
       ? parent.children
@@ -103,7 +102,7 @@ export function GroupChildItem({
     }
   }, [groupLayer, child, updateLayer, removeLayer])
 
-  const handleDuplicateChild = React.useCallback(() => {
+  const handleDuplicateChild = useCallback(() => {
     // For group children, we need to duplicate the child and add it to the group
     const parent = groupLayer as any
     const currentChildren = Array.isArray(parent.children)
@@ -122,19 +121,19 @@ export function GroupChildItem({
     updateLayer(parent.id, { children: nextChildren } as any)
   }, [groupLayer, child, updateLayer])
 
-  const handleToggleChildVisibility = React.useCallback(() => {
+  const handleToggleChildVisibility = useCallback(() => {
     // Group children are stored within the group's children array, not in the main layers.byId
     // So we need to update the child within the group's children array
     handleUpdateChild({ visible: !child.visible })
   }, [child.visible, handleUpdateChild])
 
-  const handleToggleChildLock = React.useCallback(() => {
+  const handleToggleChildLock = useCallback(() => {
     // Group children are stored within the group's children array, not in the main layers.byId
     // So we need to update the child within the group's children array
     handleUpdateChild({ locked: !child.locked })
   }, [child.locked, handleUpdateChild])
 
-  const handleChildOpacityChange = React.useCallback(
+  const handleChildOpacityChange = useCallback(
     (opacity: number) => {
       // Group children are stored within the group's children array, not in the main layers.byId
       // So we need to update the child within the group's children array
@@ -232,11 +231,11 @@ export function GroupChildItem({
     },
   })
 
-  const ref = React.useRef<HTMLDivElement>(null)
+  const ref = useRef<HTMLDivElement>(null)
   drag(drop(ref))
 
   // Track drag state changes for GroupChildItem
-  React.useEffect(() => {
+  useEffect(() => {
     if (isDragging) {
       dropHandled.current = false // Reset drop handled flag when starting new drag
     }

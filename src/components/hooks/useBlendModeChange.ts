@@ -1,9 +1,9 @@
 "use client"
 
-import React from "react"
+import { useCallback } from "react"
 
 import { useEditorContext } from "@/lib/editor/context"
-import { BlendMode } from "@/lib/shaders/blend-modes/types.blend"
+import type { BlendMode } from "@/lib/shaders/blend-modes/types.blend"
 
 export function useBlendModeChange({
   isDragActive,
@@ -12,7 +12,7 @@ export function useBlendModeChange({
 }) {
   const { getOrderedLayers, updateLayer, setBlendMode } = useEditorContext()
 
-  return React.useCallback(
+  return useCallback(
     (layerId: string, blendMode: BlendMode) => {
       if (isDragActive) return
 

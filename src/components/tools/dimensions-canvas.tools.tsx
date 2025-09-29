@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useId } from "react"
+import { useId, useState, useEffect } from "react"
 import { Expand, Link2, AlertCircle } from "lucide-react"
 import { motion } from "motion/react"
 
@@ -13,13 +13,7 @@ import {
   type ImageEditorButtonProps,
 } from "@/components/button.image-editor"
 import { GPU_SECURITY_CONSTANTS } from "@/lib/security/gpu-security"
-import { LayerDimensions } from "../canvas.image-editor"
-import {
-  CanonicalEditorState,
-  EditorLayer,
-  LayerId,
-  CanvasPosition,
-} from "@/lib/editor/state"
+import type { EditorLayer, LayerId, CanvasPosition } from "@/lib/editor/state"
 
 function DimensionsCanvasButton({
   onSelectedToolChange,
@@ -43,25 +37,17 @@ DimensionsCanvasButton.displayName = "DimensionsCanvasButton"
 
 function DimensionsCanvasControls() {
   const { state, dimensionsDocument, getLayerById } = useEditorContext()
-  const [width, setWidth] = React.useState<number>(
-    state.canonical.document.width
-  )
-  const [height, setHeight] = React.useState<number>(
-    state.canonical.document.height
-  )
-  const [originalAspectRatio, setOriginalAspectRatio] =
-    React.useState<number>(1)
-  const [preserveAspectRatio, setPreserveAspectRatio] =
-    React.useState<boolean>(true)
-  const [validationError, setValidationError] = React.useState<string | null>(
-    null
-  )
+  const [width, setWidth] = useState<number>(state.canonical.document.width)
+  const [height, setHeight] = useState<number>(state.canonical.document.height)
+  const [originalAspectRatio, setOriginalAspectRatio] = useState<number>(1)
+  const [preserveAspectRatio, setPreserveAspectRatio] = useState<boolean>(true)
+  const [validationError, setValidationError] = useState<string | null>(null)
 
   const [canvasPositionState, setCanvasPositionState] =
-    React.useState<CanvasPosition | null>(null)
+    useState<CanvasPosition | null>(null)
 
   // Initialize from canonical.document
-  React.useEffect(() => {
+  useEffect(() => {
     const w = state.canonical.document.width
     const h = state.canonical.document.height
     if (w > 0 && h > 0) {
@@ -73,7 +59,7 @@ function DimensionsCanvasControls() {
   }, [state.canonical.document.width, state.canonical.document.height])
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: initialize canvas position state
-  React.useEffect(() => {
+  useEffect(() => {
     setCanvasPositionState(state.canonical.document.canvasPosition)
   }, [])
 
@@ -123,7 +109,7 @@ function DimensionsCanvasControls() {
 
   const handleOnChange =
     (type: "width" | "height") => (e: React.ChangeEvent<HTMLInputElement>) => {
-      const newValue = Number.parseInt(e.target.value)
+      const newValue = Number.parseInt(e.target.value, 10)
       if (Number.isNaN(newValue)) return
 
       let newWidth = width
@@ -178,7 +164,6 @@ function DimensionsCanvasControls() {
             height,
             canvasPosition: canvasPositionState as CanvasPosition,
           },
-          getLayerById,
         }),
       })
     } catch (error) {
@@ -421,7 +406,6 @@ DimensionsCanvasControls.displayName = "DimensionsCanvasControls"
 function updateLayerDimensions({
   layers,
   canvas,
-  getLayerById,
 }: {
   layers: Record<LayerId, EditorLayer>
   canvas: {
@@ -429,7 +413,6 @@ function updateLayerDimensions({
     height: number
     canvasPosition: CanvasPosition
   }
-  getLayerById: (layerId: LayerId) => EditorLayer | null
 }) {
   const calculatePositionFromAnchor = (
     layerDimensions: { width: number; height: number; x: number; y: number },

@@ -1,6 +1,12 @@
 "use client"
 
-import React from "react"
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useRef,
+  useLayoutEffect,
+} from "react"
 import { Button } from "@/ui/button"
 import {
   RotateCcw,
@@ -60,14 +66,14 @@ export function HistoryPanel({
   const canRedo = history.canRedo()
   const transactionActive = Boolean(inspected.transactionActive)
 
-  const [showThumbnails, setShowThumbnails] = React.useState(true)
-  const [dense, setDense] = React.useState(false)
-  const [highlightIndex, setHighlightIndex] = React.useState(() => past.length)
-  const listRef = React.useRef<HTMLUListElement | null>(null)
-  const [scrollTop, setScrollTop] = React.useState(0)
-  const [containerHeight, setContainerHeight] = React.useState(320)
+  const [showThumbnails, setShowThumbnails] = useState(true)
+  const [dense, setDense] = useState(false)
+  const [highlightIndex, setHighlightIndex] = useState(() => past.length)
+  const listRef = useRef<HTMLUListElement | null>(null)
+  const [scrollTop, setScrollTop] = useState(0)
+  const [containerHeight, setContainerHeight] = useState(320)
 
-  React.useLayoutEffect(() => {
+  useLayoutEffect(() => {
     const el = listRef.current
     if (!el) return
     const update = () => setContainerHeight(el.clientHeight || 320)
@@ -79,7 +85,7 @@ export function HistoryPanel({
 
   // Keyboard is handled in parent; this UI is strictly visual and clickable
 
-  const jumpToPast = React.useCallback(
+  const jumpToPast = useCallback(
     (targetIndex: number) => {
       const steps = Math.max(0, past.length - 1 - targetIndex)
       for (let i = 0; i < steps; i += 1) history.undo()
@@ -87,7 +93,7 @@ export function HistoryPanel({
     [past.length, history]
   )
 
-  const jumpToFuture = React.useCallback(
+  const jumpToFuture = useCallback(
     (targetIndex: number) => {
       const steps = targetIndex + 1 // future[0] is next redo
       for (let i = 0; i < steps; i += 1) history.redo()
@@ -95,7 +101,7 @@ export function HistoryPanel({
     [history]
   )
 
-  const createCheckpoint = React.useCallback(() => {
+  const createCheckpoint = useCallback(() => {
     try {
       ;(history as any)?.addCheckpoint?.(new Date().toLocaleTimeString())
     } catch (e) {
@@ -111,7 +117,7 @@ export function HistoryPanel({
   const topSpacer = startIndex * itemHeight
   const bottomSpacer = Math.max(0, (past.length - endIndex) * itemHeight)
 
-  // const onListScroll = (e: React.UIEvent<HTMLUListElement>) => {
+  // const onListScroll = (e: uIEvent<HTMLUListElement>) => {
   //   setScrollTop((e.currentTarget as HTMLUListElement).scrollTop)
   // }
 
@@ -444,9 +450,9 @@ function HistoryItem({
   title: string
   onClick: () => void
 }) {
-  const [time, setTime] = React.useState<string | null>(null)
+  const [time, setTime] = useState<string | null>(null)
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (timestamp) {
       timeAgo(new Date(timestamp), true, setTime)
     }

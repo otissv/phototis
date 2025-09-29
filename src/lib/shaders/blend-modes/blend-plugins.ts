@@ -1,3 +1,4 @@
+// KF-MIGRATE: Blend plugins unchanged; ensure layer opacity and related params come from sampled Tracks at time t.
 import type { BlendModePlugin } from "./types.blend"
 
 export const blendNormal: BlendModePlugin = {

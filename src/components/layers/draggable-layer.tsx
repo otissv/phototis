@@ -1,6 +1,12 @@
 "use client"
 
-import React from "react"
+import {
+  type ComponentProps,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react"
 import { useDrag, useDrop } from "react-dnd"
 import { cn } from "@/lib/utils"
 
@@ -25,7 +31,7 @@ export interface DragItem {
 }
 
 export interface DraggableLayerItemProps
-  extends Prettify<Omit<React.ComponentProps<"div">, "onSelect">> {
+  extends Prettify<Omit<ComponentProps<"div">, "onSelect">> {
   layer: EditorLayer
   index: number
   isSelected: boolean
@@ -61,7 +67,7 @@ export function DraggableLayerItem({
   type = "layer",
   ...props
 }: DraggableLayerItemProps) {
-  const { isGlobalDragActive, dropHandled } = React.useContext(LayerContext)
+  const { isGlobalDragActive, dropHandled } = useContext(LayerContext)
   const {
     setEphemeral,
     updateAdjustmentParameters,
@@ -74,7 +80,7 @@ export function DraggableLayerItem({
     removeLayer,
     reorderLayer,
   } = useEditorContext()
-  const [isOverMiddle, setIsOverMiddle] = React.useState(false)
+  const [isOverMiddle, setIsOverMiddle] = useState(false)
 
   const layers = getOrderedLayers()
 
@@ -96,7 +102,7 @@ export function DraggableLayerItem({
   })
 
   // Track drag state changes
-  React.useEffect(() => {
+  useEffect(() => {
     if (isDragging) {
       isGlobalDragActive.current = true
       dropHandled.current = false // Reset drop handled flag when starting new drag
@@ -280,12 +286,12 @@ export function DraggableLayerItem({
     },
   })
 
-  const ref = React.useRef<HTMLDivElement>(null)
+  const ref = useRef<HTMLDivElement>(null)
   drag(drop(ref))
 
   // Manage transaction lifecycle for drag start/end
-  const dragTxnStartedRef = React.useRef(false)
-  React.useEffect(() => {
+  const dragTxnStartedRef = useRef(false)
+  useEffect(() => {
     if (isDragging && !dragTxnStartedRef.current) {
       dragTxnStartedRef.current = true
       history.begin("Reorder Layers")
@@ -296,13 +302,13 @@ export function DraggableLayerItem({
     }
   }, [isDragging, history])
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!isDragging) {
       history.end(true)
     }
   }, [isDragging, history])
 
-  const handleSelect = (e: React.MouseEvent | React.KeyboardEvent) => {
+  const handleSelect = (e: MouseEvent | KeyboardEvent) => {
     e.stopPropagation()
     const layerId = (e.currentTarget as HTMLElement).dataset.id || ""
     onSelect(layerId)
@@ -319,11 +325,11 @@ export function DraggableLayerItem({
           isOver && "border-primary/50",
           isOverMiddle && "border-blue-500 bg-blue-500/20"
         )}
-        onClick={(e: React.MouseEvent) => {
+        onClick={(e) => {
           handleSelect(e)
         }}
         aria-label={`Select layer ${layer.name}`}
-        onKeyDown={(e: React.KeyboardEvent) => {
+        onKeyDown={(e) => {
           if (e.key === "Enter") {
             handleSelect(e)
           }

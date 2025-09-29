@@ -1,7 +1,7 @@
 "use client"
 
 import React from "react"
-import { WorkerManager } from "@/lib/workers/worker-manager"
+import { WorkerManager } from "@/lib/renderer/worker-manager.renderer"
 import { useEditorContext } from "@/lib/editor/context"
 import { config } from "@/config"
 

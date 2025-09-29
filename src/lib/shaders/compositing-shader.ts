@@ -1,4 +1,4 @@
-import { BLEND_MODE_GLSL } from "./blend-modes/blend-modes"
+import { BLEND_MODE_GLSL } from "@/lib/shaders/blend-modes/blend-modes"
 
 export const COMPOSITING_VERTEX_SHADER = `
   attribute vec2 a_position;

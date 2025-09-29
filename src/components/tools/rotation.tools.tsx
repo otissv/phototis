@@ -4,7 +4,7 @@ import {
   ImageEditorButton,
   type ImageEditorButtonProps,
 } from "@/components/button.image-editor"
-import { ImageEditorFooterSlider } from "@/components/footer-slider.image-editor"
+import { ImageEditorFooterSlider } from "@/components/ui/footer-slider.image-editor"
 
 function RotationButton({
   onSelectedToolChange,

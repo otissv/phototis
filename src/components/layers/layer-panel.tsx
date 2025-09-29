@@ -1,7 +1,14 @@
 "use client"
 
+import {
+  type ComponentProps,
+  createContext,
+  RefObject,
+  useCallback,
+  useContext,
+  useRef,
+} from "react"
 import { Image } from "lucide-react"
-import React from "react"
 import { useDrop } from "react-dnd"
 import { BlendModesControls } from "@/components/layers/blend-modes-controls"
 import {
@@ -21,13 +28,13 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/ui/button"
 import type { Collapsible } from "@/ui/collapsible"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs"
-import { DocumentPanel } from "./document-panel"
-import { FxLayersMenu } from "./Fx-layers-menu"
-import { AdjustmentLayersMenu } from "./adjustment-layers-menu"
+import { DocumentPanel } from "@/components/layers/document-panel"
+import { FxLayersMenu } from "@/components/layers/Fx-layers-menu"
+import { AdjustmentLayersMenu } from "@/components/layers/adjustment-layers-menu"
 
 export type LayerContextType = {
-  isGlobalDragActive: React.RefObject<boolean>
-  dropHandled: React.RefObject<boolean>
+  isGlobalDragActive: RefObject<boolean>
+  dropHandled: RefObject<boolean>
 }
 
 export const layerContextDefaultValue: LayerContextType = {
@@ -35,12 +42,11 @@ export const layerContextDefaultValue: LayerContextType = {
   dropHandled: { current: false },
 }
 
-export const LayerContext = React.createContext<LayerContextType>(
+export const LayerContext = createContext<LayerContextType>(
   layerContextDefaultValue
 )
 
-export interface LayerItemProps
-  extends React.ComponentProps<typeof Collapsible> {
+export interface LayerItemProps extends ComponentProps<typeof Collapsible> {
   triggerClassName?: string
   contentClassName?: string
 }
@@ -55,7 +61,7 @@ export function LayersPanelInner({
   allowAddMultipleImages = false,
   ...props
 }: LayersPanelInnerProps) {
-  const { isGlobalDragActive } = React.useContext(LayerContext)
+  const { isGlobalDragActive } = useContext(LayerContext)
 
   const {
     addAdjustmentLayer,
@@ -104,7 +110,7 @@ export function LayersPanelInner({
     collect: (monitor) => ({ isOverBottom: monitor.isOver() }),
   })
 
-  const handleFileUpload = React.useCallback(
+  const handleFileUpload = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
       if (isDragActive || isGlobalDragActive.current) return
 
@@ -131,7 +137,7 @@ export function LayersPanelInner({
     [addImageLayer, isDragActive, isGlobalDragActive.current]
   )
 
-  const handleDeleteLayer = React.useCallback(
+  const handleDeleteLayer = useCallback(
     (layerId: string) => {
       if (isDragActive) return
       removeLayer(layerId)
@@ -139,7 +145,7 @@ export function LayersPanelInner({
     [isDragActive, removeLayer]
   )
 
-  const handleDuplicateLayer = React.useCallback(
+  const handleDuplicateLayer = useCallback(
     (layerId: string) => {
       if (isDragActive) return
       duplicateLayer(layerId)
@@ -147,7 +153,7 @@ export function LayersPanelInner({
     [duplicateLayer, isDragActive]
   )
 
-  const handleToggleVisibility = React.useCallback(
+  const handleToggleVisibility = useCallback(
     (layerId: string) => {
       if (isDragActive) return
       toggleVisibility(layerId)
@@ -155,7 +161,7 @@ export function LayersPanelInner({
     [toggleVisibility, isDragActive]
   )
 
-  const handleToggleLock = React.useCallback(
+  const handleToggleLock = useCallback(
     (layerId: string) => {
       if (isDragActive) return
       toggleLock(layerId)
@@ -163,7 +169,7 @@ export function LayersPanelInner({
     [toggleLock, isDragActive]
   )
 
-  const handleLayerNameChange = React.useCallback(
+  const handleLayerNameChange = useCallback(
     (layerId: string, name: string) => {
       if (isDragActive) return
       setLayerName(layerId, name)
@@ -174,14 +180,14 @@ export function LayersPanelInner({
   const handleBlendModeChange = useBlendModeChange({ isDragActive })
   const handleOpacityChange = useOpacityChange({ isDragActive })
 
-  const handleMoveLayer = React.useCallback(
+  const handleMoveLayer = useCallback(
     (fromIndex: number, toIndex: number) => {
       reorderLayers(fromIndex, toIndex)
     },
     [reorderLayers]
   )
 
-  const handleAddAdjustmentLayer = React.useCallback(
+  const handleAddAdjustmentLayer = useCallback(
     (adjustmentType: string) => {
       // Default parameters for each adjustment type
       const defaultParams: Record<string, Record<string, any>> = {
@@ -234,7 +240,7 @@ export function LayersPanelInner({
     [addAdjustmentLayer]
   )
 
-  const handleUngroupLayer = React.useCallback(
+  const handleUngroupLayer = useCallback(
     (layerId: string) => {
       if (isDragActive) return
       ungroupLayer(layerId)
@@ -242,7 +248,7 @@ export function LayersPanelInner({
     [ungroupLayer, isDragActive]
   )
 
-  const handleToggleGroupCollapse = React.useCallback(
+  const handleToggleGroupCollapse = useCallback(
     (layerId: string) => {
       if (isDragActive) return
       toggleGroupCollapse(layerId)
@@ -373,7 +379,7 @@ export function LayersPanelInner({
   )
 }
 
-export interface LayersPanelProps extends React.ComponentProps<"div"> {
+export interface LayersPanelProps extends ComponentProps<"div"> {
   allowAddMultipleImages?: boolean
   toolsValues: ImageEditorToolsState
   dispatch: (value: ImageEditorToolsActions | ImageEditorToolsActions[]) => void
@@ -385,11 +391,11 @@ export function LayersPanel({
 }: LayersPanelProps) {
   const { getSelectedLayerId, selectLayer } = useEditorContext()
 
-  const isGlobalDragActive = React.useRef(false)
-  const dropHandled = React.useRef(false)
+  const isGlobalDragActive = useRef(false)
+  const dropHandled = useRef(false)
   const selectedLayerId = getSelectedLayerId()
 
-  const previousSelectedLayerId = React.useRef(selectedLayerId)
+  const previousSelectedLayerId = useRef(selectedLayerId)
 
   return (
     <LayerContext.Provider value={{ isGlobalDragActive, dropHandled }}>

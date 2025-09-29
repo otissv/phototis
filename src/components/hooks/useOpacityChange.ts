@@ -1,13 +1,13 @@
 "use client"
 
-import React from "react"
+import { useCallback } from "react"
 
 import { useEditorContext } from "@/lib/editor/context"
 
 export function useOpacityChange({ isDragActive }: { isDragActive: boolean }) {
   const { getOrderedLayers, updateLayer, setOpacity } = useEditorContext()
 
-  return React.useCallback(
+  return useCallback(
     (layerId: string, opacity: number) => {
       if (isDragActive) return
       let value = opacity

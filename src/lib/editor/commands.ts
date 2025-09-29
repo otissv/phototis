@@ -13,13 +13,6 @@ import type { Command, CommandMeta } from "@/lib/editor/history"
 import { capitalize } from "@/lib/utils/capitalize"
 import { GPU_SECURITY_CONSTANTS } from "@/lib/security/gpu-security"
 import { LayerDimensions } from "@/components/canvas.image-editor"
-import type { Track } from "@/lib/animation/timeline"
-import {
-  upsertKeyframe as upsertKf,
-  deleteKeyframe as deleteKf,
-  clearSamplingCache,
-} from "@/lib/animation/timeline"
-import { createTracksFromParams } from "@/lib/tools/tracks"
 
 export type SerializedCommand =
   | {
@@ -902,7 +895,10 @@ export class SetActiveToolCommand implements Command {
 export class AddAdjustmentLayerCommand implements Command {
   meta: CommandMeta
   private readonly adjustmentType: string
-  private readonly parameterTracks: Record<string, Track<any>>
+  private readonly parameters: Record<
+    string,
+    number | { value: number; color: string }
+  >
   private readonly position: "top" | "bottom" | number
   private readonly providedId?: string
   private createdLayerId?: string
@@ -915,8 +911,7 @@ export class AddAdjustmentLayerCommand implements Command {
     meta?: Partial<CommandMeta>
   ) {
     this.adjustmentType = adjustmentType
-    // Build tracks from provided parameters (t=0 keyframes)
-    this.parameterTracks = createTracksFromParams(parameters)
+    this.parameters = parameters
     this.position = position
     this.providedId = id
     this.meta = {
@@ -938,7 +933,7 @@ export class AddAdjustmentLayerCommand implements Command {
       blendMode: "normal",
       type: "adjustment",
       adjustmentType: this.adjustmentType as any,
-      parameterTracks: this.parameterTracks,
+      parameters: this.parameters,
     }
 
     // Store the created layer ID for undo
@@ -973,7 +968,7 @@ export class AddAdjustmentLayerCommand implements Command {
   }
 
   estimateSize(): number {
-    return 128 + deepSize(this.parameterTracks)
+    return 128 + deepSize(this.parameters)
   }
 
   serialize(): SerializedCommand {
@@ -981,7 +976,7 @@ export class AddAdjustmentLayerCommand implements Command {
       type: "addAdjustmentLayer",
       meta: this.meta,
       adjustmentType: this.adjustmentType,
-      parameters: {},
+      parameters: this.parameters,
       position: this.position,
       id: this.providedId ?? this.createdLayerId,
     }
@@ -995,18 +990,15 @@ export class UpdateAdjustmentParametersCommand implements Command {
     string,
     number | { value: number; color: string }
   >
-  private previous?: Record<string, Track<any>>
-  private readonly time: number
+  private previous?: Record<string, number | { value: number; color: string }>
 
   constructor(
     layerId: LayerId,
     parameters: Record<string, number | { value: number; color: string }>,
-    time?: number,
     meta?: Partial<CommandMeta>
   ) {
     this.layerId = layerId
     this.parameters = parameters
-    this.time = typeof time === "number" ? time : 0
     this.meta = {
       label: `Update Adjustment Parameters`,
       scope: "layers",
@@ -1021,20 +1013,12 @@ export class UpdateAdjustmentParametersCommand implements Command {
     const layer = state.layers.byId[this.layerId]
     if (!layer || layer.type !== "adjustment") return state
 
-    // Store previous tracks for undo
-    this.previous = { ...(layer as any).parameterTracks }
+    // Store previous values for undo
+    this.previous = { ...layer.parameters }
 
     const updatedLayer: AdjustmentLayer = {
       ...layer,
-      parameterTracks: (() => {
-        const current = { ...(layer as any).parameterTracks }
-        for (const [k, v] of Object.entries(this.parameters)) {
-          const tr = current[k]
-          if (tr) current[k] = upsertKf(tr, this.time, v as any)
-        }
-        clearSamplingCache()
-        return current
-      })(),
+      parameters: { ...layer.parameters, ...this.parameters },
     }
 
     return {
@@ -1048,14 +1032,7 @@ export class UpdateAdjustmentParametersCommand implements Command {
 
   invert(): Command {
     if (!this.previous) throw new Error("Cannot invert without previous state")
-    // Build a command that restores previous tracks by writing keyframes at time
-    const params: Record<string, number | { value: number; color: string }> = {}
-    // This inverse will not reconstruct all keyframes; a fuller track-level command would be ideal.
-    return new UpdateAdjustmentParametersCommand(
-      this.layerId,
-      params,
-      this.time
-    )
+    return new UpdateAdjustmentParametersCommand(this.layerId, this.previous)
   }
 
   estimateSize(): number {

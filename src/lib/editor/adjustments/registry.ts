@@ -1,7 +1,5 @@
 import type { AdjustmentTypes } from "@/lib/editor/types.adjustment"
 import { TOOL_VALUES } from "@/lib/tools/tools"
-import type { Track } from "@/lib/animation/timeline"
-import { createTracksFromParams } from "@/lib/tools/tracks"
 
 export type AdjustmentParamValue = number | { value: number; color: string }
 
@@ -29,8 +27,6 @@ export type AdjustmentPlugin = {
   toShaderParams: (
     params: Record<string, AdjustmentParamValue>
   ) => Record<string, unknown>
-  // Optional: build default parameter tracks (t=0)
-  getDefaultTracks?: () => Record<string, Track<any>>
 }
 
 function sliderDefaults(key: keyof typeof TOOL_VALUES): {
@@ -87,38 +83,10 @@ export function getDefaultParameters(
   return p ? { ...p.defaults } : {}
 }
 
-export function getDefaultParameterTracks(
-  id: AdjustmentTypes
-): Record<string, Track<any>> {
-  const p = getAdjustmentPlugin(id)
-  if (!p) return {}
-  if (typeof p.getDefaultTracks === "function") return p.getDefaultTracks()
-  return createTracksFromParams(p.defaults as any)
-}
-
 export function mapParametersToShader(
   id: AdjustmentTypes,
-  params: Record<string, AdjustmentParamValue> | Record<string, Track<any>>
+  params: Record<string, AdjustmentParamValue>
 ): Record<string, unknown> {
   const p = getAdjustmentPlugin(id)
-  // If tracks passed, sample at t=0 (callers typically pre-sample per frame)
-  if (
-    p &&
-    Object.values(params)[0] &&
-    typeof (Object.values(params)[0] as any)?.keyframes !== "undefined"
-  ) {
-    const sampled: Record<string, any> = {}
-    try {
-      const { sampleTrack } = require("@/lib/animation/timeline")
-      for (const [k, tr] of Object.entries(
-        params as Record<string, Track<any>>
-      )) {
-        sampled[k] = sampleTrack(tr, 0)
-      }
-      return p.toShaderParams(sampled as any)
-    } catch {
-      return p.toShaderParams({} as any)
-    }
-  }
-  return p ? p.toShaderParams(params as any) : { ...(params as any) }
+  return p ? p.toShaderParams(params) : { ...params }
 }

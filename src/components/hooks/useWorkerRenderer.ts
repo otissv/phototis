@@ -1,11 +1,14 @@
 // React hook for integrating worker-based rendering with canvas
 // Provides non-blocking GPU operations using Web Workers and OffscreenCanvas
 
-import React from "react"
-import { WorkerManager, TaskPriority } from "@/lib/workers/worker-manager"
+import {
+  WorkerManager,
+  TaskPriority,
+} from "@/lib/renderer/worker-manager.renderer"
 import type { EditorLayer } from "@/lib/editor/state"
 import type { ImageEditorToolsState } from "@/lib/tools/tools-state"
 import { useEditorContext } from "@/lib/editor/context"
+import { useState, useCallback, useRef, useEffect } from "react"
 
 // Worker renderer state
 interface WorkerRendererState {
@@ -32,7 +35,7 @@ interface WorkerRendererConfig {
 
 export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
   const { renderType } = useEditorContext()
-  const [state, setState] = React.useState<WorkerRendererState>({
+  const [state, setState] = useState<WorkerRendererState>({
     isReady: false,
     isInitializing: false,
     isProcessing: false,
@@ -42,145 +45,23 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
     queueStats: { queued: 0, active: 0, total: 0 },
   })
 
-  const workerManagerRef = React.useRef<WorkerManager | null>(null)
-  const canvasRef = React.useRef<HTMLCanvasElement | null>(null)
-  const eventListenersRef = React.useRef<Map<string, EventListener>>(new Map())
+  const workerManagerRef = useRef<WorkerManager | null>(null)
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const eventListenersRef = useRef<Map<string, EventListener>>(new Map())
   // Track last known worker canvas size to avoid rendering before resize
-  const workerCanvasSizeRef = React.useRef<{
+  const workerCanvasSizeRef = useRef<{
     width: number
     height: number
   } | null>(null)
   // Coalescing of rapid render requests
-  const coalesceTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
-    null
-  )
-  const pendingPromiseRef = React.useRef<{
+  const coalesceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingPromiseRef = useRef<{
     resolve: (id: string | null) => void
     promise: Promise<string | null>
   } | null>(null)
 
-  // Initialize worker manager with canvas
-  const initialize = React.useCallback(
-    async (canvas: HTMLCanvasElement): Promise<boolean> => {
-      try {
-        // Check if already initialized
-        if (workerManagerRef.current?.isReady()) {
-          return true
-        }
-
-        setState((prev) => ({ ...prev, error: null, isInitializing: true }))
-
-        // Create worker manager
-        const manager = WorkerManager.getShared({
-          maxWorkers: 1,
-          maxRetries: config.maxRetries || 3,
-          taskTimeout: config.taskTimeout || 30000,
-          enableProgressiveRendering: config.enableProgressiveRendering ?? true,
-          progressiveLevels: config.progressiveLevels || [0.25, 0.5, 1.0],
-        })
-        // Prewarm workers before OffscreenCanvas transfer
-        await manager.prepare()
-
-        // Initialize with canvas
-        const success = await manager.initialize(canvas)
-
-        if (!success) {
-          throw new Error("Failed to initialize worker manager")
-        }
-
-        workerManagerRef.current = manager
-        canvasRef.current = canvas
-        // After initialize, record initial size so draws won't race
-        workerCanvasSizeRef.current = {
-          width: canvas.width,
-          height: canvas.height,
-        }
-
-        // Set up event listeners
-        setupEventListeners()
-
-        setState((prev) => ({
-          ...prev,
-          isReady: true,
-          isInitializing: false,
-          queueStats: manager.getQueueStats(),
-        }))
-
-        return true
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : "Unknown error"
-        setState((prev) => ({
-          ...prev,
-          error: errorMessage,
-          isReady: false,
-          isInitializing: false,
-        }))
-        return false
-      }
-    },
-    [
-      config.maxRetries,
-      config.taskTimeout,
-      config.enableProgressiveRendering,
-      config.progressiveLevels,
-    ]
-  )
-  // Resize worker canvas
-  const resize = React.useCallback(async (width: number, height: number) => {
-    const manager = workerManagerRef.current
-    if (!manager || !manager.isReady()) return false
-    try {
-      const ok = await manager.resize(width, height)
-      if (ok) {
-        workerCanvasSizeRef.current = { width, height }
-      }
-      return ok
-    } catch {
-      return false
-    }
-  }, [])
-
-  // Ensure worker canvas matches desired size before rendering
-  const ensureCanvasSize = React.useCallback(
-    async (width: number, height: number) => {
-      const current = workerCanvasSizeRef.current
-      if (!current || current.width !== width || current.height !== height) {
-        await resize(width, height)
-      }
-    },
-    [resize]
-  )
-
-  // Prepare for worker mode with shader warmup hints
-  const prepareForWorkerMode = React.useCallback(
-    async (visibleLayers: any[]) => {
-      try {
-        const manager = WorkerManager.getShared()
-        // Collect shader warmup hints (basic set for now)
-        const shaderNames = ["compositor", "adjustments.basic", "copy"]
-        await manager.prepareWorkerShaders({ shaderNames })
-      } catch {}
-    },
-    []
-  )
-
-  // Prewarm workers on mount to shorten initialize latency
-  React.useEffect(() => {
-    if (renderType === "hybrid") return
-
-    const run = async () => {
-      try {
-        const manager = WorkerManager.getShared()
-        await manager.prepare()
-        workerManagerRef.current = manager
-      } catch {}
-    }
-    void run()
-  }, [renderType])
-
   // Set up event listeners for worker communication
-  const setupEventListeners = React.useCallback(() => {
+  const setupEventListeners = useCallback(() => {
     const manager = workerManagerRef.current
     if (!manager) return
 
@@ -272,8 +153,126 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
     eventListenersRef.current.set("worker-success", successListener)
   }, [state.currentTaskId])
 
+  // Initialize worker manager with canvas
+  const initialize = useCallback(
+    async (canvas: HTMLCanvasElement): Promise<boolean> => {
+      try {
+        // Check if already initialized
+        if (workerManagerRef.current?.isReady()) {
+          return true
+        }
+
+        setState((prev) => ({ ...prev, error: null, isInitializing: true }))
+
+        // Create worker manager
+        const manager = WorkerManager.getShared({
+          maxWorkers: 1,
+          maxRetries: config.maxRetries || 3,
+          taskTimeout: config.taskTimeout || 30000,
+          enableProgressiveRendering: config.enableProgressiveRendering ?? true,
+          progressiveLevels: config.progressiveLevels || [0.25, 0.5, 1.0],
+        })
+        // Prewarm workers before OffscreenCanvas transfer
+        await manager.prepare()
+
+        // Initialize with canvas
+        const success = await manager.initialize(canvas)
+
+        if (!success) {
+          throw new Error("Failed to initialize worker manager")
+        }
+
+        workerManagerRef.current = manager
+        canvasRef.current = canvas
+        // After initialize, record initial size so draws won't race
+        workerCanvasSizeRef.current = {
+          width: canvas.width,
+          height: canvas.height,
+        }
+
+        // Set up event listeners
+        setupEventListeners()
+
+        setState((prev) => ({
+          ...prev,
+          isReady: true,
+          isInitializing: false,
+          queueStats: manager.getQueueStats(),
+        }))
+
+        return true
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error"
+        setState((prev) => ({
+          ...prev,
+          error: errorMessage,
+          isReady: false,
+          isInitializing: false,
+        }))
+        return false
+      }
+    },
+    [
+      config.maxRetries,
+      config.taskTimeout,
+      config.enableProgressiveRendering,
+      config.progressiveLevels, // Set up event listeners
+      setupEventListeners,
+    ]
+  )
+  // Resize worker canvas
+  const resize = useCallback(async (width: number, height: number) => {
+    const manager = workerManagerRef.current
+    if (!manager || !manager.isReady()) return false
+    try {
+      const ok = await manager.resize(width, height)
+      if (ok) {
+        workerCanvasSizeRef.current = { width, height }
+      }
+      return ok
+    } catch {
+      return false
+    }
+  }, [])
+
+  // Ensure worker canvas matches desired size before rendering
+  const ensureCanvasSize = useCallback(
+    async (width: number, height: number) => {
+      const current = workerCanvasSizeRef.current
+      if (!current || current.width !== width || current.height !== height) {
+        await resize(width, height)
+      }
+    },
+    [resize]
+  )
+
+  // Prepare for worker mode with shader warmup hints
+  const prepareForWorkerMode = useCallback(async (visibleLayers: any[]) => {
+    try {
+      const manager = WorkerManager.getShared()
+      // Collect shader warmup hints (basic set for now)
+      const shaderNames = ["compositor", "adjustments.basic", "copy"]
+      await manager.prepareWorkerShaders({ shaderNames })
+    } catch {}
+  }, [])
+
+  // Prewarm workers on mount to shorten initialize latency
+  useEffect(() => {
+    if (renderType === "hybrid") return
+
+    const run = async () => {
+      try {
+        const manager = WorkerManager.getShared()
+        await manager.prepare()
+        workerManagerRef.current = manager
+      } catch {}
+    }
+    void run()
+  }, [renderType])
+
   // Ensure processing flag resets when the queue goes idle (belt-and-suspenders)
-  React.useEffect(() => {
+  useEffect(() => {
     if (
       state.isProcessing &&
       state.queueStats.active === 0 &&
@@ -288,11 +287,11 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
   }, [state.queueStats.active, state.queueStats.queued, state.isProcessing])
 
   // Render layers using worker
-  const versionRef = React.useRef(0)
+  const versionRef = useRef(0)
 
   // Intentionally stable; internal versionRef controls coalescing and tokening
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const renderLayers = React.useCallback(
+  const renderLayers = useCallback(
     async (
       layers: EditorLayer[],
       toolsValues: ImageEditorToolsState,
@@ -365,7 +364,6 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
               // Map color profile to numeric flag: 0: srgb, 1: linear, 2: display-p3
               let colorSpaceFlag = 0
               try {
-                // @ts-expect-error editor state available via hook
                 const profile =
                   (state as any)?.canonical?.document?.colorProfile || "srgb"
                 colorSpaceFlag =
@@ -458,7 +456,7 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
                 graph,
                 globalLayers,
                 globalParameters,
-                playheadTime
+                typeof playheadTime === "number" ? playheadTime : 0
               )
 
               console.log("🎨 [Worker] Starting task:", { taskId })
@@ -569,7 +567,7 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
   // Update queue stats
 
   // Cleanup on unmount
-  React.useEffect(() => {
+  useEffect(() => {
     return () => {
       // Remove tracked event listeners
       eventListenersRef.current.forEach((handler, eventType) => {
@@ -597,7 +595,7 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
   }, [])
 
   // Update queue stats periodically
-  React.useEffect(() => {
+  useEffect(() => {
     const updateQueueStats = () => {
       const manager = workerManagerRef.current
       if (!manager) return

@@ -1,10 +1,9 @@
 "use client"
 
-import React, { useId } from "react"
+import { useId, useState, useEffect } from "react"
 import { Expand, Link2 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
-import type { ImageEditorFooterProps } from "@/components/tools/utils.tools"
 import { Input } from "@/ui/input"
 import { Button } from "@/ui/button"
 import {
@@ -13,7 +12,7 @@ import {
 } from "@/components/button.image-editor"
 import type { ImageLayer } from "@/lib/editor/state"
 import { getImageDimensions } from "@/lib/utils/get-image-dimensions"
-import type { DimensionsFooterProps } from "../tools.image-editor"
+import type { DimensionsFooterProps } from "@/components/tools.image-editor"
 
 function DimensionsButton({
   onSelectedToolChange,
@@ -40,17 +39,15 @@ function DimensionsControls({
   dispatch,
   toolsValues,
 }: Omit<DimensionsFooterProps, "onSelectedToolChange">) {
-  const [width, setWidth] = React.useState<number>(0)
-  const [height, setHeight] = React.useState<number>(0)
-  const [originalAspectRatio, setOriginalAspectRatio] =
-    React.useState<number>(1)
-  const [preserveAspectRatio, setPreserveAspectRatio] =
-    React.useState<boolean>(true)
+  const [width, setWidth] = useState<number>(0)
+  const [height, setHeight] = useState<number>(0)
+  const [originalAspectRatio, setOriginalAspectRatio] = useState<number>(1)
+  const [preserveAspectRatio, setPreserveAspectRatio] = useState<boolean>(true)
 
   const image = (selectedLayer as ImageLayer).image
 
   // Initialize from selected layer current resize or image file dimensions
-  React.useEffect(() => {
+  useEffect(() => {
     const init = async () => {
       let width = 0
       let height = 0

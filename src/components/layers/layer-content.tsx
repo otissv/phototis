@@ -1,6 +1,6 @@
 "use client"
 
-import React from "react"
+import { useCallback, useState, useEffect } from "react"
 import {
   Copy,
   Eye,
@@ -60,15 +60,17 @@ export function LayerItemContent({
   onToggleVisibility,
   onUngroup,
 }: LayerItemContentProps) {
-  const [isEditing, setIsEditing] = React.useState(false)
-  const [editName, setEditName] = React.useState(layer.name)
+  const [isEditing, setIsEditing] = useState(false)
+  const [editName, setEditName] = useState(layer.name)
   const { getSelectedLayerId, updateLayer } = useEditorContext()
+  const { history, getOrderedLayers } = useEditorContext()
 
+  const layers = getOrderedLayers()
   const selectedLayerId = getSelectedLayerId()
 
   const isSelected = selectedLayerId === layer.id
 
-  const handleMoveChildInGroup = React.useCallback(
+  const handleMoveChildInGroup = useCallback(
     (groupId: string, fromIndex: number, toIndex: number) => {
       // Move child within the group
       const groupLayer = layer as any
@@ -84,7 +86,7 @@ export function LayerItemContent({
     [layer, updateLayer]
   )
 
-  const handleMoveChildToTopLevel = React.useCallback(
+  const handleMoveChildToTopLevel = useCallback(
     (groupId: string, childId: string) => {
       // Move child from group to top level
       const groupLayer = layer as any
@@ -99,8 +101,7 @@ export function LayerItemContent({
       )
 
       // Add the child to the top level
-      const { history, getOrderedLayers } = useEditorContext()
-      const layers = getOrderedLayers()
+
       const groupIndex = layers.findIndex((l) => l.id === groupId)
 
       history.begin("Move layer to top level")
@@ -126,17 +127,17 @@ export function LayerItemContent({
 
       history.end(true)
     },
-    [layer]
+    [layer, history.begin, history.push, history.end, layers.findIndex]
   )
 
-  const handleNameSubmit = React.useCallback(() => {
+  const handleNameSubmit = useCallback(() => {
     if (isDragActive) return
     onNameChange(editName)
     setIsEditing(false)
   }, [editName, onNameChange, isDragActive])
 
-  const handleNameKeyDown = React.useCallback(
-    (e: React.KeyboardEvent) => {
+  const handleNameKeyDown = useCallback(
+    (e: KeyboardEvent) => {
       if (e.key === "Enter") {
         handleNameSubmit()
       } else if (e.key === "Escape") {
@@ -147,7 +148,7 @@ export function LayerItemContent({
     [handleNameSubmit, layer.name]
   )
 
-  React.useEffect(() => {
+  useEffect(() => {
     setEditName(layer.name)
   }, [layer.name])
 
@@ -211,7 +212,7 @@ export function LayerItemContent({
               className='w-9 h-9 p-0 rounded-sm cursor-pointer'
               size='sm'
               variant='ghost'
-              onClick={(e: React.MouseEvent) => {
+              onClick={(e: MouseEvent) => {
                 e.stopPropagation()
                 onToggleVisibility()
               }}
@@ -229,7 +230,7 @@ export function LayerItemContent({
               className='w-9 h-9 p-0 rounded-sm cursor-pointer'
               size='sm'
               variant='ghost'
-              onClick={(e: React.MouseEvent) => {
+              onClick={(e: MouseEvent) => {
                 e.stopPropagation()
                 onToggleLock()
               }}
@@ -334,9 +335,9 @@ export function LayerItemContent({
 
 // Thumbnail component for layer preview
 export function LayerThumbnail({ layer }: { layer: EditorLayer }) {
-  const [thumbnailUrl, setThumbnailUrl] = React.useState<string | null>(null)
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null)
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (layer.type === "image") {
       const file = (layer as any).image
       // Only accept Blob/File instances

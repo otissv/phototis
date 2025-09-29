@@ -1,6 +1,6 @@
 "use client"
 
-import React from "react"
+import { useState, useCallback, useEffect } from "react"
 import { ImageUpscale } from "lucide-react"
 
 import {
@@ -12,7 +12,7 @@ import { useEditorContext } from "@/lib/editor/context"
 import { upscaleTool } from "@/components/tools/upscaler"
 import { Progress } from "@/ui/progress"
 import { cn } from "@/lib/utils"
-import type { UpscaleFooterProps } from "../tools.image-editor"
+import type { UpscaleFooterProps } from "@/components/tools.image-editor"
 
 function UpscaleButton({
   progress,
@@ -22,36 +22,33 @@ function UpscaleButton({
   selectedTool,
   onProgress,
 }: ImageEditorButtonProps) {
-  const [upscale, setUpscale] = React.useState(value)
+  const [upscale, setUpscale] = useState(value)
   const { addImageLayer } = useEditorContext()
-  const [isRunning, setIsRunning] = React.useState(false)
+  const [isRunning, setIsRunning] = useState(false)
 
-  React.useEffect(() => {
+  useEffect(() => {
     setUpscale(value)
   }, [value])
 
-  const toFile = React.useCallback(
-    (dataUrl: string, name: string): File | null => {
-      try {
-        const parts = dataUrl.split(",")
-        const mimeMatch = parts[0].match(/data:(.*?);base64/)
-        const mime = mimeMatch ? mimeMatch[1] : "image/png"
-        const bstr = atob(parts[1] || "")
-        const n = bstr.length
-        const u8arr = new Uint8Array(n)
-        for (let i = 0; i < n; i++) {
-          u8arr[i] = bstr.charCodeAt(i)
-        }
-        return new File([u8arr], name, { type: mime })
-      } catch (e) {
-        console.error("Failed to convert base64 to File", e)
-        return null
+  const toFile = useCallback((dataUrl: string, name: string): File | null => {
+    try {
+      const parts = dataUrl.split(",")
+      const mimeMatch = parts[0].match(/data:(.*?);base64/)
+      const mime = mimeMatch ? mimeMatch[1] : "image/png"
+      const bstr = atob(parts[1] || "")
+      const n = bstr.length
+      const u8arr = new Uint8Array(n)
+      for (let i = 0; i < n; i++) {
+        u8arr[i] = bstr.charCodeAt(i)
       }
-    },
-    []
-  )
+      return new File([u8arr], name, { type: mime })
+    } catch (e) {
+      console.error("Failed to convert base64 to File", e)
+      return null
+    }
+  }, [])
 
-  const handleUpscale = React.useCallback(async () => {
+  const handleUpscale = useCallback(async () => {
     if (isRunning) return
     if (!selectedLayer || selectedLayer.type !== "image") return
     const imgLayer = selectedLayer as ImageLayer

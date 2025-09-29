@@ -4,7 +4,7 @@ import { useState, useCallback } from "react"
 import { DndProvider } from "react-dnd"
 import { HTML5Backend } from "react-dnd-html5-backend"
 import { Dropzone } from "@/components/Dropzone"
-import { ImageCard } from "@/components/ImageCard"
+import { ImageCard } from "@/components/ui/ImageCard"
 import { ImageEditor } from "@/components/image-editor"
 import { toast } from "@/ui/sonner"
 

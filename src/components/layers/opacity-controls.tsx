@@ -1,6 +1,6 @@
 "use client"
 
-import React from "react"
+import type { ComponentProps } from "react"
 import { ChevronDown } from "lucide-react"
 
 import { useCurrentLayer } from "@/components/hooks/useCurrentLayer"
@@ -12,7 +12,7 @@ import {
 } from "@/ui/dropdown-menu"
 import { Input } from "@/ui/input"
 
-export interface OpacityControlsProps extends React.ComponentProps<"div"> {
+export interface OpacityControlsProps extends ComponentProps<"div"> {
   isDragActive: boolean
   isGlobalDragActive: boolean
   isDocumentLayerSelected: boolean

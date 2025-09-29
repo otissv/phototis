@@ -1,13 +1,40 @@
 
 
 **Goal**
-Replace all tool/filter “static” parameters with a unified keyframe system. At any time `t`, the editor samples parameter values from keyframes (with easing/interpolation) and feeds them through the existing render pipeline (worker/hybrid) and shader uniforms.
+Replace all tool/filter “static” parameters with a unified keyframe system plugin/registry. At any time `t`, the editor samples parameter values from keyframes (with easing/interpolation) and feeds them through the existing render pipeline (worker/hybrid) and shader uniforms.
 
 **Scope**
 
-* Files to update end-to-end: `tools-state.tsx`, `tools.ts`, `context.tsx`, `image-editor.tsx`, `canvas.image-editor.tsx`, `hybrid-renderer.ts`, `shader-manager.ts`, `render-worker.ts`, `asynchronous-pipeline.ts`, `blend-plugins.ts`, `color-adjustments.ts`, `blur-effects.ts`, `fbo-manager.ts`, `render-config.ts`, `types.blend.ts`.
-* Remove all legacy “static value” usage; no fallbacks.
-* Fully implement the keyframe system end-to-end.
+- Files to update end-to-end: `tools-state.tsx`, `tools.ts`, `context.tsx`, `image-editor.tsx`, `canvas.image-editor.tsx`, `hybrid-renderer.ts`, `shader-manager.ts`, `render-worker.ts`, `asynchronous-pipeline.ts`, `blend-plugins.ts`, `color-adjustments.ts`, `blur-effects.ts`, `fbo-manager.ts`, `render-config.ts`, `types.blend.ts`.
+- Remove all legacy “static value” usage; no fallbacks.
+- Fully implement and intergrate the keyframe system end-to-end.
+- No demonstration code
+  
+- KeyframePlugin Interface - Define plugins for different types of keyframe behaviors
+- KeyframePluginRegistry - Registry to manage and discover keyframe plugins
+- Plugin-Based Keyframe Creation - Allow plugins to create and manage keyframes
+- Animation Modulator Plugins - LFO, noise, random generators
+- Expression Plugins - Mathematical expression evaluators
+- Preset Plugins - Pre-built animation templates
+- Plugin UI Integration - UI components that auto-generate from plugin schemas
+
+UI
+- Timeline Panel - Visual timeline with tracks and keyframes
+- Playhead Control - Draggable playhead for scrubbing
+- Keyframe Editor - Visual keyframe editing with handles
+- Easing Curve Editor - Bezier curve editing interface
+- Transport Controls - Play/pause/stop/loop buttons
+- Track List - List of parameter tracks with visibility toggles
+- Time Display - Current time and duration display
+- visually see or edit the timeline
+- playhead scrubbing optimization 
+- scrub through time to preview animations
+- edit keyframe timing or easing visually
+- throttling for real-time updates
+- Samples all tracks even if unchanged
+- track grouping - No way to group related parameters
+- Animation preview - No way to preview animations
+- keyframe interpolation editor - No UI for editing interpolation types
 
 **Data Model**
 

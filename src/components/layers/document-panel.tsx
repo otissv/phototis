@@ -1,6 +1,6 @@
 "use client"
 
-import React from "react"
+import { useCallback, useState, useEffect } from "react"
 import { Eye, EyeOff, Lock, MoreHorizontal, Copy, Trash2 } from "lucide-react"
 
 import { Button } from "@/ui/button"
@@ -50,14 +50,14 @@ export function DocumentPanel({ toolsValues, dispatch }: DocumentPanelProps) {
     updateGlobalParameter,
   } = useEditorContext()
 
-  const [globalSelectedLayerId, setGlobalSelectedLayerId] = React.useState<
+  const [globalSelectedLayerId, setGlobalSelectedLayerId] = useState<
     string | null
   >(null)
 
   const globalLayers = state.canonical.document.globalLayers
   const isDragActive = state.ephemeral.interaction.isDragging
 
-  const handleAddGlobalAdjustmentLayer = React.useCallback(
+  const handleAddGlobalAdjustmentLayer = useCallback(
     (adjustmentType: string) => {
       const defaultParams: Record<string, Record<string, any>> = {
         brightness: {
@@ -112,7 +112,7 @@ export function DocumentPanel({ toolsValues, dispatch }: DocumentPanelProps) {
     [addGlobalLayer]
   )
 
-  const handleToggleGlobalLayerVisibility = React.useCallback(
+  const handleToggleGlobalLayerVisibility = useCallback(
     (layerId: string) => {
       const layer = globalLayers.find((l) => l.id === layerId)
       if (layer) {
@@ -122,7 +122,7 @@ export function DocumentPanel({ toolsValues, dispatch }: DocumentPanelProps) {
     [globalLayers, updateGlobalLayer]
   )
 
-  const handleToggleGlobalLayerLock = React.useCallback(
+  const handleToggleGlobalLayerLock = useCallback(
     (layerId: string) => {
       const layer = globalLayers.find((l) => l.id === layerId)
       if (layer) {
@@ -132,35 +132,35 @@ export function DocumentPanel({ toolsValues, dispatch }: DocumentPanelProps) {
     [globalLayers, updateGlobalLayer]
   )
 
-  const handleUpdateGlobalLayerOpacity = React.useCallback(
+  const handleUpdateGlobalLayerOpacity = useCallback(
     (layerId: string, opacity: number) => {
       updateGlobalLayer(layerId, { opacity })
     },
     [updateGlobalLayer]
   )
 
-  const handleUpdateGlobalLayerBlendMode = React.useCallback(
+  const handleUpdateGlobalLayerBlendMode = useCallback(
     (layerId: string, blendMode: string) => {
       updateGlobalLayer(layerId, { blendMode: blendMode as any })
     },
     [updateGlobalLayer]
   )
 
-  const handleUpdateGlobalLayerName = React.useCallback(
+  const handleUpdateGlobalLayerName = useCallback(
     (layerId: string, name: string) => {
       updateGlobalLayer(layerId, { name })
     },
     [updateGlobalLayer]
   )
 
-  const handleRemoveGlobalLayer = React.useCallback(
+  const handleRemoveGlobalLayer = useCallback(
     (layerId: string) => {
       removeGlobalLayer(layerId)
     },
     [removeGlobalLayer]
   )
 
-  const handleDuplicateGlobalLayer = React.useCallback(
+  const handleDuplicateGlobalLayer = useCallback(
     (layerId: string) => {
       const layer = globalLayers.find((l) => l.id === layerId)
       if (layer) {
@@ -175,7 +175,7 @@ export function DocumentPanel({ toolsValues, dispatch }: DocumentPanelProps) {
     [globalLayers, addGlobalLayer]
   )
 
-  const handleUpdateGlobalLayerParameters = React.useCallback(
+  const handleUpdateGlobalLayerParameters = useCallback(
     (layerId: string, parameters: Record<string, any>) => {
       // Update the layer with new parameters
       const layer = globalLayers.find((l) => l.id === layerId)
@@ -277,16 +277,16 @@ function GlobalLayerItem({
   onUpdateParameters,
 }: GlobalLayerItemProps) {
   const isDragActive = false // Global layers don't support drag and drop
-  const [isEditing, setIsEditing] = React.useState(false)
-  const [editName, setEditName] = React.useState(layer.name)
+  const [isEditing, setIsEditing] = useState(false)
+  const [editName, setEditName] = useState(layer.name)
 
-  const handleNameSubmit = React.useCallback(() => {
+  const handleNameSubmit = useCallback(() => {
     if (isDragActive) return
     onNameChange(editName)
     setIsEditing(false)
   }, [editName, onNameChange])
 
-  const handleNameKeyDown = React.useCallback(
+  const handleNameKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === "Enter") {
         handleNameSubmit()
@@ -298,7 +298,7 @@ function GlobalLayerItem({
     [handleNameSubmit, layer.name]
   )
 
-  React.useEffect(() => {
+  useEffect(() => {
     setEditName(layer.name)
   }, [layer.name])
 

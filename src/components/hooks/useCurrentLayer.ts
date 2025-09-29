@@ -1,6 +1,6 @@
 "use client"
 
-import React from "react"
+import { useMemo } from "react"
 
 import { useEditorContext } from "@/lib/editor/context"
 
@@ -14,7 +14,7 @@ export function useCurrentLayer({
   const { getOrderedLayers, getGlobalLayers } = useEditorContext()
   const layers = getOrderedLayers()
 
-  const currentLayer = React.useMemo(() => {
+  const currentLayer = useMemo(() => {
     // First, try to find the layer in the main layers array
     let layer = layers.find((layer) => layer.id === selectedLayerId)
 
