@@ -687,11 +687,12 @@ function initializeWebGL(
       })
     } catch {}
 
-    // Initialize v2 shader manager in worker mode (after GL is ready)
+    // Initialize v2 shader manager in worker (use HybridRuntime inside the worker's GL context)
     try {
       registerBuiltinShaders(GlobalShaderRegistryV2)
-      shaderManagerV2 = new ShaderManagerV2(GlobalShaderRegistryV2)
-      shaderManagerV2.initialize(gl as WebGL2RenderingContext, "worker")
+      shaderManagerV2 = new ShaderManager(GlobalShaderRegistryV2)
+      // Inside the worker, we own the GL context, so use the HybridRuntime path
+      shaderManagerV2.initialize(gl as WebGL2RenderingContext, "hybrid")
       shaderRegistryVersion = GlobalShaderRegistryV2.getVersion()
       // Build pass-graph essentials
       fboManagerPG = new FBOManager()
@@ -746,9 +747,9 @@ async function ensureHeavyInit(width: number, height: number): Promise<void> {
   initBlitResources(glCtx)
   initCompositingResources(glCtx)
 
-  // Initialize v2 shader manager for layer filters
+  // Initialize v2 shader manager for layer filters (compile in-worker)
   shaderManagerV2 = new ShaderManager(GlobalShaderRegistryV2)
-  shaderManagerV2.initialize(glCtx, "worker")
+  shaderManagerV2.initialize(glCtx, "hybrid")
   registerBuiltinShaders()
   // Build VAO for layer rendering
   layerVAO = glCtx.createVertexArray()
@@ -1181,22 +1182,36 @@ async function renderLayers(
         const texMap = new Map<string, WebGLTexture>()
         for (const [id, tex] of layerTextures) texMap.set(id, tex)
 
+        // Resolve optional global layers/parameters from last message payload
+        let globalLayers: any[] | undefined
+        let globalParameters: Record<string, any> | undefined
+        try {
+          const lastMsg: any = (self as any).__lastMessageData
+          if (Array.isArray(lastMsg?.globalLayers)) {
+            globalLayers = lastMsg.globalLayers
+          }
+          if (lastMsg && typeof lastMsg.globalParameters === "object") {
+            globalParameters = lastMsg.globalParameters
+          }
+        } catch {}
+
         // Debug: log global layers being passed to hybrid renderer
-        if (
-          renderMessage.data.globalLayers &&
-          renderMessage.data.globalLayers.length > 0
-        ) {
-          console.debug(
-            "🎨 [Worker] Passing global layers to HybridRenderer:",
-            renderMessage.data.globalLayers.map((l: any) => ({
-              id: l.id,
-              type: l.type,
-              visible: l.visible,
-            }))
-          )
-        } else {
-          console.debug("🎨 [Worker] No global layers passed to HybridRenderer")
-        }
+        try {
+          if (globalLayers && globalLayers.length > 0) {
+            console.debug(
+              "🎨 [Worker] Passing global layers to HybridRenderer:",
+              globalLayers.map((l: any) => ({
+                id: l.id,
+                type: l.type,
+                visible: l.visible,
+              }))
+            )
+          } else {
+            console.debug(
+              "🎨 [Worker] No global layers passed to HybridRenderer"
+            )
+          }
+        } catch {}
 
         // Pass original layer structure to let hybrid renderer handle groups
         hybridRendererInstance.renderLayers(
@@ -1207,8 +1222,8 @@ async function renderLayers(
           canvasWidth,
           canvasHeight,
           layerDimensionsMap,
-          renderMessage.data.globalLayers,
-          renderMessage.data.globalParameters
+          globalLayers,
+          globalParameters
         )
 
         const result = (hybridRendererInstance as any).fboManager?.getFBO?.(
@@ -1911,8 +1926,8 @@ async function renderLayers(
             } catch {}
 
             if (compUBlendModeLocation) {
-              // Worker compositor also expects float uniform
-              glCtx.uniform1f(compUBlendModeLocation, mode)
+              // u_blendMode is an int in the compositor shader
+              glCtx.uniform1i(compUBlendModeLocation, mode | 0)
               try {
                 dbg("blend:uniform:set", {
                   layerId: layer.id,
@@ -2509,7 +2524,8 @@ self.onmessage = async (event: MessageEvent) => {
         try {
           if (shaderManagerV2 && gl) {
             shaderManagerV2.cleanup("worker")
-            shaderManagerV2.initialize(gl as WebGL2RenderingContext, "worker")
+            // Reinitialize using the in-worker GL context with HybridRuntime
+            shaderManagerV2.initialize(gl as WebGL2RenderingContext, "hybrid")
             registerBuiltinShaders(GlobalShaderRegistryV2)
             shaderManagerV2.prepareForMode("worker", null)
           }
