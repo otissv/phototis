@@ -48,7 +48,7 @@ UI
 * Easing: linear, easeIn, easeOut, easeInOut, cubic bezier; stepped for discrete params.
 * Color: interpolate in linear float space, not sRGB.
 * Clamp to parameter domain after interpolation.
-
+wire canvas.image-editor.tsx and the worker/hybrid renderer to call sampleToolsAtTime(..., playheadTime) so all uniforms get sampled values next.
 **Integration Points**
 
 * **EditorContext**: canonical `playheadTime` + timeline state; ephemeral scrubbing state; undo/redo integration for keyframe edits.

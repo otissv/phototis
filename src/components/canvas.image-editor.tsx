@@ -73,7 +73,7 @@ export function ImageEditorCanvas({
   const positionBufferRef = useRef<WebGLBuffer | null>(null)
   const texCoordBufferRef = useRef<WebGLBuffer | null>(null)
   const hybridRendererRef = useRef<HybridRenderer | null>(null)
-  const [processing, setProcessing] = useState(0)
+  const [/*processing*/ /*setProcessing*/ ,] = useState(0)
   const [isElementDragging, setIsElementDragging] = useState(false)
   const id = useId()
 
@@ -138,15 +138,15 @@ export function ImageEditorCanvas({
     isReady: isWorkerReady,
     isInitializing: isWorkerInitializing,
     isProcessing: isWorkerProcessing,
-    progress: workerProgress,
+    progress: _workerProgress,
     error: workerError,
-    queueStats,
+    queueStats: _queueStats,
     initialize: initializeWorker,
     ensureCanvasSize,
     resize: resizeWorker,
     renderLayers: renderLayersWithWorker,
     cancelCurrentTask,
-    canvasRef: workerCanvasRef,
+    canvasRef: _workerCanvasRef,
   } = useWorkerRenderer(workerRendererConfig)
 
   // Stable refs for worker state to avoid re-render loops in draw
@@ -446,15 +446,14 @@ export function ImageEditorCanvas({
 
   // Use effective filters instead of just selected layer filters
   const [debouncedToolsValues] = useDebounce(effectiveFilters, 100)
-  const [throttledToolsValues] = useDebounce(effectiveFilters, 16)
 
   // Track if we're currently drawing to prevent overlapping draws
   const isDrawingRef = useRef(false)
 
   // Smooth transition state for tool values
   const [smoothToolsValues, setSmoothToolsValues] =
-    useState<ImageEditorToolsState>(effectiveFilters)
-  const animationRef = useRef<Map<string, number>>(new Map())
+    useState<any>(effectiveFilters)
+  const animationRef = useRef<Map<any, number>>(new Map())
 
   // Keep latest filters in refs so draw() sees current values without needing to rebind
   const selectedFiltersRef = useRef<ImageEditorToolsState>(effectiveFilters)
@@ -462,7 +461,7 @@ export function ImageEditorCanvas({
     selectedFiltersRef.current = effectiveFilters
   }, [effectiveFilters])
 
-  const smoothToolsValuesRef = useRef<ImageEditorToolsState>(smoothToolsValues)
+  const smoothToolsValuesRef = useRef<any>(smoothToolsValues)
   useEffect(() => {
     smoothToolsValuesRef.current = smoothToolsValues
   }, [smoothToolsValues])
@@ -488,7 +487,7 @@ export function ImageEditorCanvas({
 
           // Do not animate rotation to avoid tweening when selecting rotated layers
           if (key === "rotate") {
-            setSmoothToolsValues((prev) => ({
+            setSmoothToolsValues((prev: any) => ({
               ...prev,
               [key]: targetValue,
             }))
@@ -510,7 +509,7 @@ export function ImageEditorCanvas({
             const newValue =
               currentValue + (targetValue - currentValue) * easeOut
 
-            setSmoothToolsValues((prev) => ({
+            setSmoothToolsValues((prev: any) => ({
               ...prev,
               [key]: newValue,
             }))
@@ -530,16 +529,14 @@ export function ImageEditorCanvas({
     }
   }, [effectiveFilters])
 
-  // Force redraw on flip/rotate changes (these are instant toggles and should reflect immediately)
+  // Force redraw on flip/rotate changes (sampled at current playhead time)
   // biome-ignore lint/correctness/useExhaustiveDependencies: we only want to react to orientation tools here
   useEffect(() => {
     // Avoid spamming draws during drags; draw loop already handles that case
     if (isDragActive) return
     triggerDraw("orientation-tools")
   }, [
-    effectiveFilters.flipHorizontal,
-    effectiveFilters.flipVertical,
-    effectiveFilters.rotate,
+    state.canonical.playheadTime,
     state.canonical.viewport.rotation,
     isDragActive,
     triggerDraw,
@@ -573,8 +570,8 @@ export function ImageEditorCanvas({
   }, [])
 
   // Transform values for smooth viewport updates
-  const transformX = useTransform(viewportX, (x) => `${x}px`)
-  const transformY = useTransform(viewportY, (y) => `${y}px`)
+  const _transformX = useTransform(viewportX, (x) => `${x}px`)
+  const _transformY = useTransform(viewportY, (y) => `${y}px`)
   const transformScale = useTransform(viewportScale, (scale) => scale)
   // Viewport rotation from canonical state (degrees)
   const viewportRotation = state.canonical.viewport.rotation ?? 0
@@ -959,10 +956,10 @@ export function ImageEditorCanvas({
 
   // Handle viewport updates based on zoom
   useEffect(() => {
-    const zoom = effectiveFilters.zoom / 100
+    const zoom = state.canonical.viewport.zoom / 100
     viewportScale.set(zoom)
     setViewport((prev) => ({ ...prev, scale: zoom }))
-  }, [effectiveFilters.zoom, viewportScale])
+  }, [viewportScale, state.canonical.viewport.zoom])
 
   // Center viewport when canvas dimensions change (default)
   useEffect(() => {
@@ -1370,11 +1367,13 @@ export function ImageEditorCanvas({
         const canvasHeight = canvasDimensions.height
 
         // Use smooth values for numbers, but keep flips from latest selected filters (booleans can toggle instantly)
-        const renderingToolsValues = {
-          ...smoothToolsValuesRef.current,
-          flipHorizontal: selectedFiltersRef.current.flipHorizontal,
-          flipVertical: selectedFiltersRef.current.flipVertical,
-        }
+        // Sample tools at current playhead for worker
+        const renderingToolsValues = (
+          await import("@/lib/tools/tools-state")
+        ).sampleToolsAtTime(
+          selectedFiltersRef.current as any,
+          state.canonical.playheadTime
+        )
         // Debug: log flips being sent to worker (global/selected)
         try {
           console.debug("editor:tools:global", {
@@ -1542,7 +1541,9 @@ export function ImageEditorCanvas({
       const canvasHeight = canvas.height
 
       // Pass top-level layers (preserve groups). Renderer will precomp groups
-      const allLayersToRender = topLevelLayers
+      const allLayersToRender = topLevelLayers.filter(
+        (l) => l.visible !== false
+      )
 
       // If no layers are available, just clear the canvas and return
       if (allLayersToRender.length === 0) {
@@ -1551,18 +1552,13 @@ export function ImageEditorCanvas({
         return
       }
 
-      // Use throttled values for immediate feedback during dragging
-      const activeToolsValues = isDragActive
-        ? throttledToolsValues
-        : debouncedToolsValues
-
-      // Use smooth values for numbers, but keep flips from latest selected filters (booleans can toggle instantly)
-      const renderingToolsValues = {
-        ...smoothToolsValuesRef.current,
-        flipHorizontal: selectedFiltersRef.current.flipHorizontal,
-        flipVertical: selectedFiltersRef.current.flipVertical,
-        rotate: selectedFiltersRef.current.rotate,
-      }
+      // Sample tools at current playhead for hybrid
+      const renderingToolsValues = (
+        await import("@/lib/tools/tools-state")
+      ).sampleToolsAtTime(
+        selectedFiltersRef.current as any,
+        state.canonical.playheadTime
+      )
 
       // If document layer is selected, apply document transformations to all layers
       const isDocumentSelected = selectedLayerId === "document"
@@ -1642,7 +1638,8 @@ export function ImageEditorCanvas({
             canvasHeight,
             dimsForRender,
             state.canonical.document.globalLayers,
-            state.canonical.document.globalParameters
+            state.canonical.document.globalParameters,
+            state.canonical.playheadTime
           )
 
           // Render the final result to canvas
@@ -1658,23 +1655,13 @@ export function ImageEditorCanvas({
               "🎨 [Renderer] Falling back to simple WebGL rendering"
             )
           // Fallback: Use simple WebGL rendering for the new layer system
-          await renderLayersFallback(
-            allLayersToRender,
-            layerTextures,
-            renderingToolsValues,
-            canvas
-          )
+          await renderLayersFallback(allLayersToRender, layerTextures)
         }
       } else {
         // Fallback: Use simple WebGL rendering for the new layer system
         isDebug &&
           console.debug("🎨 [Renderer] Using simple WebGL fallback renderer")
-        await renderLayersFallback(
-          allLayersToRender,
-          layerTextures,
-          renderingToolsValues,
-          canvas
-        )
+        await renderLayersFallback(allLayersToRender, layerTextures)
       }
     } finally {
       // Always reset the drawing flag
@@ -1684,12 +1671,7 @@ export function ImageEditorCanvas({
 
   // Fallback rendering function for the new layer type system
   const renderLayersFallback = useCallback(
-    async (
-      layers: EditorLayer[],
-      layerTextures: Map<string, WebGLTexture>,
-      toolsValues: ImageEditorToolsState,
-      canvas: HTMLCanvasElement
-    ) => {
+    async (layers: EditorLayer[], layerTextures: Map<string, WebGLTexture>) => {
       const gl = glRef.current
       if (!gl) return
 
@@ -1803,40 +1785,6 @@ export function ImageEditorCanvas({
     [isElementDragging]
   )
 
-  const handleDragLeave = useCallback(
-    (e: React.DragEvent) => {
-      if (isElementDragging) return
-      e.preventDefault()
-      e.stopPropagation()
-      const canvas = e.currentTarget as HTMLCanvasElement
-      canvas.style.border = ""
-      canvas.style.backgroundColor = ""
-      document.getElementById("drag-overlay")?.classList.add("opacity-0")
-    },
-    [isElementDragging]
-  )
-
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      if (isElementDragging) return
-      e.preventDefault()
-      e.stopPropagation()
-
-      // Reset visual feedback
-      const canvas = e.currentTarget as HTMLCanvasElement
-      canvas.style.border = ""
-      canvas.style.backgroundColor = ""
-      document.getElementById("drag-overlay")?.classList.add("opacity-0")
-
-      const files = Array.from(e.dataTransfer.files)
-      const imageFiles = files.filter((file) => file.type.startsWith("image/"))
-
-      if (imageFiles.length > 0 && onImageDrop) {
-        onImageDrop(imageFiles[0])
-      }
-    },
-    [onImageDrop, isElementDragging]
-  )
 
   useCrop({
     cropRect,
@@ -1906,10 +1854,6 @@ export function ImageEditorCanvas({
           }}
           width={canvasDimensions.width}
           height={canvasDimensions.height}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-          title='Drop image files here to add them as new layers'
           {...props}
           id={`image-editor-canvas-${id}`}
         />
@@ -2068,19 +2012,6 @@ export function ImageEditorCanvas({
             )}
           </div>
         )}
-        {/* Drag overlay indicator */}
-        {/* <div
-          className={cn(
-            "absolute inset-0 pointer-events-none flex items-center justify-center opacity-0 transition-opacity duration-200",
-            "bg-blue-500/20 border-dashed border-blue-500 backdrop-blur-sm",
-            "ring-inset ring-1 ring-blue-500"
-          )}
-          id='drag-overlay'
-          style={{
-            width: canvasDimensions.width,
-            height: canvasDimensions.height,
-          }}
-        /> */}
       </motion.div>
 
       {/* Worker error indicator */}

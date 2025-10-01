@@ -24,6 +24,7 @@ import { WorkerPrewarm } from "./worker-prewarm"
 import { getImageDimensions } from "@/lib/utils/get-image-dimensions"
 import { config } from "@/config"
 import { capitalize } from "@/lib/utils/capitalize"
+import { sampleToolsAtTime } from "@/lib/tools/tools-state"
 
 const { isDebug } = config()
 
@@ -87,6 +88,11 @@ function ImageEditorInner({
     return initialToolsState
   }, [selectedLayer])
 
+  // Sample tools for immediate UI reads outside footer controls
+  const sampledTools = useMemo(() => {
+    return sampleToolsAtTime(toolsValues as any, state.canonical.playheadTime)
+  }, [toolsValues, state.canonical.playheadTime])
+
   const dispatch = useCallback(
     (action: ImageEditorToolsActions | ImageEditorToolsActions[]) => {
       const current = selectedLayer
@@ -113,15 +119,15 @@ function ImageEditorInner({
   const value = useMemo(() => {
     switch (activeTool) {
       case "rotate":
-        return toolsValues.rotate
+        return sampledTools.rotate
       case "scale":
-        return toolsValues.scale
+        return sampledTools.scale
       case "crop":
         return toolsValues.crop
       default:
         return 0
     }
-  }, [activeTool, toolsValues.rotate, toolsValues.scale, toolsValues.crop])
+  }, [activeTool, sampledTools.rotate, sampledTools.scale, toolsValues.crop])
 
   const handleSelectedToolChange = useCallback(
     (tool: SidebarToolsKeys) => {
@@ -384,13 +390,13 @@ function ImageEditorInner({
 
       <ImageEditorFooter
         selectedLayer={selectedLayer || ({} as EditorLayer)}
-        selectedSidebar={activeTool}
+        selectedSidebar={activeTool as any}
         dispatch={
           dispatch as (
             value: ImageEditorToolsActions | ImageEditorToolsActions[]
           ) => void
         }
-        selectedTool={activeTool}
+        selectedTool={activeTool as any}
         value={value}
         onSelectedToolChange={handleSelectedToolChange}
         className='lg:col-start-2 lg:row-start-3 mx-auto'

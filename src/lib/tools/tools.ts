@@ -27,8 +27,19 @@ export type ToolValueDimensionType = {
     y: number
   }
 }
-export type ToolValueCropType = CropToolsType["crop"] & {
-  defaultValue: CropToolsType["crop"]
+export type ToolValueCropType = {
+  x: number
+  y: number
+  width: number
+  height: number
+  overlay: "thirdGrid" | "goldenSpiral" | "grid" | "diagonals"
+  defaultValue: {
+    x: number
+    y: number
+    width: number
+    height: number
+    overlay: "thirdGrid" | "goldenSpiral" | "grid" | "diagonals"
+  }
 }
 
 export type ToolValueColorType = {
@@ -266,67 +277,68 @@ export const TOOL_VALUES: Record<ToolValueKeys, ToolValueTypes> = {
 }
 
 export type DimensionsToolsType = {
-  dimensions: {
+  dimensions: Track<{
     width: number
     height: number
     x: number
     y: number
-  }
+  }>
+  // Viewport zoom is not keyframed in step 1; keep as number
   zoom: number
 }
 
 export type RotateToolsType = {
-  rotate: number
-  scale: number
-  flipVertical: boolean
-  flipHorizontal: boolean
+  rotate: Track<number>
+  scale: Track<number>
+  flipVertical: Track<boolean>
+  flipHorizontal: Track<boolean>
 }
 
 export type CropToolsType = {
-  crop: {
+  crop: Track<{
     x: number
     y: number
     width: number
     height: number
     overlay: "thirdGrid" | "goldenSpiral" | "grid" | "diagonals"
-  }
+  }>
 }
 
 export type ScaleToolsType = {
-  scale: number
+  scale: Track<number>
 }
 
 export type UpscaleToolsType = {
-  upscale: number
+  upscale: Track<number>
 }
 
 export type AdjustLayersType = {
-  brightness: number
-  contrast: number
-  exposure: number
-  gamma: number
-  grayscale: number
-  hue: number
-  invert: number
-  saturation: number
+  brightness: Track<number>
+  contrast: Track<number>
+  exposure: Track<number>
+  gamma: Track<number>
+  grayscale: Track<number>
+  hue: Track<number>
+  invert: Track<number>
+  saturation: Track<number>
   solid: string
-  vintage: number
-  temperature: number
-  tint: number
-  colorizeHue: number
-  colorizeSaturation: number
-  colorizeLightness: number
-  colorizePreserveLum: boolean
-  colorizeAmount: number
-  vibrance: number
-  sharpenAmount: number
-  sharpenRadius: number
-  sharpenThreshold: number
-  noiseAmount: number
-  noiseSize: number
-  gaussianAmount: number
-  gaussianRadius: number
-  sepia: number
+  vintage: Track<number>
+  temperature: Track<number>
+  tint: Track<number>
+  colorizeHue: Track<number>
+  colorizeSaturation: Track<number>
+  colorizeLightness: Track<number>
+  colorizePreserveLum: Track<boolean>
+  colorizeAmount: Track<number>
+  vibrance: Track<number>
+  sharpenAmount: Track<number>
+  sharpenRadius: Track<number>
+  sharpenThreshold: Track<number>
+  noiseAmount: Track<number>
+  noiseSize: Track<number>
+  gaussianAmount: Track<number>
+  gaussianRadius: Track<number>
+  sepia: Track<number>
 }
 
 export type AdjustmentType = keyof AdjustLayersType
@@ -344,20 +356,33 @@ export type EasingKind =
   | "easeOut"
   | "easeInOut"
 
-export type Keyframe<T extends number | boolean | string = number> = {
+export type Keyframe<T = any> = {
   t: number // seconds
   v: T
   easing?: EasingKind
 }
 
-export type Track<T extends number | boolean | string = number> = {
+export type Track<T = any> = {
   id: string
   param: string
   kfs: Keyframe<T>[]
   stepped?: boolean
 }
 
-export function sampleTrack<T extends number | boolean | string = number>(
+export function createTrack<T = any>(
+  param: string,
+  initialValue: T,
+  stepped?: boolean
+): Track<T> {
+  return {
+    id: `${param}`,
+    param,
+    kfs: [{ t: 0, v: initialValue }],
+    stepped,
+  }
+}
+
+export function sampleTrack<T = any>(
   track: Track<T>,
   t: number
 ): T {
@@ -381,10 +406,11 @@ export function sampleTrack<T extends number | boolean | string = number>(
       break
     }
   }
-  // stepped/discrete
+  // stepped/discrete or non-numeric: return left value
   const stepped =
     track.stepped || left.easing === "stepped" || right.easing === "stepped"
-  if (stepped) return left.v
+  if (stepped || typeof (left.v as any) !== "number" || typeof (right.v as any) !== "number")
+    return left.v as T
   const dt = right.t - left.t
   const u = dt <= 0 ? 0 : (t - left.t) / dt
   const ease = (kind?: EasingKind, x?: number) => {
@@ -405,9 +431,12 @@ export function sampleTrack<T extends number | boolean | string = number>(
   return (left.v as number) * (1 - w) + (right.v as number) * w
 }
 
-export function addOrUpdateKeyframe<
-  T extends number | boolean | string = number,
->(track: Track<T>, t: number, v: T, easing?: EasingKind): Track<T> {
+export function addOrUpdateKeyframe<T = any>(
+  track: Track<T>,
+  t: number,
+  v: T,
+  easing?: EasingKind
+): Track<T> {
   const kfs = [...track.kfs]
   const idx = kfs.findIndex((k) => k.t === t)
   if (idx >= 0) {

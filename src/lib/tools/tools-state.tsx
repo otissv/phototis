@@ -1,25 +1,6 @@
-import {
-  TOOL_VALUES,
-  type AdjustLayersType,
-  type CropToolsType,
-  type DimensionsToolsType,
-  type RotateToolsType,
-  type ScaleToolsType,
-  type ToolValueBooleanType,
-  type ToolValueCropType,
-  type ToolValueDimensionType,
-  type ToolValueStepType,
-  type ToolValueStringType,
-  type UpscaleToolsType,
-} from "@/lib/tools/tools"
+import { TOOL_VALUES, createTrack, addOrUpdateKeyframe } from "@/lib/tools/tools"
 
-export type ImageEditorToolsState = AdjustLayersType &
-  HistoryToolsState &
-  DimensionsToolsType &
-  RotateToolsType &
-  CropToolsType &
-  ScaleToolsType &
-  UpscaleToolsType
+export type ImageEditorToolsState = any
 
 export const SIDEBAR_TOOLS = {
   scale: ["scale"],
@@ -33,8 +14,14 @@ export const SIDEBAR_TOOLS = {
 export type SidebarToolsKeys = keyof typeof SIDEBAR_TOOLS
 
 // Define payload types for non-numeric tools
-type DimensionsPayload = DimensionsToolsType["dimensions"]
-type CropPayload = CropToolsType["crop"]
+type DimensionsPayload = { width: number; height: number; x: number; y: number }
+type CropPayload = {
+  x: number
+  y: number
+  width: number
+  height: number
+  overlay: "thirdGrid" | "goldenSpiral" | "grid" | "diagonals"
+}
 
 type NumericToolKeys = Exclude<
   keyof typeof TOOL_VALUES,
@@ -44,6 +31,7 @@ type NumericToolKeys = Exclude<
 export type NumericToolAction = {
   type: NumericToolKeys | "zoom"
   payload: number
+  t?: number
 }
 
 export type DimensionsToolAction = {
@@ -89,6 +77,43 @@ export type ImageEditorToolsActions =
   | ImageEditorToolsHistoryAction
   | ImageEditorToolsUpdateHistoryAction
 
+// Helper: sample a track-like or raw value at time t
+function sampleMaybeTrack(value: unknown, t: number): any {
+  if (
+    value &&
+    typeof value === "object" &&
+    (value as any).kfs &&
+    Array.isArray((value as any).kfs)
+  ) {
+    try {
+      // Import lazily to avoid cycle
+      const { sampleTrack } = require("@/lib/tools/tools") as any
+      return sampleTrack(value as any, t)
+    } catch {
+      return (value as any)?.kfs?.[0]?.v ?? 0
+    }
+  }
+  return value
+}
+
+export function sampleToolsAtTime(
+  state: ImageEditorToolsState,
+  t: number
+): any {
+  const out: any = {}
+  for (const [k, v] of Object.entries(state as any)) {
+    if (k === "history" || k === "historyPosition") {
+      continue
+    }
+    if (k === "solid") {
+      out[k] = v
+      continue
+    }
+    out[k] = sampleMaybeTrack(v, t)
+  }
+  return out
+}
+
 export type HistoryToolsState = {
   history: ImageEditorToolsAction[]
   historyPosition: number
@@ -100,73 +125,147 @@ export const initialToolsState: ImageEditorToolsState = {
   historyPosition: 0,
 
   // Rotate values
-  flipHorizontal: TOOL_VALUES.flipHorizontal
-    .defaultValue as ToolValueBooleanType["defaultValue"],
-  flipVertical: TOOL_VALUES.flipVertical
-    .defaultValue as ToolValueBooleanType["defaultValue"],
-  rotate: TOOL_VALUES.rotate.defaultValue as ToolValueStepType["defaultValue"],
+  flipHorizontal: createTrack<boolean>(
+    "flipHorizontal",
+    Boolean((TOOL_VALUES.flipHorizontal as any).defaultValue || 0)
+  ) as any,
+  flipVertical: createTrack<boolean>(
+    "flipVertical",
+    Boolean((TOOL_VALUES.flipVertical as any).defaultValue || 0)
+  ) as any,
+  rotate: createTrack(
+    "rotate",
+    TOOL_VALUES.rotate.defaultValue as ToolValueStepType["defaultValue"]
+  ),
 
-  crop: TOOL_VALUES.crop.defaultValue as ToolValueCropType["defaultValue"],
+  crop: createTrack("crop", TOOL_VALUES.crop.defaultValue),
 
-  dimensions: TOOL_VALUES.dimensions
-    .defaultValue as ToolValueDimensionType["defaultValue"],
+  dimensions: createTrack(
+    "dimensions",
+    TOOL_VALUES.dimensions.defaultValue
+  ),
 
-  scale: TOOL_VALUES.scale.defaultValue as ToolValueStepType["defaultValue"],
+  scale: createTrack(
+    "scale",
+    TOOL_VALUES.scale.defaultValue as ToolValueStepType["defaultValue"]
+  ),
 
-  upscale: TOOL_VALUES.upscale
-    .defaultValue as ToolValueStepType["defaultValue"],
+  upscale: createTrack(
+    "upscale",
+    TOOL_VALUES.upscale.defaultValue as ToolValueStepType["defaultValue"]
+  ),
 
   zoom: TOOL_VALUES.zoom.defaultValue as ToolValueStepType["defaultValue"],
 
   // Basic adjustment values
-  brightness: TOOL_VALUES.brightness
-    .defaultValue as ToolValueStepType["defaultValue"],
-  contrast: TOOL_VALUES.contrast
-    .defaultValue as ToolValueStepType["defaultValue"],
-  exposure: TOOL_VALUES.exposure
-    .defaultValue as ToolValueStepType["defaultValue"],
-  gamma: TOOL_VALUES.gamma.defaultValue as ToolValueStepType["defaultValue"],
-  grayscale: TOOL_VALUES.grayscale
-    .defaultValue as ToolValueStepType["defaultValue"],
-  hue: TOOL_VALUES.hue.defaultValue as ToolValueStepType["defaultValue"],
-  invert: TOOL_VALUES.invert.defaultValue as ToolValueStepType["defaultValue"],
-  saturation: TOOL_VALUES.saturation
-    .defaultValue as ToolValueStepType["defaultValue"],
-  sepia: TOOL_VALUES.sepia.defaultValue as ToolValueStepType["defaultValue"],
+  brightness: createTrack(
+    "brightness",
+    TOOL_VALUES.brightness.defaultValue as ToolValueStepType["defaultValue"]
+  ),
+  contrast: createTrack(
+    "contrast",
+    TOOL_VALUES.contrast.defaultValue as ToolValueStepType["defaultValue"]
+  ),
+  exposure: createTrack(
+    "exposure",
+    TOOL_VALUES.exposure.defaultValue as ToolValueStepType["defaultValue"]
+  ),
+  gamma: createTrack(
+    "gamma",
+    TOOL_VALUES.gamma.defaultValue as ToolValueStepType["defaultValue"]
+  ),
+  grayscale: createTrack(
+    "grayscale",
+    TOOL_VALUES.grayscale.defaultValue as ToolValueStepType["defaultValue"]
+  ),
+  hue: createTrack(
+    "hue",
+    TOOL_VALUES.hue.defaultValue as ToolValueStepType["defaultValue"]
+  ),
+  invert: createTrack(
+    "invert",
+    TOOL_VALUES.invert.defaultValue as ToolValueStepType["defaultValue"]
+  ),
+  saturation: createTrack(
+    "saturation",
+    TOOL_VALUES.saturation.defaultValue as ToolValueStepType["defaultValue"]
+  ),
+  sepia: createTrack(
+    "sepia",
+    TOOL_VALUES.sepia.defaultValue as ToolValueStepType["defaultValue"]
+  ),
   solid: TOOL_VALUES.solid.defaultValue as ToolValueStringType["defaultValue"],
-  temperature: TOOL_VALUES.temperature
-    .defaultValue as ToolValueStepType["defaultValue"],
-  tint: TOOL_VALUES.tint.defaultValue as ToolValueStepType["defaultValue"],
-  colorizeHue: TOOL_VALUES.colorizeHue
-    .defaultValue as ToolValueStepType["defaultValue"],
-  colorizeSaturation: TOOL_VALUES.colorizeSaturation
-    .defaultValue as ToolValueStepType["defaultValue"],
-  colorizeLightness: TOOL_VALUES.colorizeLightness
-    .defaultValue as ToolValueStepType["defaultValue"],
-  colorizeAmount: TOOL_VALUES.colorizeAmount
-    .defaultValue as ToolValueStepType["defaultValue"],
-  colorizePreserveLum: TOOL_VALUES.colorizePreserveLum
-    .defaultValue as ToolValueBooleanType["defaultValue"],
-  vibrance: TOOL_VALUES.vibrance
-    .defaultValue as ToolValueStepType["defaultValue"],
-  vintage: TOOL_VALUES.vintage
-    .defaultValue as ToolValueStepType["defaultValue"],
+  temperature: createTrack(
+    "temperature",
+    TOOL_VALUES.temperature.defaultValue as ToolValueStepType["defaultValue"]
+  ),
+  tint: createTrack(
+    "tint",
+    TOOL_VALUES.tint.defaultValue as ToolValueStepType["defaultValue"]
+  ),
+  colorizeHue: createTrack(
+    "colorizeHue",
+    TOOL_VALUES.colorizeHue.defaultValue as ToolValueStepType["defaultValue"]
+  ),
+  colorizeSaturation: createTrack(
+    "colorizeSaturation",
+    TOOL_VALUES.colorizeSaturation
+      .defaultValue as ToolValueStepType["defaultValue"]
+  ),
+  colorizeLightness: createTrack(
+    "colorizeLightness",
+    TOOL_VALUES.colorizeLightness
+      .defaultValue as ToolValueStepType["defaultValue"]
+  ),
+  colorizeAmount: createTrack(
+    "colorizeAmount",
+    TOOL_VALUES.colorizeAmount.defaultValue as ToolValueStepType["defaultValue"]
+  ),
+  colorizePreserveLum: createTrack(
+    "colorizePreserveLum",
+    Boolean(
+      (TOOL_VALUES.colorizePreserveLum as any).defaultValue || false
+    ) as unknown as number
+  ) as any,
+  vibrance: createTrack(
+    "vibrance",
+    TOOL_VALUES.vibrance.defaultValue as ToolValueStepType["defaultValue"]
+  ),
+  vintage: createTrack(
+    "vintage",
+    TOOL_VALUES.vintage.defaultValue as ToolValueStepType["defaultValue"]
+  ),
 
   // Effect values
-  noiseAmount: TOOL_VALUES.noiseAmount
-    .defaultValue as ToolValueStepType["defaultValue"],
-  noiseSize: TOOL_VALUES.noiseSize
-    .defaultValue as ToolValueStepType["defaultValue"],
-  gaussianAmount: TOOL_VALUES.gaussianAmount
-    .defaultValue as ToolValueStepType["defaultValue"],
-  gaussianRadius: TOOL_VALUES.gaussianRadius
-    .defaultValue as ToolValueStepType["defaultValue"],
-  sharpenAmount: TOOL_VALUES.sharpenAmount
-    .defaultValue as ToolValueStepType["defaultValue"],
-  sharpenRadius: TOOL_VALUES.sharpenRadius
-    .defaultValue as ToolValueStepType["defaultValue"],
-  sharpenThreshold: TOOL_VALUES.sharpenThreshold
-    .defaultValue as ToolValueStepType["defaultValue"],
+  noiseAmount: createTrack(
+    "noiseAmount",
+    TOOL_VALUES.noiseAmount.defaultValue as ToolValueStepType["defaultValue"]
+  ),
+  noiseSize: createTrack(
+    "noiseSize",
+    TOOL_VALUES.noiseSize.defaultValue as ToolValueStepType["defaultValue"]
+  ),
+  gaussianAmount: createTrack(
+    "gaussianAmount",
+    TOOL_VALUES.gaussianAmount.defaultValue as ToolValueStepType["defaultValue"]
+  ),
+  gaussianRadius: createTrack(
+    "gaussianRadius",
+    TOOL_VALUES.gaussianRadius.defaultValue as ToolValueStepType["defaultValue"]
+  ),
+  sharpenAmount: createTrack(
+    "sharpenAmount",
+    TOOL_VALUES.sharpenAmount.defaultValue as ToolValueStepType["defaultValue"]
+  ),
+  sharpenRadius: createTrack(
+    "sharpenRadius",
+    TOOL_VALUES.sharpenRadius.defaultValue as ToolValueStepType["defaultValue"]
+  ),
+  sharpenThreshold: createTrack(
+    "sharpenThreshold",
+    TOOL_VALUES.sharpenThreshold
+      .defaultValue as ToolValueStepType["defaultValue"]
+  ),
 }
 
 export function imageEditorToolsReducer(
@@ -184,34 +283,38 @@ export function imageEditorToolsReducer(
   switch (action.type) {
     case "dimensions": {
       const { payload } = action as DimensionsToolAction
-      return {
-        ...state,
-        dimensions: {
+      const nextDims = addOrUpdateKeyframe(
+        state.dimensions as any,
+        (action as any).t ?? 0,
+        {
           width: Math.max(0, Number(payload?.width) || 0),
           height: Math.max(0, Number(payload?.height) || 0),
           x: Number(payload?.x ?? 0) || 0,
           y: Number(payload?.y ?? 0) || 0,
-        },
+        }
+      ) as any
+      return {
+        ...state,
+        dimensions: nextDims,
       }
     }
     case "crop": {
       const { payload } = action as CropToolAction
-
+      const prev = ((state.crop as any)?.kfs?.[0]?.v || {}) as any
+      const nextCrop = addOrUpdateKeyframe(
+        state.crop as any,
+        (action as any).t ?? 0,
+        {
+          x: Math.max(0, Number(payload?.x ?? prev.x ?? 0)),
+          y: Math.max(0, Number(payload?.y ?? prev.y ?? 0)),
+          width: Math.max(0, Number(payload?.width ?? prev.width ?? 0)),
+          height: Math.max(0, Number(payload?.height ?? prev.height ?? 0)),
+          overlay: (payload?.overlay as any) ?? (prev.overlay as any) ?? "thirdGrid",
+        }
+      ) as any
       return {
         ...state,
-        crop: {
-          x: Math.max(0, Number(payload?.x ?? state.crop?.x ?? 0)),
-          y: Math.max(0, Number(payload?.y ?? state.crop?.y ?? 0)),
-          width: Math.max(0, Number(payload?.width ?? state.crop?.width ?? 0)),
-          height: Math.max(
-            0,
-            Number(payload?.height ?? state.crop?.height ?? 0)
-          ),
-          overlay:
-            (payload?.overlay as any) ??
-            (state.crop as any)?.overlay ??
-            "thirdGrid",
-        },
+        crop: nextCrop,
       }
     }
 
@@ -224,11 +327,44 @@ export function imageEditorToolsReducer(
     }
 
     default: {
-      const { type, payload } = action as NumericToolAction
-      return {
-        ...state,
-        [type]: payload,
-      } as ImageEditorToolsState
+      const { type, payload, t } = action as NumericToolAction
+      const at = typeof t === "number" ? t : 0
+      const current = (state as any)[type]
+      // Zoom and structural payloads are not keyframed in step 1
+      if (type === "zoom") {
+    return { ...(state as any), zoom: payload } as ImageEditorToolsState
+      }
+      // For dimensions/crop we accept object payloads and set directly
+  if (type === ("dimensions" as any)) {
+    const next = addOrUpdateKeyframe(
+      (state as any).dimensions,
+      at,
+      (action as any).payload as { width: number; height: number; x: number; y: number }
+    )
+    return { ...(state as any), dimensions: next } as any
+  }
+  if (type === ("crop" as any)) {
+    const next = addOrUpdateKeyframe(
+      (state as any).crop,
+      at,
+      (action as any).payload as {
+        x: number
+        y: number
+        width: number
+        height: number
+        overlay: "thirdGrid" | "goldenSpiral" | "grid" | "diagonals"
+      }
+    )
+    return { ...(state as any), crop: next } as any
+      }
+      // Otherwise we expect a Track; add or update keyframe at time t
+      if (current && typeof current === "object" && (current as any).kfs) {
+        const next = addOrUpdateKeyframe(current as any, at, payload as any)
+        return { ...(state as any), [type]: next } as any
+      }
+      // If not a Track, initialize a track and set
+      const next = createTrack(String(type), payload as any)
+      return { ...(state as any), [type]: next } as any
     }
   }
 }

@@ -6,6 +6,7 @@ import { Eye, EyeOff, Lock, MoreHorizontal, Copy, Trash2 } from "lucide-react"
 import { Button } from "@/ui/button"
 import { useEditorContext } from "@/lib/editor/context"
 import { TOOL_VALUES } from "@/lib/tools/tools"
+import { sampleToolsAtTime } from "@/lib/tools/tools-state"
 import type {
   ImageEditorToolsActions,
   ImageEditorToolsState,
@@ -33,22 +34,8 @@ export interface DocumentPanelProps {
 }
 
 export function DocumentPanel({ toolsValues, dispatch }: DocumentPanelProps) {
-  const {
-    state,
-    addGlobalLayer,
-    flipDocument,
-    getOrderedLayers,
-    getSelectedLayer,
-    getSelectedLayerId,
-    removeGlobalLayer,
-    removeGlobalParameter,
-    reorderGlobalLayer,
-    rotateDocument,
-    setGlobalParameters,
-    updateAdjustmentParameters,
-    updateGlobalLayer,
-    updateGlobalParameter,
-  } = useEditorContext()
+  const { state, addGlobalLayer, removeGlobalLayer, updateGlobalLayer } =
+    useEditorContext()
 
   const [globalSelectedLayerId, setGlobalSelectedLayerId] = useState<
     string | null
@@ -439,7 +426,9 @@ function GlobalLayerItem({
         <div>
           <AdjustmentLayerEditor
             layer={layer as AdjustmentLayer}
-            onUpdate={onUpdateParameters}
+            onUpdate={(params) => {
+              onUpdateParameters?.(params)
+            }}
           />
         </div>
       )}

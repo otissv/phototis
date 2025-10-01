@@ -74,7 +74,6 @@ export function QualityOptions({
           </SheetDescription>
         </SheetHeader>
         <div className='flex justify-center mt-6'>
-          {/* TODO: show preview image */}
           <form className='space-y-4 max-w-[600px]'>
             <div className='flex items-center gap-2'>
               <Label htmlFor='jpeg-quality' className='text-right'>

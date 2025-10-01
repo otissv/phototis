@@ -4,6 +4,8 @@ import { Fragment } from "react"
 import { Eclipse, Palette, Sun, Droplets, Sparkles } from "lucide-react"
 
 import { TOOL_VALUES, type ToolValueColorType } from "@/lib/tools/tools"
+import { useEditorContext } from "@/lib/editor/context"
+import { sampleToolsAtTime } from "@/lib/tools/tools-state"
 import { getAdjustmentPlugin } from "@/lib/editor/adjustments/registry"
 import { Color } from "@/components/ui/color"
 import { colorPalette } from "@/components/ui/color-palette"
@@ -42,7 +44,10 @@ export function getAdjustmentIcon(adjustmentType: string) {
 export interface AdjustmentLayerEditorProps {
   layer: AdjustmentLayer
   onUpdate: (
-    parameters: Record<string, number | { value: number; color: string }>
+    parameters: Record<
+      string,
+      number | { value: number; color: string } | string
+    >
   ) => void
 }
 
@@ -50,9 +55,16 @@ export function AdjustmentLayerEditor({
   layer,
   onUpdate,
 }: AdjustmentLayerEditorProps) {
+  const { getPlayheadTime } = useEditorContext()
+  const playheadTime = getPlayheadTime()
+
+  const sampledParams = sampleToolsAtTime(
+    (layer.parameters || {}) as any,
+    playheadTime
+  )
   const handleParameterChange = (
     key: string,
-    value: number | { value: number; color: string }
+    value: number | { value: number; color: string } | string
   ) => {
     // value is hex and we need to be converted to rgb
     onUpdate({ [key]: value })
@@ -245,7 +257,7 @@ export function AdjustmentLayerEditor({
 
   const plugin = getAdjustmentPlugin(layer.adjustmentType as any)
   const ui = plugin?.uiSchema
-  const params = layer.parameters
+  const params = sampledParams
 
   return (
     <div className='flex items-center rounded-b-sm min-h-10 border'>
@@ -300,7 +312,7 @@ export function AdjustmentLayerEditor({
                     key={key}
                     id={key}
                     value={inputValue}
-                    onChange={(v) => handleParameterChange(key, v as any)}
+                    onChange={(v) => handleParameterChange(key, v)}
                   />
                 )
               }

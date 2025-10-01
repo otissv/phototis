@@ -249,6 +249,7 @@ export function MoveControls({
         x: nextX,
         y: y,
       },
+      t: 0,
     })
   }
 
@@ -263,6 +264,7 @@ export function MoveControls({
         x: x,
         y: nextY,
       },
+      t: 0,
     })
   }
 

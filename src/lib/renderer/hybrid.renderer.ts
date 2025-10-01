@@ -4,6 +4,7 @@ import type { BlendMode } from "@/lib/shaders/blend-modes/types.blend"
 import type { ImageEditorToolsState } from "@/lib/tools/tools-state"
 import type { EditorLayer as Layer } from "@/lib/editor/state"
 import { RenderConfig } from "@/lib/renderer/render-config.renderer"
+import { sampleToolsAtTime } from "@/lib/tools/tools-state"
 import { ShaderManager } from "@/lib/shaders/manager.shader"
 import { GlobalShaderRegistryV2 } from "@/lib/shaders/registry.shader"
 import { registerBuiltinShaders } from "@/lib/shaders/register-builtin.shader"
@@ -1136,7 +1137,11 @@ void main() {
       opacity: number
       blendMode: string
     }>,
-    globalParameters?: Record<string, number | { value: number; color: string }>
+    globalParameters?: Record<
+      string,
+      number | { value: number; color: string }
+    >,
+    playheadTime?: number
   ): void {
     if (!this.gl || !this.shaderManagerV2 || !this.compositingProgram) {
       return
@@ -1264,8 +1269,12 @@ void main() {
           "scale",
         ]
         const layerToolsValues = applyGlobalParameters(withDefaults(undefined))
-        const imgFilters =
+        const rawFilters =
           (layer.filters as Partial<ImageEditorToolsState>) || {}
+        const imgFilters = sampleToolsAtTime(
+          rawFilters as any,
+          typeof playheadTime === "number" ? playheadTime : 0
+        ) as Partial<ImageEditorToolsState>
         for (const k of EFFECT_KEYS) {
           if (Object.prototype.hasOwnProperty.call(imgFilters, k)) {
             ;(layerToolsValues as any)[k] = (imgFilters as any)[k]
@@ -1283,9 +1292,7 @@ void main() {
         } else {
           // For non-selected layers, preserve their own orientation (rotate/flip/scale) from filters
           for (const k of ORIENTATION_KEYS) {
-            if (Object.prototype.hasOwnProperty.call(imgFilters, k)) {
-              ;(layerToolsValues as any)[k] = (imgFilters as any)[k]
-            }
+            ;(layerToolsValues as any)[k] = (imgFilters as any)[k]
           }
         }
 

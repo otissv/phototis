@@ -96,15 +96,27 @@ export function RotateFooter({
   onSelectedToolChange: _onSelectedToolChange,
   ...props
 }: RotateFooterProps) {
-  const { rotateDocument, flipDocument } = useEditorContext()
+  const { rotateDocument, flipDocument, getPlayheadTime } = useEditorContext()
+  const t = getPlayheadTime()
   const isDocumentLayer = selectedLayer?.id === "document"
 
-  const safeRotate =
-    typeof (toolsValues as any).rotate === "number"
-      ? (toolsValues as any).rotate
-      : 0
-  const safeFlipH = Boolean((toolsValues as any)?.flipHorizontal)
-  const safeFlipV = Boolean((toolsValues as any)?.flipVertical)
+  const sampleMaybeTrack = (v: any) => {
+    try {
+      if (v && typeof v === "object" && Array.isArray(v.kfs)) {
+        const { sampleTrack } = require("@/lib/tools/tools") as any
+        return sampleTrack(v, t)
+      }
+    } catch {}
+    return v
+  }
+
+  const safeRotate = Number(sampleMaybeTrack((toolsValues as any).rotate) || 0)
+  const safeFlipH = Boolean(
+    sampleMaybeTrack((toolsValues as any)?.flipHorizontal)
+  )
+  const safeFlipV = Boolean(
+    sampleMaybeTrack((toolsValues as any)?.flipVertical)
+  )
 
   const handleRotateLeft = () => {
     if (isDocumentLayer) {
@@ -116,7 +128,7 @@ export function RotateFooter({
       // Invert rotation direction if image is flipped horizontally
       const rotationDirection = safeFlipH ? -90 : 90
       const newRotation = (currentRotation + rotationDirection + 360) % 360
-      dispatch({ type: "rotate", payload: newRotation })
+      dispatch({ type: "rotate", payload: newRotation, t: 0 })
     }
   }
 
@@ -130,7 +142,7 @@ export function RotateFooter({
       // Invert rotation direction if image is flipped horizontally
       const rotationDirection = safeFlipH ? 90 : -90
       const newRotation = (currentRotation + rotationDirection + 360) % 360
-      dispatch({ type: "rotate", payload: newRotation })
+      dispatch({ type: "rotate", payload: newRotation, t: 0 })
     }
   }
 
@@ -140,12 +152,11 @@ export function RotateFooter({
       return
     }
     // Individual layer flip
-    dispatch([
-      {
-        type: "flipHorizontal",
-        payload: safeFlipH ? 0 : 1,
-      },
-    ])
+    dispatch({
+      type: "flipHorizontal",
+      payload: safeFlipH ? 0 : 1,
+      t: 0,
+    } as any)
   }
 
   const handleFlipVertical = () => {
@@ -154,10 +165,7 @@ export function RotateFooter({
       return
     }
     // Individual layer flip
-    dispatch({
-      type: "flipVertical",
-      payload: safeFlipV ? 0 : 1,
-    })
+    dispatch({ type: "flipVertical", payload: safeFlipV ? 0 : 1, t: 0 } as any)
   }
 
   const handleOnChange = useCallback(
@@ -169,7 +177,7 @@ export function RotateFooter({
         rotateDocument(rotationDiff)
       } else {
         // Individual layer rotation
-        dispatch({ type: selectedTool as any, payload: value } as any)
+        dispatch({ type: selectedTool as any, payload: value, t: 0 } as any)
       }
     },
     [dispatch, selectedTool, isDocumentLayer, safeRotate, rotateDocument]
@@ -190,7 +198,11 @@ export function RotateFooter({
     }
     switch (selectedTool) {
       case "rotate":
-        return <RotationControls {...controlProps} />
+        return (
+          <RotationControls
+            {...{ ...controlProps, selectedTool: "rotate" as any }}
+          />
+        )
     }
   }, [
     canvasRef,
@@ -216,7 +228,7 @@ export function RotateFooter({
           <ImageEditorButton
             title='Rotate image 90 degrees counter-clockwise'
             variant='ghost'
-            onClick={() => rotateDocument(-90)}
+            onClick={handleRotateLeft}
             disabled={progress}
             aria-label='Rotate image 90 degrees counter-clockwise'
           >
@@ -228,7 +240,7 @@ export function RotateFooter({
           <ImageEditorButton
             title='Rotate image 90 degrees clockwise°'
             variant='ghost'
-            onClick={() => rotateDocument(90)}
+            onClick={handleRotateRight}
             disabled={progress}
             aria-label='Rotate image 90 degrees clockwise'
           >
@@ -430,21 +442,30 @@ export function ScaleFooter({
   onSelectedToolChange,
   ...props
 }: ScaleFooterProps) {
+  const { getPlayheadTime } = useEditorContext()
+  const t = getPlayheadTime()
   const handleOnChange = useCallback(
     (value: number) => {
-      dispatch({ type: selectedTool as any, payload: value } as any)
+      dispatch({ type: selectedTool as any, payload: value, t } as any)
     },
-    [dispatch, selectedTool]
+    [dispatch, selectedTool, t]
   )
 
   const controlProps = {
     progress,
-    selectedTool,
+    selectedTool: "scale" as any,
     toolsValues,
     canvasRef,
     drawFnRef,
     selectedLayer,
-    value: toolsValues.scale,
+    value: (() => {
+      const v: any = (toolsValues as any).scale
+      if (v && typeof v === "object" && Array.isArray(v.kfs)) {
+        const { sampleTrack } = require("@/lib/tools/tools") as any
+        return Number(sampleTrack(v, t))
+      }
+      return Number(v)
+    })(),
     dispatch,
     onProgress,
     onChange: handleOnChange,
@@ -517,11 +538,13 @@ export function UpscaleFooter({
   onSelectedToolChange: _onSelectedToolChange,
   ...props
 }: UpscaleFooterProps) {
+  const { getPlayheadTime } = useEditorContext()
+  const t = getPlayheadTime()
   const handleOnChange = useCallback(
     (value: number) => {
-      dispatch({ type: selectedTool as any, payload: value } as any)
+      dispatch({ type: selectedTool as any, payload: value, t } as any)
     },
-    [dispatch, selectedTool]
+    [dispatch, selectedTool, t]
   )
 
   const controlProps = {
@@ -529,9 +552,16 @@ export function UpscaleFooter({
     drawFnRef,
     progress,
     selectedLayer,
-    selectedTool,
+    selectedTool: "upscale" as any,
     toolsValues,
-    value: toolsValues?.upscale,
+    value: (() => {
+      const v: any = (toolsValues as any).upscale
+      if (v && typeof v === "object" && Array.isArray(v.kfs)) {
+        const { sampleTrack } = require("@/lib/tools/tools") as any
+        return Number(sampleTrack(v, t))
+      }
+      return Number(v)
+    })(),
     dispatch,
     onChange: handleOnChange,
     onProgress,

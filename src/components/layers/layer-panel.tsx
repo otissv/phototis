@@ -20,6 +20,8 @@ import { useEditorContext } from "@/lib/editor/context"
 import { useBlendModeChange } from "@/components/hooks/useBlendModeChange"
 import { useOpacityChange } from "@/components/hooks/useOpacityChange"
 import { TOOL_VALUES } from "@/lib/tools/tools"
+import { sampleToolsAtTime } from "@/lib/tools/tools-state"
+import { useMemo } from "react"
 import type {
   ImageEditorToolsActions,
   ImageEditorToolsState,
@@ -85,6 +87,11 @@ export function LayersPanelInner({
   } = useEditorContext()
 
   const layers = getOrderedLayers()
+  const sampledDocumentFilters = useMemo(() => {
+    const doc = state.canonical.layers.byId["document"] as any
+    const filters = (doc?.filters || {}) as any
+    return sampleToolsAtTime(filters, state.canonical.playheadTime)
+  }, [state.canonical.layers.byId, state.canonical.playheadTime])
   const selectedLayerId = getSelectedLayerId()
   const isDragActive = state.ephemeral.interaction.isDragging
 

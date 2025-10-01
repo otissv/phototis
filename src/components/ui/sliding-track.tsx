@@ -44,11 +44,11 @@ export default function SlidingTrack({
 }: SlidingTrackProps) {
   const [value, setValue] = React.useState(hostValue)
   const [isEditing, setIsEditing] = React.useState(false)
-  const [sliderWidth, setSliderWidth] = React.useState(0)
+  const [/*sliderWidth*/ , setSliderWidth] = React.useState(0)
 
   // Memoize display value to prevent unnecessary recalculations
   const displayValue = React.useMemo(() => {
-    const valueString = isDecimal ? value.toFixed(2) : value
+    const valueString = isDecimal ? value.toFixed(2) : String(value)
     return (
       label?.(valueString, operator) ||
       `${operator ? `${valueString} ${operator}` : valueString}`
