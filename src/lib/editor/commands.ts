@@ -12,7 +12,6 @@ import type {
 import type { Command, CommandMeta } from "@/lib/editor/history"
 import { capitalize } from "@/lib/utils/capitalize"
 import { GPU_SECURITY_CONSTANTS } from "@/lib/security/gpu-security"
-import { LayerDimensions } from "@/components/canvas.image-editor"
 
 export type SerializedCommand =
   | {
@@ -1338,36 +1337,86 @@ export class DocumentDimensionsCommand implements Command {
       layers: state.layers.byId,
     }
 
-    return {
-      ...state,
-      layers: {
-        ...state.layers,
-        byId: {
-          ...this.layers,
-          document: {
-            ...this.layers.document,
-            filters: {
-              ...(this.layers.document as any).filters,
-              dimensions: {
-                ...(this.layers.document as any).filters.dimensions,
-                width: this.width,
-                height: this.height,
-              },
-              crop: {
-                ...(this.layers.document as any).filters.crop,
-                width: this.width,
-                height: this.height,
-              },
-            },
-          },
-        } as any,
-      },
-      document: {
-        ...state.document,
+    try {
+      const canon = require("@/lib/animation/crud") as any
+      const doc = (this.layers as any).document
+      const prevDims = doc?.filters?.dimensions
+      const prevCrop = doc?.filters?.crop
+      const dimsVal = {
+        x: Number((prevDims as any)?.x ?? 0) || 0,
+        y: Number((prevDims as any)?.y ?? 0) || 0,
         width: this.width,
         height: this.height,
-        canvasPosition: this.canvasPosition,
-      },
+      }
+      const cropVal = {
+        x: Number((prevCrop as any)?.x ?? 0) || 0,
+        y: Number((prevCrop as any)?.y ?? 0) || 0,
+        width: this.width,
+        height: this.height,
+        overlay: (prevCrop as any)?.overlay ?? "thirdGrid",
+      }
+      const dimsTrack = canon.isCanonicalTrack(prevDims)
+        ? canon.addOrUpdateKeyframeCanonical(prevDims, 0, dimsVal)
+        : canon.createCanonicalTrack("dimensions", dimsVal)
+      const cropTrack = canon.isCanonicalTrack(prevCrop)
+        ? canon.addOrUpdateKeyframeCanonical(prevCrop, 0, cropVal)
+        : canon.createCanonicalTrack("crop", cropVal)
+
+      return {
+        ...state,
+        layers: {
+          ...state.layers,
+          byId: {
+            ...this.layers,
+            document: {
+              ...this.layers.document,
+              filters: {
+                ...(this.layers.document as any).filters,
+                dimensions: dimsTrack,
+                crop: cropTrack,
+              },
+            },
+          } as any,
+        },
+        document: {
+          ...state.document,
+          width: this.width,
+          height: this.height,
+          canvasPosition: this.canvasPosition,
+        },
+      }
+    } catch {
+      return {
+        ...state,
+        layers: {
+          ...state.layers,
+          byId: {
+            ...this.layers,
+            document: {
+              ...this.layers.document,
+              filters: {
+                ...(this.layers.document as any).filters,
+                dimensions: {
+                  ...(this.layers.document as any).filters.dimensions,
+                  width: this.width,
+                  height: this.height,
+                },
+                crop: {
+                  ...(this.layers.document as any).filters.crop,
+                  width: this.width,
+                  height: this.height,
+                },
+              },
+            },
+          } as any,
+        },
+        document: {
+          ...state.document,
+          width: this.width,
+          height: this.height,
+          canvasPosition: this.canvasPosition,
+        },
+      }
     }
   }
 

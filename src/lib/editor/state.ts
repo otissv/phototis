@@ -16,7 +16,9 @@ import type {
 } from "@/lib/tools/tools-state"
 import type { TOOL_VALUES } from "@/lib/tools/tools"
 import type { AdjustmentTypes } from "./types.adjustment"
+import { config } from "@/config"
 
+const { isDebug } = config()
 /**
  * Canonical types
  */
@@ -181,6 +183,10 @@ export interface CanonicalEditorState {
     /** Optional loop in/out points in seconds */
     loopIn?: number
     loopOut?: number
+    /** Total duration in seconds for the current composition */
+    duration: number
+    /** Display/output frames per second for transport and snapping */
+    fps: number
   }
 }
 
@@ -315,7 +321,7 @@ export function createEditorRuntimeState(params?: {
     viewport,
     activeTool,
     playheadTime: 0,
-    transport: { playing: false, loop: false },
+    transport: { playing: false, loop: false, duration: 10, fps: 30 },
   }
 
   const runtime: EditorRuntimeState = {
@@ -683,9 +689,10 @@ export function removeGlobalLayer(
   )
   const afterCount = filteredLayers.length
 
-  console.debug(
-    `🎨 [State] Removing global layer ${layerId}: ${beforeCount} -> ${afterCount} layers`
-  )
+  isDebug &&
+    console.debug(
+      `🎨 [State] Removing global layer ${layerId}: ${beforeCount} -> ${afterCount} layers`
+    )
 
   const next: CanonicalEditorState = {
     ...state,

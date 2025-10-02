@@ -504,7 +504,9 @@ export class WorkerManager {
     if ((message as any).dbg) {
       // Surface debug info in devtools for diagnostics
       const dbg = (message as any).dbg
-      console.debug("[render-worker] progress", message.progress, dbg)
+      if (isDebug) {
+        console.debug("[render-worker] progress", message.progress, dbg)
+      }
     }
   }
 

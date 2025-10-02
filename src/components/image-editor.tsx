@@ -25,6 +25,7 @@ import { getImageDimensions } from "@/lib/utils/get-image-dimensions"
 import { config } from "@/config"
 import { capitalize } from "@/lib/utils/capitalize"
 import { sampleToolsAtTime } from "@/lib/tools/tools-state"
+import { TimelinePanel } from "./timeline/timeline-panel"
 
 const { isDebug } = config()
 
@@ -64,7 +65,6 @@ function ImageEditorInner({
     removeLayer,
     renderType,
     setRenderType,
-    selectLayer,
     selectLayerNonUndoable,
     setZoomPercent,
     updateLayer,
@@ -150,14 +150,7 @@ function ImageEditorInner({
     drawFnRef.current = d
   }, [])
 
-  const handleImageDrop = useCallback(
-    (file: File) => {
-      // Forward to provider's handler by calling through Canvas (which now handles internally)
-      // Kept for API compatibility; no-op here
-      onImageDrop?.(file)
-    },
-    [onImageDrop]
-  )
+  // Image drop is handled internally by canvas/provider
 
   useEffect(() => {
     try {
@@ -527,11 +520,11 @@ export function ImageEditor({
         imageSizes.push(await fetchDimensions(image))
       }
 
-      setDimensions([...dimensions, ...imageSizes])
+      setDimensions((prev) => [...prev, ...imageSizes])
     }
 
     getCanvasDimensions(images)
-  }, [dimensions])
+  }, [images])
 
   return dimensions.length > 0 ? (
     <EditorProvider images={images} dimensions={dimensions}>
@@ -542,6 +535,8 @@ export function ImageEditor({
         onDragStateChange={onDragStateChange}
         {...props}
       />
+
+      <TimelinePanel />
     </EditorProvider>
   ) : null
 }

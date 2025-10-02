@@ -4,7 +4,7 @@ import type { BlendMode } from "@/lib/shaders/blend-modes/types.blend"
 import type { ImageEditorToolsState } from "@/lib/tools/tools-state"
 import type { EditorLayer as Layer } from "@/lib/editor/state"
 import { RenderConfig } from "@/lib/renderer/render-config.renderer"
-import { sampleToolsAtTime } from "@/lib/tools/tools-state"
+// Removed: sampleToolsAtTime (we use memoized sampler)
 import { ShaderManager } from "@/lib/shaders/manager.shader"
 import { GlobalShaderRegistryV2 } from "@/lib/shaders/registry.shader"
 import { registerBuiltinShaders } from "@/lib/shaders/register-builtin.shader"
@@ -524,8 +524,15 @@ export class HybridRenderer {
       recolorColor = [rgba[0], rgba[1], rgba[2]]
     }
 
+    // Only pass numeric/boolean (as 0/1) uniforms derived from sampled values
+    const scalarUniforms: Record<string, number> = {}
+    for (const [k, v] of Object.entries(toolsValues as any)) {
+      if (typeof v === "number") scalarUniforms[k] = v
+      else if (typeof v === "boolean") scalarUniforms[k] = v ? 1 : 0
+      // ignore objects/strings; handled explicitly below if needed
+    }
     const uniformsUpdate: Record<string, any> = {
-      ...(toolsValues as any),
+      ...scalarUniforms,
       // enforce numeric colorize amount for plugin uniform
       colorize: colorizeAmount,
       u_opacity: 100,
@@ -572,16 +579,7 @@ export class HybridRenderer {
       u_resolution: [canvasWidth, canvasHeight],
     }
 
-    // Debug logging for solid adjustment
-    if (adjustmentTools.solid || paramUniforms.u_solidEnabled) {
-      console.log("Solid adjustment uniforms being sent to shader:", {
-        adjustmentTools,
-        paramUniforms,
-        uniforms: Object.keys(uniforms).filter(
-          (k) => k.includes("solid") || k.includes("Solid")
-        ),
-      })
-    }
+    // Debug logging removed in production
 
     const tex = this.passGraph.runSingle(
       {
@@ -1062,9 +1060,9 @@ void main() {
   }
 
   // Helper method to get the rendering order (bottom -> top) consistent with layer system
-  private getRenderingOrder(layers: Layer[]): Layer[] {
+  private getRenderingOrder(_layers: Layer[]): Layer[] {
     // First flatten group layers to get all individual layers
-    const flattenedLayers = this.flattenLayersForRendering(layers)
+    const flattenedLayers = this.flattenLayersForRendering(_layers)
 
     // The editor provides layers in top-first order (new layers are unshifted)
     // For correct compositing we must render bottom-first, so reverse here.
@@ -1151,47 +1149,9 @@ void main() {
     // contents leaking between renders (e.g., after global layer deletion)
     this.resetRenderState()
 
-    // Provide safe defaults for tool values to avoid undefined access
-    const DEFAULT_TOOLS: Partial<ImageEditorToolsState> = {
-      blur: 0,
-      blurCenter: 0.5,
-      blurDirection: 0,
-      blurType: 0,
-      brightness: 100,
-      contrast: 100,
-      crop: { x: 0, y: 0, width: 0, height: 0, overlay: "grid" },
-      exposure: 0,
-      flipHorizontal: false,
-      flipVertical: false,
-      gamma: 1,
-      grain: 0,
-      grayscale: 0,
-      hue: 0,
-      invert: 0,
-      noise: 0,
-      dimensions: { width: 0, height: 0, x: 0, y: 0 },
-      rotate: 0,
-      saturation: 100,
-      scale: 1,
-      sepia: 0,
-      sharpen: 0,
-      temperature: 0,
-      upscale: 0,
-      vibrance: 0,
-      zoom: 100,
-      // Critical uniforms that must be reset when global layers are deleted
-      u_solidEnabled: 0,
-      u_colorizeAmount: 0,
-      u_tint: 0,
-      u_sharpenAmount: 0,
-      u_noiseAmount: 0,
-      u_gaussianAmount: 0,
-    } as Partial<ImageEditorToolsState>
-
     const withDefaults = (
       tv: ImageEditorToolsState | undefined
-    ): ImageEditorToolsState =>
-      ({ ...(DEFAULT_TOOLS as any), ...(tv || {}) }) as ImageEditorToolsState
+    ): ImageEditorToolsState => ({ ...(tv || {}) }) as ImageEditorToolsState
 
     // Apply global parameters to tool values
     const applyGlobalParameters = (
@@ -1271,12 +1231,22 @@ void main() {
         const layerToolsValues = applyGlobalParameters(withDefaults(undefined))
         const rawFilters =
           (layer.filters as Partial<ImageEditorToolsState>) || {}
-        const imgFilters = sampleToolsAtTime(
-          rawFilters as any,
+        // Always sample from tracks; no static fallbacks here
+        const { sampleToolsAtTimeMemoized } =
+          require("@/lib/animation/sampler") as any
+        // Filter to canonical Tracks only before sampling (exclude UI keys like 'zoom')
+        const canon = require("@/lib/animation/crud") as any
+        const tracksOnly = Object.fromEntries(
+          Object.entries(rawFilters as any).filter(([, v]) =>
+            canon.isCanonicalTrack(v)
+          )
+        )
+        const imgFilters = sampleToolsAtTimeMemoized(
+          tracksOnly as any,
           typeof playheadTime === "number" ? playheadTime : 0
         ) as Partial<ImageEditorToolsState>
         for (const k of EFFECT_KEYS) {
-          if (Object.prototype.hasOwnProperty.call(imgFilters, k)) {
+          if ((imgFilters as any)[k] !== undefined) {
             ;(layerToolsValues as any)[k] = (imgFilters as any)[k]
           }
         }

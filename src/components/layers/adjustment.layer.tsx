@@ -4,9 +4,11 @@ import { Fragment } from "react"
 import { Eclipse, Palette, Sun, Droplets, Sparkles } from "lucide-react"
 
 import { TOOL_VALUES, type ToolValueColorType } from "@/lib/tools/tools"
+import { ParamControls } from "@/components/timeline/ParamControls"
+// ParamControls drives UI from plugin UISchema; no direct registry use here
 import { useEditorContext } from "@/lib/editor/context"
 import { sampleToolsAtTime } from "@/lib/tools/tools-state"
-import { getAdjustmentPlugin } from "@/lib/editor/adjustments/registry"
+// Legacy adjustment plugin UI generation removed; use ParamControls
 import { Color } from "@/components/ui/color"
 import { colorPalette } from "@/components/ui/color-palette"
 import type { AdjustmentLayer } from "@/lib/editor/state"
@@ -70,275 +72,23 @@ export function AdjustmentLayerEditor({
     onUpdate({ [key]: value })
   }
 
-  const renderParameterControl = (
-    key: string,
-    value: number | ToolValueColorType["defaultValue"]
-  ) => {
-    let inputValue: unknown
-
-    switch (key) {
-      case "hue": {
-        const def = (TOOL_VALUES as Record<string, any>)[key]?.defaultValue ?? 0
-        const num = typeof value === "number" ? value : Number(value) || def
-
-        return (
-          <AdjustmentLayerSlider
-            id={key}
-            value={num}
-            onChange={(v) => handleParameterChange(key, v)}
-            thumbColor={`hsl(${num}, 100%, 50%)`}
-            type='hue'
-            className='px-2'
-          />
-        )
-      }
-      case "invert":
-        return (
-          <AdjustmentLayerToggle
-            id={key}
-            value={value as number}
-            onChange={(value) => handleParameterChange(key, value as any)}
-          />
-        )
-      case "brightness":
-      case "contrast":
-      case "exposure":
-      case "gamma":
-      case "vintage":
-      case "sepia":
-      case "saturation":
-      case "temperature":
-      case "tint": {
-        const def = (TOOL_VALUES as Record<string, any>)[key]?.defaultValue ?? 0
-        const num = typeof value === "number" ? value : Number(value) || def
-        return (
-          <div className='gap-2 px-2'>
-            <AdjustmentLayerSlider
-              id={key}
-              value={num}
-              onChange={(v) => handleParameterChange(key, v)}
-              type='grayscale'
-            />
-          </div>
-        )
-      }
-      case "sharpenAmount":
-      case "sharpenRadius":
-      case "sharpenThreshold":
-      case "noiseAmount":
-      case "noiseSize":
-      case "gaussianAmount":
-      case "gaussianRadius": {
-        const def = (TOOL_VALUES as Record<string, any>)[key]?.defaultValue ?? 0
-        const num = typeof value === "number" ? value : Number(value) || def
-        return (
-          <div className='gap-2 px-2'>
-            <AdjustmentLayerSlider
-              id={key}
-              value={num}
-              onChange={(v) => handleParameterChange(key, v)}
-              type='grayscale'
-            />
-          </div>
-        )
-      }
-      case "solid":
-        // For solid, the parameter can be a string (hex) or an object; show color only
-        if (typeof value === "string") {
-          inputValue = value
-        } else if (value && typeof (value as any).color === "string") {
-          inputValue = (value as any).color
-        } else {
-          inputValue = (TOOL_VALUES.solid as any).defaultValue
-        }
-        return (
-          <AdjustmentLayerColor
-            id={key}
-            value={inputValue as string}
-            onChange={(value) => handleParameterChange(key, value as any)}
-          />
-        )
-      // case "colorizeAmount": {
-      //   const def = (TOOL_VALUES as Record<string, any>)[key]?.defaultValue ?? 0
-      //   const num = typeof value === "number" ? value : Number(value) || def
-      //   return (
-      //     <div className='grid grid-cols-[56px_1fr] items-center gap-2 px-2 h-10'>
-      //       <span className='text-xs'>{key.replace("colorize", "")}</span>
-      //       <AdjustmentLayerSlider
-      //         id={key}
-      //         value={num}
-      //         onChange={(v) => handleParameterChange(key, v)}
-      //       />
-      //     </div>
-      //   )
-      // }
-      // case "colorizeHue": {
-      //   const def = (TOOL_VALUES as Record<string, any>)[key]?.defaultValue ?? 0
-      //   const num = typeof value === "number" ? value : Number(value) || def
-
-      //   return (
-      //     <div className='grid grid-cols-[56px_1fr] items-center gap-2 px-2 h-10'>
-      //       <span className='text-xs'>{key.replace("colorize", "")}</span>
-      //       <AdjustmentLayerSlider
-      //         id={key}
-      //         value={num}
-      //         onChange={(v) => handleParameterChange(key, v)}
-      //         thumbColor={`hsl(${num}, 100%, 50%)`}
-      //         type='hue'
-      //       />
-      //     </div>
-      //   )
-      // }
-      // case "colorizeSaturation":
-      // case "colorizeLightness": {
-      //   const def = (TOOL_VALUES as Record<string, any>)[key]?.defaultValue ?? 0
-      //   const num = typeof value === "number" ? value : Number(value) || def
-      //   return (
-      //     <div className='grid grid-cols-[56px_1fr] items-center gap-2 px-2 h-10'>
-      //       <span className='text-xs'>{key.replace("colorize", "")}</span>
-      //       <AdjustmentLayerSlider
-      //         id={key}
-      //         value={num}
-      //         onChange={(v) => handleParameterChange(key, v)}
-      //         type='grayscale'
-      //       />
-      //     </div>
-      //   )
-      // }
-      case "colorizePreserveLum":
-        return (
-          <div className='p-2'>
-            <span className='text-xs'>Preserve Luminance</span>
-            <AdjustmentLayerToggle
-              id={key}
-              value={(value ? 100 : 0) as number}
-              onChange={(v) => handleParameterChange(key, v >= 50 ? 1 : 0)}
-              className='rounded-sm'
-            />
-          </div>
-        )
-      default:
-        if (typeof value === "number") {
-          inputValue =
-            value ??
-            (TOOL_VALUES[key as keyof typeof TOOL_VALUES] as any).defaultValue
-        } else {
-          inputValue =
-            (value as any)?.value ??
-            (TOOL_VALUES[key as keyof typeof TOOL_VALUES] as any).defaultValue
-        }
-        return (
-          <AdjustmentLayerSlider
-            id={key}
-            value={inputValue as number}
-            onChange={(value) => handleParameterChange(key, value)}
-            className='px-2'
-            grayScale={
-              key === "brightness" ||
-              key === "contrast" ||
-              key === "exposure" ||
-              key === "gamma" ||
-              key === "saturation" ||
-              key === "vintage" ||
-              key === "sepia" ||
-              key === "temperature" ||
-              key === "tint" ||
-              key === "colorizeSaturation" ||
-              key === "colorizeLightness" ||
-              key === "noiseAmount" ||
-              key === "noiseSize" ||
-              key === "gaussianAmount" ||
-              key === "gaussianRadius"
-            }
-          />
-        )
-    }
-  }
-
-  const plugin = getAdjustmentPlugin(layer.adjustmentType as any)
-  const ui = plugin?.uiSchema
+  // Legacy bespoke controls removed; ParamControls used below
   const params = sampledParams
 
   return (
     <div className='flex items-center rounded-b-sm min-h-10 border'>
       <div className='flex flex-col  w-full'>
-        {ui
-          ? ui.map((control) => {
-              const key = control.key
-              const value = params[key]
-              if (control.kind === "slider") {
-                const type = control.sliderType ?? "default"
-                const def =
-                  (TOOL_VALUES as Record<string, any>)[key]?.defaultValue ?? 0
-                const num =
-                  typeof value === "number"
-                    ? (value as number)
-                    : Number(value) || def
-                return (
-                  <div key={key} className='gap-2 px-2'>
-                    <AdjustmentLayerSlider
-                      id={key}
-                      value={num}
-                      onChange={(v) => handleParameterChange(key, v)}
-                      type={type}
-                    />
-                  </div>
-                )
-              }
-              if (control.kind === "toggle") {
-                const isBoolToggle = key === "colorizePreserveLum"
-                const current = (value as number) ?? 0
-                return (
-                  <AdjustmentLayerToggle
-                    key={key}
-                    id={key}
-                    value={current}
-                    onChange={(v) =>
-                      handleParameterChange(
-                        key,
-                        (isBoolToggle ? (v >= 50 ? 1 : 0) : v) as any
-                      )
-                    }
-                  />
-                )
-              }
-              if (control.kind === "color") {
-                const inputValue =
-                  typeof value === "string"
-                    ? (value as string)
-                    : (TOOL_VALUES.solid as any).defaultValue
-                return (
-                  <AdjustmentLayerColor
-                    key={key}
-                    id={key}
-                    value={inputValue}
-                    onChange={(v) => handleParameterChange(key, v)}
-                  />
-                )
-              }
-
-              if (control.kind === "color+slider") {
-                const def = (TOOL_VALUES as Record<string, any>).colorize
-                  ?.defaultValue ?? { value: 0, color: "#000000" }
-                const compositeValue =
-                  value && typeof value === "object" ? (value as any) : def
-                return (
-                  <AdjustmentLayerColorAndSlider
-                    key={key}
-                    id={key}
-                    value={compositeValue}
-                    onChange={(v) => handleParameterChange(key, v as any)}
-                  />
-                )
-              }
-
-              return null
-            })
-          : Object.entries(params).map(([key, value]) => (
-              <Fragment key={key}>
-                {renderParameterControl(key, value)}
-              </Fragment>
-            ))}
+        {Object.entries(params).map(([key, val]) => (
+          <Fragment key={key}>
+            <div className='px-2 py-1'>
+              <ParamControls
+                paramId={key}
+                value={val as any}
+                onChange={(val) => handleParameterChange(key, val as any)}
+              />
+            </div>
+          </Fragment>
+        ))}
       </div>
     </div>
   )
@@ -363,7 +113,7 @@ export function AdjustmentLayerColor({
         colors={colorPalette}
         disabled={false}
         onSelect={onChange}
-        onCustomColorChange={([id, value]) => onChange(value)}
+        onCustomColorChange={([_id, v]) => onChange(v)}
       />
     </div>
   )

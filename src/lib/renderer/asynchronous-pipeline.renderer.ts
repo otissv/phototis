@@ -376,7 +376,7 @@ export class AsynchronousPipeline {
             layerDim.height
           )
           if (!layerValidation.isValid) {
-            console.warn(`Skipping layer ${layer.id} with invalid dimensions`)
+            /* no-op warn removed for production */
             continue
           }
         }
@@ -443,7 +443,7 @@ export class AsynchronousPipeline {
           validateFilterParameters(layerToolsValues)
 
         if (errors.length > 0) {
-          console.warn("Parameter validation warnings:", errors)
+          /* no-op warn removed for production */
         }
 
         // Render layer with filters using hybrid renderer
@@ -538,7 +538,6 @@ export class AsynchronousPipeline {
   // Stage 4: Final output generation
   private async processFinalOutput(task: PipelineTask): Promise<StageResult> {
     try {
-      const { canvasWidth, canvasHeight } = task.data
       const { finalTexture } = task.result
 
       if (!this.hybridRenderer) {
@@ -578,22 +577,21 @@ export class AsynchronousPipeline {
   }
 
   private async loadLayerTexture(
-    layer: EditorLayer,
-    progressiveLevel: ProgressiveLevel
+    _layer: EditorLayer,
+    _progressiveLevel: ProgressiveLevel
   ): Promise<WebGLTexture | null> {
     // Placeholder implementation - would load actual texture
     return null
   }
 
-  private getRenderingOrder(layers: EditorLayer[]): EditorLayer[] {
+  private getRenderingOrder(_layers: EditorLayer[]): EditorLayer[] {
     // Preserve the incoming array order (assumed bottom-to-top)
     // If visibility is managed elsewhere, upstream should filter hidden layers.
-    return layers.slice()
+    return _layers.slice()
   }
 
   private async waitForMemory(): Promise<void> {
     // Wait for memory to become available
-
     return new Promise((resolve) => setTimeout(resolve, 100))
   }
 

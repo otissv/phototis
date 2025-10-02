@@ -277,68 +277,57 @@ export const TOOL_VALUES: Record<ToolValueKeys, ToolValueTypes> = {
 }
 
 export type DimensionsToolsType = {
-  dimensions: Track<{
-    width: number
-    height: number
-    x: number
-    y: number
-  }>
+  dimensions: Track
   // Viewport zoom is not keyframed in step 1; keep as number
   zoom: number
 }
 
 export type RotateToolsType = {
-  rotate: Track<number>
-  scale: Track<number>
-  flipVertical: Track<boolean>
-  flipHorizontal: Track<boolean>
+  rotate: Track
+  scale: Track
+  flipVertical: Track
+  flipHorizontal: Track
 }
 
 export type CropToolsType = {
-  crop: Track<{
-    x: number
-    y: number
-    width: number
-    height: number
-    overlay: "thirdGrid" | "goldenSpiral" | "grid" | "diagonals"
-  }>
+  crop: Track
 }
 
 export type ScaleToolsType = {
-  scale: Track<number>
+  scale: Track
 }
 
 export type UpscaleToolsType = {
-  upscale: Track<number>
+  upscale: Track
 }
 
 export type AdjustLayersType = {
-  brightness: Track<number>
-  contrast: Track<number>
-  exposure: Track<number>
-  gamma: Track<number>
-  grayscale: Track<number>
-  hue: Track<number>
-  invert: Track<number>
-  saturation: Track<number>
+  brightness: Track
+  contrast: Track
+  exposure: Track
+  gamma: Track
+  grayscale: Track
+  hue: Track
+  invert: Track
+  saturation: Track
   solid: string
-  vintage: Track<number>
-  temperature: Track<number>
-  tint: Track<number>
-  colorizeHue: Track<number>
-  colorizeSaturation: Track<number>
-  colorizeLightness: Track<number>
-  colorizePreserveLum: Track<boolean>
-  colorizeAmount: Track<number>
-  vibrance: Track<number>
-  sharpenAmount: Track<number>
-  sharpenRadius: Track<number>
-  sharpenThreshold: Track<number>
-  noiseAmount: Track<number>
-  noiseSize: Track<number>
-  gaussianAmount: Track<number>
-  gaussianRadius: Track<number>
-  sepia: Track<number>
+  vintage: Track
+  temperature: Track
+  tint: Track
+  colorizeHue: Track
+  colorizeSaturation: Track
+  colorizeLightness: Track
+  colorizePreserveLum: Track
+  colorizeAmount: Track
+  vibrance: Track
+  sharpenAmount: Track
+  sharpenRadius: Track
+  sharpenThreshold: Track
+  noiseAmount: Track
+  noiseSize: Track
+  gaussianAmount: Track
+  gaussianRadius: Track
+  sepia: Track
 }
 
 export type AdjustmentType = keyof AdjustLayersType
@@ -355,103 +344,236 @@ export type EasingKind =
   | "easeIn"
   | "easeOut"
   | "easeInOut"
+  | "cubicBezier"
 
 export type Keyframe<T = any> = {
   t: number // seconds
   v: T
   easing?: EasingKind
+  // Optional bezier controls if easing === "cubicBezier"
+  bezier?: { x1: number; y1: number; x2: number; y2: number }
 }
 
-export type Track<T = any> = {
-  id: string
-  param: string
-  kfs: Keyframe<T>[]
-  stepped?: boolean
-}
+// Legacy Track type retained for compatibility in types only. Runtime now uses
+// the canonical animation/model Track shape: { keyframes: [{ timeSec, value }], interpolation, ... }.
+import type { Track as CanonicalTrack } from "@/lib/animation/model"
+import {
+  sampleTrackScalar,
+  sampleTrackAngle,
+  sampleTrackBoolean,
+  sampleTrackEnum,
+  sampleTrackVec,
+} from "@/lib/animation/model"
+import {
+  createCanonicalTrack,
+  setInterpolationCanonical,
+  addOrUpdateKeyframeCanonical,
+  removeKeyframeCanonical,
+  moveKeyframeCanonical,
+} from "@/lib/animation/crud"
+import { GlobalKeyframePluginRegistry } from "@/lib/animation/plugins"
 
-export function createTrack<T = any>(
+export type Track<T = unknown> = CanonicalTrack<T>
+
+export function createTrack<T = unknown>(
   param: string,
   initialValue: T,
   stepped?: boolean
 ): Track<T> {
-  return {
-    id: `${param}`,
-    param,
-    kfs: [{ t: 0, v: initialValue }],
-    stepped,
+  // Create canonical track
+  // Use plugin seeder for the initial keyframe at t=0 when available
+  let tr = createCanonicalTrack<T>(param, initialValue)
+  try {
+    const seed = GlobalKeyframePluginRegistry.createSeed(param, initialValue)
+    tr = { ...tr, keyframes: [seed] }
+  } catch {}
+  if (stepped) return setInterpolationCanonical(tr, "step") as Track<T>
+  return tr as Track<T>
+}
+
+export function sampleTrack<T = unknown>(track: Track<T>, t: number): T {
+  if (
+    !(
+      track &&
+      typeof track === "object" &&
+      Array.isArray((track as any).keyframes)
+    )
+  ) {
+    throw new Error("sampleTrack requires canonical Track")
+  }
+  const { kind } = track as any
+  switch (kind) {
+    case "scalar":
+    case "percentage":
+      return sampleTrackScalar(track as any, t) as any
+    case "angle":
+      return sampleTrackAngle(track as any, t) as any
+    case "boolean":
+      return sampleTrackBoolean(track as any, t) as any
+    case "enum":
+      return sampleTrackEnum(track as any, t) as any
+    case "vec2":
+    case "vec3":
+    case "vec4":
+    case "color":
+      return sampleTrackVec(track as any, t) as any
+    default:
+      return sampleTrackScalar(track as any, t) as any
   }
 }
 
-export function sampleTrack<T = any>(
-  track: Track<T>,
-  t: number
-): T {
-  const kfs = track.kfs
-  if (!kfs || kfs.length === 0) {
-    // @ts-expect-error caller must seed tracks at creation
-    return 0
-  }
-  if (kfs.length === 1) return kfs[0].v
-  // find bracketing keyframes
-  let left = kfs[0]
-  let right = kfs[kfs.length - 1]
-  if (t <= left.t) return left.v
-  if (t >= right.t) return right.v
-  for (let i = 0; i < kfs.length - 1; i++) {
-    const a = kfs[i]
-    const b = kfs[i + 1]
-    if (t >= a.t && t <= b.t) {
-      left = a
-      right = b
-      break
-    }
-  }
-  // stepped/discrete or non-numeric: return left value
-  const stepped =
-    track.stepped || left.easing === "stepped" || right.easing === "stepped"
-  if (stepped || typeof (left.v as any) !== "number" || typeof (right.v as any) !== "number")
-    return left.v as T
-  const dt = right.t - left.t
-  const u = dt <= 0 ? 0 : (t - left.t) / dt
-  const ease = (kind?: EasingKind, x?: number) => {
-    const s = Math.max(0, Math.min(1, x ?? 0))
-    switch (kind) {
-      case "easeIn":
-        return s * s
-      case "easeOut":
-        return 1 - (1 - s) * (1 - s)
-      case "easeInOut":
-        return s < 0.5 ? 2 * s * s : 1 - Math.pow(-2 * s + 2, 2) / 2
-      default:
-        return s
-    }
-  }
-  const w = ease(left.easing || right.easing || "linear", u)
-  // @ts-expect-error boolean/string tracks should be stepped; numeric assumed here
-  return (left.v as number) * (1 - w) + (right.v as number) * w
-}
-
-export function addOrUpdateKeyframe<T = any>(
+export function addOrUpdateKeyframe<T = unknown>(
   track: Track<T>,
   t: number,
-  v: T,
-  easing?: EasingKind
+  v: T
 ): Track<T> {
-  const kfs = [...track.kfs]
-  const idx = kfs.findIndex((k) => k.t === t)
-  if (idx >= 0) {
-    kfs[idx] = { t, v, easing: easing ?? kfs[idx].easing }
-  } else {
-    kfs.push({ t, v, easing })
-    kfs.sort((a, b) => a.t - b.t)
+  if (
+    track &&
+    typeof track === "object" &&
+    Array.isArray((track as any).keyframes)
+  ) {
+    return addOrUpdateKeyframeCanonical(track as any, t, v) as Track<T>
   }
-  return { ...track, kfs }
+  throw new Error("addOrUpdateKeyframe requires canonical Track")
 }
 
-export function removeKeyframe<T extends number | boolean | string = number>(
+export function removeKeyframe<T = unknown>(
   track: Track<T>,
   t: number
 ): Track<T> {
-  const kfs = track.kfs.filter((k) => k.t !== t)
-  return { ...track, kfs }
+  if (
+    track &&
+    typeof track === "object" &&
+    Array.isArray((track as any).keyframes)
+  ) {
+    return removeKeyframeCanonical(track as any, t) as Track<T>
+  }
+  throw new Error("removeKeyframe requires canonical Track")
+}
+
+// ===== Keyframe/Track utilities for Timeline UI =====
+
+export function isTrack(value: unknown): value is Track {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      Array.isArray((value as any).keyframes)
+  )
+}
+
+export function findKeyframeIndex<T = unknown>(
+  track: Track<T>,
+  t: number,
+  epsilon = 1e-6
+): number {
+  const frames = (track as any).keyframes as Array<{ timeSec: number }>
+  for (let i = 0; i < frames.length; i += 1) {
+    if (Math.abs(frames[i].timeSec - t) <= epsilon) return i
+  }
+  return -1
+}
+
+export function moveKeyframe<T = unknown>(
+  track: Track<T>,
+  fromT: number,
+  toT: number
+): Track<T> {
+  if (
+    track &&
+    typeof track === "object" &&
+    Array.isArray((track as any).keyframes)
+  ) {
+    return moveKeyframeCanonical(track as any, fromT, toT) as Track<T>
+  }
+  throw new Error("moveKeyframe requires canonical Track")
+}
+
+export function listTracksInToolsState(
+  tools: Record<string, unknown>
+): Array<{ key: string; track: Track<any> }> {
+  const out: Array<{ key: string; track: Track<any> }> = []
+  for (const [key, value] of Object.entries(tools)) {
+    if (key === "history" || key === "historyPosition") continue
+    if (isTrack(value)) out.push({ key, track: value })
+  }
+  return out
+}
+
+export function ensureTrackOnToolsState<T = unknown>(
+  tools: Record<string, any>,
+  key: string,
+  initialValue: T,
+  stepped?: boolean
+): Record<string, any> {
+  const current = tools[key]
+  if (isTrack(current)) return tools
+  return { ...tools, [key]: createTrack<T>(key, initialValue, stepped) }
+}
+
+// ===== Smart keyframe capture helpers =====
+
+export function getDefaultValueForParam(key: string): unknown {
+  const spec: any = (TOOL_VALUES as any)[key]
+  if (spec && (spec as any).defaultValue !== undefined) {
+    return spec.defaultValue
+  }
+  return undefined
+}
+
+function numbersClose(a: number, b: number, eps = 1e-6): boolean {
+  return Math.abs(a - b) <= eps
+}
+
+export function isValueModifiedFromDefault(
+  key: string,
+  value: unknown,
+  eps = 1e-6
+): boolean {
+  const def = getDefaultValueForParam(key)
+  if (typeof value === "number" && typeof def === "number") {
+    return !numbersClose(value, def, eps)
+  }
+  if (typeof value === "boolean" && typeof def === "boolean") {
+    return value !== def
+  }
+  if (
+    value &&
+    typeof value === "object" &&
+    def &&
+    typeof def === "object" &&
+    !Array.isArray(value) &&
+    !Array.isArray(def)
+  ) {
+    // shallow compare object fields
+    const v = value as Record<string, unknown>
+    const d = def as Record<string, unknown>
+    const keys = new Set([...Object.keys(v), ...Object.keys(d)])
+    for (const k of keys) {
+      const a = v[k]
+      const b = d[k]
+      if (typeof a === "number" && typeof b === "number") {
+        if (!numbersClose(a, b, eps)) return true
+      } else if (a !== b) {
+        return true
+      }
+    }
+    return false
+  }
+  // If def is undefined, be conservative and consider modified only if value is truthy/non-zero
+  if (typeof value === "number") return !numbersClose(value, 0, eps)
+  if (typeof value === "boolean") return value !== false
+  if (typeof value === "string") return value.length > 0
+  return Boolean(value)
+}
+
+export function collectModifiedKeysFromSample(
+  sampled: Record<string, unknown>
+): string[] {
+  const out: string[] = []
+  for (const [key, value] of Object.entries(sampled)) {
+    if (key === "history" || key === "historyPosition" || key === "solid")
+      continue
+    if (isValueModifiedFromDefault(key, value)) out.push(key)
+  }
+  return out
 }

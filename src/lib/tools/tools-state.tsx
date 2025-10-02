@@ -1,4 +1,8 @@
-import { TOOL_VALUES, createTrack, addOrUpdateKeyframe } from "@/lib/tools/tools"
+import {
+  TOOL_VALUES,
+  createTrack,
+  addOrUpdateKeyframe,
+} from "@/lib/tools/tools"
 
 export type ImageEditorToolsState = any
 
@@ -79,21 +83,36 @@ export type ImageEditorToolsActions =
 
 // Helper: sample a track-like or raw value at time t
 function sampleMaybeTrack(value: unknown, t: number): any {
+  // Canonical-only
   if (
     value &&
     typeof value === "object" &&
-    (value as any).kfs &&
-    Array.isArray((value as any).kfs)
+    Array.isArray((value as any)?.keyframes)
   ) {
-    try {
-      // Import lazily to avoid cycle
-      const { sampleTrack } = require("@/lib/tools/tools") as any
-      return sampleTrack(value as any, t)
-    } catch {
-      return (value as any)?.kfs?.[0]?.v ?? 0
+    const track = value as any
+    const kind = track.kind
+    const m = require("@/lib/animation/model") as any
+    switch (kind) {
+      case "scalar":
+      case "percentage":
+        return m.sampleTrackScalar(track, t)
+      case "angle":
+        return m.sampleTrackAngle(track, t)
+      case "boolean":
+        return m.sampleTrackBoolean(track, t)
+      case "enum":
+        return m.sampleTrackEnum(track, t)
+      case "vec2":
+      case "vec3":
+      case "vec4":
+      case "color":
+        return m.sampleTrackVec(track, t)
+      default:
+        return m.sampleTrackScalar(track, t)
     }
   }
-  return value
+  // No legacy and no static fallbacks allowed
+  throw new Error("tools-state: expected canonical Track for sampling")
 }
 
 export function sampleToolsAtTime(
@@ -109,7 +128,17 @@ export function sampleToolsAtTime(
       out[k] = v
       continue
     }
-    out[k] = sampleMaybeTrack(v, t)
+    // Non-keyframed structural UI values
+    if (k === "zoom") {
+      out[k] = v
+      continue
+    }
+    // Sample only canonical Tracks; pass through non-track values (e.g., rotate/flip/dimensions/crop during migration)
+    if (v && typeof v === "object" && Array.isArray((v as any)?.keyframes)) {
+      out[k] = sampleMaybeTrack(v, t)
+      continue
+    }
+    out[k] = v
   }
   return out
 }
@@ -140,10 +169,7 @@ export const initialToolsState: ImageEditorToolsState = {
 
   crop: createTrack("crop", TOOL_VALUES.crop.defaultValue),
 
-  dimensions: createTrack(
-    "dimensions",
-    TOOL_VALUES.dimensions.defaultValue
-  ),
+  dimensions: createTrack("dimensions", TOOL_VALUES.dimensions.defaultValue),
 
   scale: createTrack(
     "scale",
@@ -300,7 +326,15 @@ export function imageEditorToolsReducer(
     }
     case "crop": {
       const { payload } = action as CropToolAction
-      const prev = ((state.crop as any)?.kfs?.[0]?.v || {}) as any
+      const prev = (() => {
+        const tr: any = (state as any).crop
+        if (tr && typeof tr === "object" && Array.isArray(tr.keyframes)) {
+          const kfs = tr.keyframes as Array<{ timeSec: number; value: any }>
+          const last = kfs.length > 0 ? kfs[kfs.length - 1].value : {}
+          return last || {}
+        }
+        return {}
+      })() as any
       const nextCrop = addOrUpdateKeyframe(
         state.crop as any,
         (action as any).t ?? 0,
@@ -309,7 +343,8 @@ export function imageEditorToolsReducer(
           y: Math.max(0, Number(payload?.y ?? prev.y ?? 0)),
           width: Math.max(0, Number(payload?.width ?? prev.width ?? 0)),
           height: Math.max(0, Number(payload?.height ?? prev.height ?? 0)),
-          overlay: (payload?.overlay as any) ?? (prev.overlay as any) ?? "thirdGrid",
+          overlay:
+            (payload?.overlay as any) ?? (prev.overlay as any) ?? "thirdGrid",
         }
       ) as any
       return {
@@ -332,37 +367,46 @@ export function imageEditorToolsReducer(
       const current = (state as any)[type]
       // Zoom and structural payloads are not keyframed in step 1
       if (type === "zoom") {
-    return { ...(state as any), zoom: payload } as ImageEditorToolsState
+        return { ...(state as any), zoom: payload } as ImageEditorToolsState
       }
       // For dimensions/crop we accept object payloads and set directly
-  if (type === ("dimensions" as any)) {
-    const next = addOrUpdateKeyframe(
-      (state as any).dimensions,
-      at,
-      (action as any).payload as { width: number; height: number; x: number; y: number }
-    )
-    return { ...(state as any), dimensions: next } as any
-  }
-  if (type === ("crop" as any)) {
-    const next = addOrUpdateKeyframe(
-      (state as any).crop,
-      at,
-      (action as any).payload as {
-        x: number
-        y: number
-        width: number
-        height: number
-        overlay: "thirdGrid" | "goldenSpiral" | "grid" | "diagonals"
+      if (type === ("dimensions" as any)) {
+        const next = addOrUpdateKeyframe(
+          (state as any).dimensions,
+          at,
+          (action as any).payload as {
+            width: number
+            height: number
+            x: number
+            y: number
+          }
+        )
+        return { ...(state as any), dimensions: next } as any
       }
-    )
-    return { ...(state as any), crop: next } as any
+      if (type === ("crop" as any)) {
+        const next = addOrUpdateKeyframe(
+          (state as any).crop,
+          at,
+          (action as any).payload as {
+            x: number
+            y: number
+            width: number
+            height: number
+            overlay: "thirdGrid" | "goldenSpiral" | "grid" | "diagonals"
+          }
+        )
+        return { ...(state as any), crop: next } as any
       }
-      // Otherwise we expect a Track; add or update keyframe at time t
-      if (current && typeof current === "object" && (current as any).kfs) {
+      // Otherwise we expect a canonical Track; add or update keyframe at time t
+      if (
+        current &&
+        typeof current === "object" &&
+        Array.isArray((current as any).keyframes)
+      ) {
         const next = addOrUpdateKeyframe(current as any, at, payload as any)
         return { ...(state as any), [type]: next } as any
       }
-      // If not a Track, initialize a track and set
+      // If not a Track, initialize a canonical track and set
       const next = createTrack(String(type), payload as any)
       return { ...(state as any), [type]: next } as any
     }

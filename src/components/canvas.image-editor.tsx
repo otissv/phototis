@@ -14,6 +14,7 @@ import { GlobalShaderRegistryV2 } from "@/lib/shaders/registry.shader"
 import { HybridRenderer } from "@/lib/renderer/hybrid.renderer"
 import { RenderConfig } from "@/lib/renderer/render-config.renderer"
 import { useWorkerRenderer } from "@/components/hooks/useWorkerRenderer"
+import { sampleToolsAtTimeMemoized } from "@/lib/animation/sampler"
 import {
   TaskPriority,
   WorkerManager,
@@ -74,7 +75,7 @@ export function ImageEditorCanvas({
   const texCoordBufferRef = useRef<WebGLBuffer | null>(null)
   const hybridRendererRef = useRef<HybridRenderer | null>(null)
   const [/*processing*/ /*setProcessing*/ ,] = useState(0)
-  const [isElementDragging, setIsElementDragging] = useState(false)
+  const [, setIsElementDragging] = useState(false)
   const id = useId()
 
   // Helper function to flatten grouped layers for signature calculation
@@ -392,49 +393,52 @@ export function ImageEditorCanvas({
 
   // Get the effective filters for the selected layer (including adjustment layers above it)
   const effectiveFilters = useMemo(() => {
-    if (!selectedLayerId) return initialToolsState
+    if (!selectedLayerId) return {} as ImageEditorToolsState
 
     const selectedLayer = state.canonical.layers.byId[selectedLayerId]
-    if (!selectedLayer) return initialToolsState
+    if (!selectedLayer) return {} as ImageEditorToolsState
 
-    // Start with the selected layer's own filters
-    let effects: ImageEditorToolsState = { ...initialToolsState }
-
-    if (selectedLayer.type === "image") {
-      const imageLayer = selectedLayer as any
-      if (imageLayer.filters) {
-        effects = { ...effects, ...imageLayer.filters }
+    let effects: ImageEditorToolsState = {} as any
+    try {
+      const canon = require("@/lib/animation/crud") as any
+      const base = (selectedLayer as any).filters || {}
+      for (const [k, v] of Object.entries(base)) {
+        if (canon.isCanonicalTrack(v)) {
+          ;(effects as any)[k] = v
+        }
       }
-    } else if (selectedLayer.type === "document") {
-      // For document layer, apply document-level transformations to all layers
-      const documentLayer = selectedLayer as any
-      if (documentLayer.filters) {
-        effects = { ...effects, ...documentLayer.filters }
-      }
-    }
 
-    // Apply adjustment layers that are above the selected layer
-    const selectedIndex = state.canonical.layers.order.indexOf(selectedLayerId)
-    if (selectedIndex >= 0) {
-      for (
-        let i = selectedIndex + 1;
-        i < state.canonical.layers.order.length;
-        i++
-      ) {
-        const layerId = state.canonical.layers.order[i]
-        const layer = state.canonical.layers.byId[layerId]
-
-        if (layer?.type === "adjustment" && layer.visible) {
-          const adjustment = layer as any
-          if (adjustment.parameters) {
-            Object.entries(adjustment.parameters).forEach(([key, value]) => {
-              if (key in effects) {
-                ;(effects as any)[key] = value
-              }
-            })
+      // Apply adjustment layers that are above the selected layer
+      const selectedIndex =
+        state.canonical.layers.order.indexOf(selectedLayerId)
+      if (selectedIndex >= 0) {
+        for (
+          let i = selectedIndex + 1;
+          i < state.canonical.layers.order.length;
+          i++
+        ) {
+          const layerId = state.canonical.layers.order[i]
+          const layer = state.canonical.layers.byId[layerId]
+          if (layer?.type === "adjustment" && layer.visible) {
+            const adjustment = layer as any
+            if (adjustment.parameters) {
+              Object.entries(adjustment.parameters).forEach(([key, value]) => {
+                const baseTrack = (effects as any)[key]
+                const track = canon.isCanonicalTrack(baseTrack)
+                  ? canon.addOrUpdateKeyframeCanonical(
+                      baseTrack,
+                      0,
+                      value as any
+                    )
+                  : canon.createCanonicalTrack(key, value as any)
+                ;(effects as any)[key] = track
+              })
+            }
           }
         }
       }
+    } catch {
+      // fallback: no effects if crud is unavailable
     }
 
     return effects
@@ -897,25 +901,57 @@ export function ImageEditorCanvas({
                 layerY = (currentCanvasHeight - imageData.height) / 2
               }
 
-              updateLayerNonUndoable(layer.id, {
-                filters: {
-                  ...layer.filters,
-                  dimensions: {
-                    ...layer.filters.dimensions,
-                    width: imageData.width,
-                    height: imageData.height,
-                    x: layerX,
-                    y: layerY,
+              try {
+                const canon = require("@/lib/animation/crud") as any
+                const prevDims = (layer as any).filters?.dimensions
+                const prevCrop = (layer as any).filters?.crop
+                const dimsVal = {
+                  width: imageData.width,
+                  height: imageData.height,
+                  x: layerX,
+                  y: layerY,
+                }
+                const cropVal = {
+                  x: layerX,
+                  y: layerY,
+                  width: imageData.width,
+                  height: imageData.height,
+                  overlay: (prevCrop as any)?.overlay ?? "thirdGrid",
+                }
+                const dimsTrack = canon.isCanonicalTrack(prevDims)
+                  ? canon.addOrUpdateKeyframeCanonical(prevDims, 0, dimsVal)
+                  : canon.createCanonicalTrack("dimensions", dimsVal)
+                const cropTrack = canon.isCanonicalTrack(prevCrop)
+                  ? canon.addOrUpdateKeyframeCanonical(prevCrop, 0, cropVal)
+                  : canon.createCanonicalTrack("crop", cropVal)
+                updateLayerNonUndoable(layer.id, {
+                  filters: {
+                    ...layer.filters,
+                    dimensions: dimsTrack,
+                    crop: cropTrack,
                   },
-                  crop: {
-                    ...layer.filters.crop,
-                    width: imageData.width,
-                    height: imageData.height,
-                    x: layerX,
-                    y: layerY,
+                } as any)
+              } catch {
+                updateLayerNonUndoable(layer.id, {
+                  filters: {
+                    ...layer.filters,
+                    dimensions: {
+                      ...((layer as any).filters?.dimensions || {}),
+                      width: imageData.width,
+                      height: imageData.height,
+                      x: layerX,
+                      y: layerY,
+                    },
+                    crop: {
+                      ...((layer as any).filters?.crop || {}),
+                      width: imageData.width,
+                      height: imageData.height,
+                      x: layerX,
+                      y: layerY,
+                    },
                   },
-                },
-              } as any)
+                } as any)
+              }
             }
 
             const layerDimensions: LayerDimensions = {
@@ -1304,21 +1340,7 @@ export function ImageEditorCanvas({
     // Debug: log computed layer dimensions for hybrid path
     try {
       if (renderType === "hybrid") {
-        const dimsArray = Array.from(dimsForRender.entries()).map(
-          ([layerId, d]) => ({ layerId, ...d })
-        )
-        console.log("🎨 [Hybrid][Dims] dimsForRender:", dimsArray)
-        const cachedDims = Array.from(layerDimensionsRef.current.entries()).map(
-          ([id, d]) => ({
-            id,
-            type: d.type,
-            width: d.width,
-            height: d.height,
-            x: d.x,
-            y: d.y,
-          })
-        )
-        console.log("🎨 [Hybrid][Dims] layerDimensionsRef:", cachedDims)
+        // debug disabled
       }
     } catch {}
 
@@ -1368,19 +1390,18 @@ export function ImageEditorCanvas({
 
         // Use smooth values for numbers, but keep flips from latest selected filters (booleans can toggle instantly)
         // Sample tools at current playhead for worker
-        const renderingToolsValues = (
-          await import("@/lib/tools/tools-state")
-        ).sampleToolsAtTime(
+        const workerToolsValues = sampleToolsAtTimeMemoized(
           selectedFiltersRef.current as any,
           state.canonical.playheadTime
         )
         // Debug: log flips being sent to worker (global/selected)
         try {
-          console.debug("editor:tools:global", {
-            flipH: renderingToolsValues.flipHorizontal,
-            flipV: renderingToolsValues.flipVertical,
-            rotate: selectedFiltersRef.current.rotate,
-          })
+          isDebug &&
+            console.debug("editor:tools:global", {
+              flipH: (workerToolsValues as any).flipHorizontal,
+              flipV: (workerToolsValues as any).flipVertical,
+              rotate: selectedFiltersRef.current.rotate,
+            })
         } catch {}
 
         // If document layer is selected, apply document transformations to all layers
@@ -1419,7 +1440,7 @@ export function ImageEditorCanvas({
           isQueueingRenderRef.current = true
           const taskId = await renderLayersWithWorker(
             canonicalLayers,
-            renderingToolsValues,
+            workerToolsValues as any,
             selectedLayerId,
             canvasWidth,
             canvasHeight,
@@ -1553,9 +1574,7 @@ export function ImageEditorCanvas({
       }
 
       // Sample tools at current playhead for hybrid
-      const renderingToolsValues = (
-        await import("@/lib/tools/tools-state")
-      ).sampleToolsAtTime(
+      const hybridToolsValues = sampleToolsAtTimeMemoized(
         selectedFiltersRef.current as any,
         state.canonical.playheadTime
       )
@@ -1632,7 +1651,7 @@ export function ImageEditorCanvas({
           hybridRendererRef.current.renderLayers(
             allLayersToRender,
             layerTextures,
-            renderingToolsValues,
+            hybridToolsValues as any,
             selectedLayerId,
             canvasWidth,
             canvasHeight,
@@ -1772,19 +1791,7 @@ export function ImageEditorCanvas({
   }, [isWorkerReady, canonicalLayers.length, triggerDraw])
 
   // Drag and drop handlers
-  const handleDragOver = useCallback(
-    (e: React.DragEvent) => {
-      if (isElementDragging) return
-      e.preventDefault()
-      e.stopPropagation()
-      const canvas = e.currentTarget as HTMLCanvasElement
-      canvas.style.border = "2px dashed #3b82f6"
-      canvas.style.backgroundColor = "rgba(59, 130, 246, 0.1)"
-      document.getElementById("drag-overlay")?.classList.remove("opacity-0")
-    },
-    [isElementDragging]
-  )
-
+  // drag-over handled by crop/move hooks; keep placeholder if needed later
 
   useCrop({
     cropRect,

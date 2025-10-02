@@ -1195,23 +1195,7 @@ async function renderLayers(
           }
         } catch {}
 
-        // Debug: log global layers being passed to hybrid renderer
-        try {
-          if (globalLayers && globalLayers.length > 0) {
-            console.debug(
-              "🎨 [Worker] Passing global layers to HybridRenderer:",
-              globalLayers.map((l: any) => ({
-                id: l.id,
-                type: l.type,
-                visible: l.visible,
-              }))
-            )
-          } else {
-            console.debug(
-              "🎨 [Worker] No global layers passed to HybridRenderer"
-            )
-          }
-        } catch {}
+        // Debug logging removed in production
 
         // Pass original layer structure to let hybrid renderer handle groups
         hybridRendererInstance.renderLayers(
@@ -1223,7 +1207,8 @@ async function renderLayers(
           canvasHeight,
           layerDimensionsMap,
           globalLayers,
-          globalParameters
+          globalParameters,
+          (self as any).__lastMessageData?.playheadTime
         )
 
         const result = (hybridRendererInstance as any).fboManager?.getFBO?.(
@@ -1645,7 +1630,7 @@ async function renderLayers(
               glCtx.viewport(0, 0, canvasWidth, canvasHeight)
               glCtx.clearColor(0, 0, 0, 0)
               glCtx.clear(glCtx.COLOR_BUFFER_BIT)
-              glCtx.useProgram(blitProgram)
+              glCtx["useProgram"](blitProgram)
               glCtx.bindVertexArray(blitVAO)
               glCtx.activeTexture(glCtx.TEXTURE0)
               glCtx.bindTexture(glCtx.TEXTURE_2D, tex as WebGLTexture)
@@ -1654,7 +1639,7 @@ async function renderLayers(
                 glCtx.uniform1f(blitUOpacityLocation, 1.0)
               glCtx.drawArrays(glCtx.TRIANGLE_STRIP, 0, 4)
               glCtx.bindVertexArray(null)
-              glCtx.useProgram(null)
+              glCtx["useProgram"](null)
             }
 
             // Now blit from scratch into the writeTarget
@@ -1682,7 +1667,7 @@ async function renderLayers(
               })
             } catch (e) {
               console.warn("blitFramebuffer failed, fallback to shader blit", e)
-              glCtx.useProgram(blitProgram)
+              glCtx["useProgram"](blitProgram)
               glCtx.bindVertexArray(blitVAO)
               glCtx.activeTexture(glCtx.TEXTURE0)
               glCtx.bindTexture(glCtx.TEXTURE_2D, scratchBase.tex)
@@ -1695,7 +1680,7 @@ async function renderLayers(
               }
               glCtx.drawArrays(glCtx.TRIANGLE_STRIP, 0, 4)
               glCtx.bindVertexArray(null)
-              glCtx.useProgram(null)
+              glCtx["useProgram"](null)
             }
             try {
               returnCompTarget(scratchBase)
@@ -1765,7 +1750,7 @@ async function renderLayers(
               if (!blitProgram || !blitVAO || !blitUTexLocation) {
                 throw new Error("Blit resources not initialized")
               }
-              glCtx.useProgram(blitProgram)
+              glCtx["useProgram"](blitProgram)
               glCtx.bindVertexArray(blitVAO)
               glCtx.activeTexture(glCtx.TEXTURE0)
               glCtx.bindTexture(glCtx.TEXTURE_2D, readSource)
@@ -1774,7 +1759,7 @@ async function renderLayers(
                 glCtx.uniform1f(blitUOpacityLocation, 1.0)
               glCtx.drawArrays(glCtx.TRIANGLE_STRIP, 0, 4)
               glCtx.bindVertexArray(null)
-              glCtx.useProgram(null)
+              glCtx["useProgram"](null)
               readSource = scratch.tex
             } catch (e) {
               console.warn("Feedback guard copy failed:", e)
@@ -1793,7 +1778,7 @@ async function renderLayers(
             glCtx.clearColor(0, 0, 0, 0)
             glCtx.clear(glCtx.COLOR_BUFFER_BIT)
 
-            glCtx.useProgram(compProgram)
+            glCtx["useProgram"](compProgram)
             glCtx.bindVertexArray(compVAO)
 
             // Debug: Verify compositing program is active
@@ -1824,7 +1809,7 @@ async function renderLayers(
                 if (!blitProgram || !blitVAO || !blitUTexLocation) {
                   throw new Error("Blit resources not initialized")
                 }
-                glCtx.useProgram(blitProgram)
+                glCtx["useProgram"](blitProgram)
                 glCtx.bindVertexArray(blitVAO)
                 glCtx.activeTexture(glCtx.TEXTURE0)
                 glCtx.bindTexture(glCtx.TEXTURE_2D, readSource)
@@ -1833,7 +1818,7 @@ async function renderLayers(
                   glCtx.uniform1f(blitUOpacityLocation, 1.0)
                 glCtx.drawArrays(glCtx.TRIANGLE_STRIP, 0, 4)
                 glCtx.bindVertexArray(null)
-                glCtx.useProgram(null)
+                glCtx["useProgram"](null)
                 readSource = scratch2.tex
                 // Restore output framebuffer
                 glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, output.fb)
@@ -1870,7 +1855,7 @@ async function renderLayers(
                 if (!blitProgram || !blitVAO || !blitUTexLocation) {
                   throw new Error("Blit resources not initialized")
                 }
-                glCtx.useProgram(blitProgram)
+                glCtx["useProgram"](blitProgram)
                 glCtx.bindVertexArray(blitVAO)
                 glCtx.activeTexture(glCtx.TEXTURE0)
                 glCtx.bindTexture(glCtx.TEXTURE_2D, topSource)
@@ -1879,7 +1864,7 @@ async function renderLayers(
                   glCtx.uniform1f(blitUOpacityLocation, 1.0)
                 glCtx.drawArrays(glCtx.TRIANGLE_STRIP, 0, 4)
                 glCtx.bindVertexArray(null)
-                glCtx.useProgram(null)
+                glCtx["useProgram"](null)
                 topSource = scratchTop.tex
                 // Restore output framebuffer
                 glCtx.bindFramebuffer(glCtx.FRAMEBUFFER, output.fb)
@@ -1966,7 +1951,7 @@ async function renderLayers(
               if (err) dbg("gl:error", { where: "compose:after-draw", err })
             } catch {}
             glCtx.bindVertexArray(null)
-            glCtx.useProgram(null)
+            glCtx["useProgram"](null)
           }
 
           // Swap
@@ -2432,7 +2417,7 @@ async function renderToCanvas(
           throw new Error("Blit resources not initialized for final draw")
         }
 
-        gl2.useProgram(blitProgram)
+        gl2["useProgram"](blitProgram)
         gl2.bindVertexArray(blitVAO)
         gl2.activeTexture(gl2.TEXTURE0)
         gl2.bindTexture(gl2.TEXTURE_2D, finalTexture)
@@ -2440,7 +2425,7 @@ async function renderToCanvas(
         if (blitUOpacityLocation) gl2.uniform1f(blitUOpacityLocation, 1.0)
         gl2.drawArrays(gl2.TRIANGLE_STRIP, 0, 4)
         gl2.bindVertexArray(null)
-        gl2.useProgram(null)
+        gl2["useProgram"](null)
       } catch (fallbackError) {
         console.error("Final draw fallback failed:", fallbackError)
       }

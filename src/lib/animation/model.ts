@@ -61,6 +61,8 @@ export type Keyframe<T> = {
   value: T
   easing?: EasingType
   interpolation?: InterpolationType
+  // Optional cubic bezier control points for custom easing
+  bezier?: { x1: number; y1: number; x2: number; y2: number }
   // Optional tangents/handles when using bezier/catmullRom
   inTangent?: Vec2 | Vec3 | Vec4
   outTangent?: Vec2 | Vec3 | Vec4
@@ -87,6 +89,16 @@ export type Track<T> = {
   keyframes: Keyframe<T>[]
   defaultEasing?: EasingType
   interpolation: InterpolationType
+  /** Optional expression binding evaluated before modulators */
+  expression?: {
+    id: string
+    params: Record<string, unknown>
+  } | null
+  /** Optional modulators applied after expression */
+  modulators?: Array<{
+    id: string
+    params: Record<string, unknown>
+  }>
 }
 
 export type Timeline = {
@@ -334,6 +346,8 @@ export type SerializableTimeline = {
     domain: DomainConstraint
     interpolation: InterpolationType
     defaultEasing?: EasingType
+    expression?: { id: string; params: Record<string, unknown> } | null
+    modulators?: Array<{ id: string; params: Record<string, unknown> }>
     keyframes: Array<{
       timeSec: number
       value: any
@@ -369,6 +383,9 @@ export function serializeTimeline(tl: Timeline): SerializableTimeline {
           domain: tr.domain,
           interpolation: tr.interpolation,
           defaultEasing: tr.defaultEasing,
+          expression: tr.expression ?? null,
+          modulators:
+            tr.modulators && tr.modulators.length > 0 ? tr.modulators : [],
           keyframes: kfs,
         }
       }),
@@ -399,6 +416,8 @@ export function deserializeTimeline(data: SerializableTimeline): Timeline {
       })),
       defaultEasing: tr.defaultEasing,
       interpolation: tr.interpolation,
+      expression: tr.expression ?? null,
+      modulators: Array.isArray(tr.modulators) ? tr.modulators : [],
     }
     sortKeyframesInPlace(out)
     ensureTrackInvariants(out, () => normalizeSeed(tr.kind))

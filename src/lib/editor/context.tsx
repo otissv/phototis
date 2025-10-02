@@ -49,6 +49,7 @@ import {
   UpdateGlobalParameterCommand,
 } from "@/lib/editor/commands"
 import { loadDocument } from "@/lib/editor/persistence"
+import { initializeDefaultKeyframePlugins } from "@/lib/animation/plugins"
 
 export type EditorContextValue = {
   state: EditorRuntimeState
@@ -189,6 +190,21 @@ export type EditorContextValue = {
   stepToPrevKeyframe: () => void
   stepToNextKeyframe: () => void
   setScrubbing: (isScrubbing: boolean) => void
+  // Keyframe CRUD for tools on a given layer and parameter key
+  addKeyframe: (
+    layerId: LayerId,
+    paramKey: string,
+    t: number,
+    value: any
+  ) => void
+  updateKeyframeTime: (
+    layerId: LayerId,
+    paramKey: string,
+    fromT: number,
+    toT: number
+  ) => void
+  deleteKeyframe: (layerId: LayerId, paramKey: string, t: number) => void
+  captureChangedTracksAtPlayhead: (layerId: LayerId) => void
 }
 
 const EditorContext = React.createContext<EditorContextValue | null>(null)
@@ -213,6 +229,13 @@ export function EditorProvider({
     name: string
   }[]
 }): React.JSX.Element {
+  // Initialize keyframe plugin registry once
+  React.useMemo(() => {
+    try {
+      initializeDefaultKeyframePlugins()
+    } catch {}
+    return null
+  }, [])
   const documentLayerDimensions = imageDimensions.sort(
     (a, b) => b.size - a.size
   )[0] || { width: 800, height: 600, size: 800 * 600, name: "Document" }
@@ -231,20 +254,44 @@ export function EditorProvider({
         visible: true,
         locked: false,
         type: "image",
-        filters: {
-          ...defaultFilters,
-          dimensions: {
-            width: dimensions?.width || 1,
-            height: dimensions?.height || 1,
-            x: 0,
-            y: 0,
-          },
-          crop: {
-            ...defaultFilters.crop,
-            width: dimensions?.width || 1,
-            height: dimensions?.height || 1,
-          },
-        },
+        filters: (() => {
+          try {
+            const canon = require("@/lib/animation/crud") as any
+            const dims = {
+              width: dimensions?.width || 1,
+              height: dimensions?.height || 1,
+              x: 0,
+              y: 0,
+            }
+            const crop = {
+              x: 0,
+              y: 0,
+              width: dimensions?.width || 1,
+              height: dimensions?.height || 1,
+              overlay: "thirdGrid",
+            }
+            return {
+              ...defaultFilters,
+              dimensions: canon.createCanonicalTrack("dimensions", dims),
+              crop: canon.createCanonicalTrack("crop", crop),
+            }
+          } catch {
+            return {
+              ...defaultFilters,
+              dimensions: {
+                width: dimensions?.width || 1,
+                height: dimensions?.height || 1,
+                x: 0,
+                y: 0,
+              },
+              crop: {
+                ...(defaultFilters as any).crop,
+                width: dimensions?.width || 1,
+                height: dimensions?.height || 1,
+              },
+            } as any
+          }
+        })(),
         opacity: 100,
         isEmpty: !image,
         blendMode: "normal",
@@ -272,19 +319,51 @@ export function EditorProvider({
     const existingDocument = layers.byId["document"] as DocumentLayer
     const updatedDocument: DocumentLayer = {
       ...existingDocument,
-      filters: {
-        ...existingDocument.filters,
-        dimensions: {
-          ...existingDocument.filters.dimensions,
-          width: documentWidth,
-          height: documentHeight,
-        },
-        crop: {
-          ...existingDocument.filters.crop,
-          width: documentWidth,
-          height: documentHeight,
-        },
-      },
+      filters: (() => {
+        try {
+          const canon = require("@/lib/animation/crud") as any
+          const prevDims = (existingDocument as any).filters?.dimensions
+          const prevCrop = (existingDocument as any).filters?.crop
+          const dimsVal = {
+            x: Number((prevDims as any)?.x ?? 0) || 0,
+            y: Number((prevDims as any)?.y ?? 0) || 0,
+            width: documentWidth,
+            height: documentHeight,
+          }
+          const cropVal = {
+            x: Number((prevCrop as any)?.x ?? 0) || 0,
+            y: Number((prevCrop as any)?.y ?? 0) || 0,
+            width: documentWidth,
+            height: documentHeight,
+            overlay: (prevCrop as any)?.overlay ?? "thirdGrid",
+          }
+          const dimsTrack = canon.isCanonicalTrack(prevDims)
+            ? canon.addOrUpdateKeyframeCanonical(prevDims, 0, dimsVal)
+            : canon.createCanonicalTrack("dimensions", dimsVal)
+          const cropTrack = canon.isCanonicalTrack(prevCrop)
+            ? canon.addOrUpdateKeyframeCanonical(prevCrop, 0, cropVal)
+            : canon.createCanonicalTrack("crop", cropVal)
+          return {
+            ...(existingDocument as any).filters,
+            dimensions: dimsTrack,
+            crop: cropTrack,
+          }
+        } catch {
+          return {
+            ...(existingDocument as any).filters,
+            dimensions: {
+              ...(existingDocument as any).filters?.dimensions,
+              width: documentWidth,
+              height: documentHeight,
+            },
+            crop: {
+              ...(existingDocument as any).filters?.crop,
+              width: documentWidth,
+              height: documentHeight,
+            },
+          }
+        }
+      })(),
     }
     const canonical: CanonicalEditorState = {
       ...base.canonical,
@@ -348,18 +427,19 @@ export function EditorProvider({
 
   // Load persisted document (if available) once
   React.useEffect(() => {
-    ;(async () => {
-      try {
-        const saved = await loadDocument("phototis:editor")
-        if (saved) {
-          // Replace canonical state with persisted and rehydrate history
-          setRuntime((prev) => ({ ...prev, canonical: saved.state }))
-          historyRef.current?.rehydrate(saved.history)
-        }
-      } catch (e) {
-        console.warn("Failed to load persisted document", e)
-      }
-    })()
+    // TODO: Implement this
+    // ;(async () => {
+    //   try {
+    //     const saved = await loadDocument("phototis:editor")
+    //     if (saved) {
+    //       // Replace canonical state with persisted and rehydrate history
+    //       setRuntime((prev) => ({ ...prev, canonical: saved.state }))
+    //       historyRef.current?.rehydrate(saved.history)
+    //     }
+    //   } catch (e) {
+    //     console.warn("Failed to load persisted document", e)
+    //   }
+    // })()
   }, [])
 
   // Interval autosave and beforeunload safeguard
@@ -471,9 +551,31 @@ export function EditorProvider({
 
   // Step to prev/next keyframe: placeholder traversal (will resolve after tracks migration)
   const collectAllKeyframeTimes = React.useCallback((): number[] => {
-    // TODO: After tools migration, scan tracks on all layers
-    // For now, return empty; UI callers should handle no-op
-    return []
+    const times: number[] = []
+    const { layers } = canonicalRef.current
+    for (const id of layers.order) {
+      const layer = layers.byId[id] as any
+      const filters = layer?.filters
+      if (!filters) continue
+      for (const [key, value] of Object.entries(filters)) {
+        if (key === "history" || key === "historyPosition" || key === "solid")
+          continue
+        const track = value as any
+        if (
+          track &&
+          typeof track === "object" &&
+          Array.isArray((track as any).keyframes)
+        ) {
+          for (const kf of (track as any).keyframes as Array<{
+            timeSec: number
+          }>) {
+            if (Number.isFinite(kf.timeSec)) times.push(kf.timeSec)
+          }
+        }
+      }
+    }
+    // unique & sorted
+    return Array.from(new Set(times)).sort((a, b) => a - b)
   }, [])
 
   const stepToPrevKeyframe = React.useCallback(() => {
@@ -491,6 +593,162 @@ export function EditorProvider({
     const next = times.reduce((a, b) => (a < b ? a : b), times[0])
     setPlayheadTime(next)
   }, [runtime.canonical.playheadTime, collectAllKeyframeTimes, setPlayheadTime])
+
+  // ===== Keyframe CRUD integrated with history =====
+  const addKeyframe = React.useCallback(
+    (layerId: LayerId, paramKey: string, t: number, value: any) => {
+      const h = historyRef.current
+      if (!h) return
+      h.beginTransaction(`Add keyframe: ${paramKey}@${t.toFixed(3)}s`)
+      const layer = canonicalRef.current.layers.byId[layerId]
+      if (!layer || layer.type === "document") {
+        h.cancelTransaction()
+        return
+      }
+      const filters = (layer as any).filters || {}
+      try {
+        const canon = require("@/lib/animation/crud") as any
+        const current = filters[paramKey]
+        const nextTrack = canon.isCanonicalTrack(current)
+          ? canon.addOrUpdateKeyframeCanonical(current, t, value)
+          : canon.addOrUpdateKeyframeCanonical(
+              canon.createCanonicalTrack(paramKey, value),
+              t,
+              value
+            )
+        const patch: any = { filters: { ...filters, [paramKey]: nextTrack } }
+        h.push(new UpdateLayerCommand(layerId, patch))
+        try {
+          const { invalidateForTrack } =
+            require("@/lib/animation/sampler") as any
+          invalidateForTrack(layerId, "filters", paramKey)
+        } catch {}
+        h.endTransaction(true)
+      } catch {
+        h.cancelTransaction()
+      }
+    },
+    []
+  )
+
+  const updateKeyframeTime = React.useCallback(
+    (layerId: LayerId, paramKey: string, fromT: number, toT: number) => {
+      const h = historyRef.current
+      if (!h) return
+      h.beginTransaction(
+        `Move keyframe: ${paramKey} ${fromT.toFixed(3)}→${toT.toFixed(3)}`
+      )
+      const layer = canonicalRef.current.layers.byId[layerId]
+      if (!layer || layer.type === "document") {
+        h.cancelTransaction()
+        return
+      }
+      const filters = (layer as any).filters || {}
+      try {
+        const canon = require("@/lib/animation/crud") as any
+        const current = filters[paramKey]
+        if (!canon.isCanonicalTrack(current)) {
+          h.cancelTransaction()
+          return
+        }
+        const nextTrack = canon.moveKeyframeCanonical(current, fromT, toT)
+        const patch: any = { filters: { ...filters, [paramKey]: nextTrack } }
+        h.push(new UpdateLayerCommand(layerId, patch))
+        try {
+          const { invalidateForTrack } =
+            require("@/lib/animation/sampler") as any
+          invalidateForTrack(layerId, "filters", paramKey)
+        } catch {}
+        h.endTransaction(true)
+      } catch {
+        h.cancelTransaction()
+      }
+    },
+    []
+  )
+
+  const deleteKeyframe = React.useCallback(
+    (layerId: LayerId, paramKey: string, t: number) => {
+      const h = historyRef.current
+      if (!h) return
+      h.beginTransaction(`Delete keyframe: ${paramKey}@${t.toFixed(3)}s`)
+      const layer = canonicalRef.current.layers.byId[layerId]
+      if (!layer || layer.type === "document") {
+        h.cancelTransaction()
+        return
+      }
+      const filters = (layer as any).filters || {}
+      try {
+        const canon = require("@/lib/animation/crud") as any
+        const current = filters[paramKey]
+        if (!canon.isCanonicalTrack(current)) {
+          h.cancelTransaction()
+          return
+        }
+        const nextTrack = canon.removeKeyframeCanonical(current, t)
+        const patch: any = { filters: { ...filters, [paramKey]: nextTrack } }
+        h.push(new UpdateLayerCommand(layerId, patch))
+        try {
+          const { invalidateForTrack } =
+            require("@/lib/animation/sampler") as any
+          invalidateForTrack(layerId, "filters", paramKey)
+        } catch {}
+        h.endTransaction(true)
+      } catch {
+        h.cancelTransaction()
+      }
+    },
+    []
+  )
+
+  const captureChangedTracksAtPlayhead = React.useCallback(
+    (layerId: LayerId) => {
+      const h = historyRef.current
+      if (!h) return
+      const stateNow = canonicalRef.current
+      const layer = stateNow.layers.byId[layerId] as any
+      if (!layer || layer.type === "document") return
+      const t = stateNow.playheadTime
+      const filters = (layer.filters || {}) as Record<string, any>
+      try {
+        const { sampleToolsAtTime } = require("@/lib/tools/tools-state") as any
+        const { collectModifiedKeysFromSample } =
+          require("@/lib/tools/tools") as any
+        const canon = require("@/lib/animation/crud") as any
+        const sampled = sampleToolsAtTime(filters, t)
+        const modifiedKeys = collectModifiedKeysFromSample(sampled)
+        if (modifiedKeys.length === 0) return
+        h.beginTransaction(
+          `Capture ${modifiedKeys.length} tracks @ ${t.toFixed(3)}s`
+        )
+        const patchFilters = { ...filters }
+        for (const key of modifiedKeys) {
+          const current = filters[key]
+          const value = (sampled as any)[key]
+          const nextTrack = canon.isCanonicalTrack(current)
+            ? canon.addOrUpdateKeyframeCanonical(current, t, value)
+            : canon.addOrUpdateKeyframeCanonical(
+                canon.createCanonicalTrack(key, value),
+                t,
+                value
+              )
+          patchFilters[key] = nextTrack
+          try {
+            const { invalidateForTrack } =
+              require("@/lib/animation/sampler") as any
+            invalidateForTrack(layer.id as any, "filters", key)
+          } catch {}
+        }
+        h.push(
+          new UpdateLayerCommand(layerId, { filters: patchFilters } as any)
+        )
+        h.endTransaction(true)
+      } catch {
+        // ignore errors, no partial updates
+      }
+    },
+    []
+  )
 
   // Render-tick scheduler: advances playhead while playing and triggers redraws
   React.useEffect(() => {
@@ -1098,6 +1356,10 @@ export function EditorProvider({
       stepToPrevKeyframe,
       stepToNextKeyframe,
       setScrubbing,
+      addKeyframe,
+      updateKeyframeTime,
+      deleteKeyframe,
+      captureChangedTracksAtPlayhead,
     }),
     [
       documentLayerDimensions,
@@ -1154,6 +1416,10 @@ export function EditorProvider({
       stepToPrevKeyframe,
       stepToNextKeyframe,
       setScrubbing,
+      addKeyframe,
+      updateKeyframeTime,
+      deleteKeyframe,
+      captureChangedTracksAtPlayhead,
     ]
   )
 

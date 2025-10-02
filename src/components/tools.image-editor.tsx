@@ -19,10 +19,8 @@ import type {
   ImageEditorHeaderProps,
   ImageEditorFooterProps,
 } from "@/components/tools/utils.tools"
-import { RotationControls } from "@/components/tools/rotation.tools"
-import { ScaleControls } from "@/components/tools/scale.tools"
-import { DimensionsControls } from "@/components/tools/dimensions.tools"
-import { UpscaleControls } from "@/components/tools/upscale.tools"
+import { ParamControls } from "@/components/timeline/ParamControls"
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,7 +32,6 @@ import { useEditorContext } from "@/lib/editor/context"
 import { Button } from "@/ui/button"
 import { QualityOptions } from "@/components/quality-options.image-editor"
 
-import { CropControls } from "@/components/tools/crop.tools"
 import type {
   ToolValueCropType,
   ToolValueDimensionType,
@@ -42,7 +39,6 @@ import type {
 } from "@/lib/tools/tools"
 import { cn } from "@/lib/utils"
 import { DimensionsCanvasControls } from "@/components/tools/dimensions-canvas.tools"
-import { MoveControls } from "@/components/tools/move.tools"
 
 export function ImageEditorFooter({
   selectedSidebar,
@@ -102,9 +98,27 @@ export function RotateFooter({
 
   const sampleMaybeTrack = (v: any) => {
     try {
-      if (v && typeof v === "object" && Array.isArray(v.kfs)) {
-        const { sampleTrack } = require("@/lib/tools/tools") as any
-        return sampleTrack(v, t)
+      if (v && typeof v === "object" && Array.isArray((v as any).keyframes)) {
+        const m = require("@/lib/animation/model") as any
+        const kind = (v as any).kind
+        switch (kind) {
+          case "scalar":
+          case "percentage":
+            return m.sampleTrackScalar(v, t)
+          case "angle":
+            return m.sampleTrackAngle(v, t)
+          case "boolean":
+            return m.sampleTrackBoolean(v, t)
+          case "enum":
+            return m.sampleTrackEnum(v, t)
+          case "vec2":
+          case "vec3":
+          case "vec4":
+          case "color":
+            return m.sampleTrackVec(v, t)
+          default:
+            return m.sampleTrackScalar(v, t)
+        }
       }
     } catch {}
     return v
@@ -184,37 +198,50 @@ export function RotateFooter({
   )
 
   const Control = useMemo(() => {
-    const controlProps = {
-      canvasRef,
-      drawFnRef,
-      operator: "°",
-      progress,
-      selectedLayer,
-      selectedTool,
-      toolsValues,
-      value: safeRotate, // Use the safe rotation value
-      dispatch,
-      onChange: handleOnChange,
+    if (selectedTool === "rotate") {
+      return (
+        <div className='flex flex-col gap-2'>
+          <div className='flex items-center gap-2'>
+            <span className='text-xs w-16'>Rotate</span>
+            <ParamControls
+              paramId='rotate'
+              value={safeRotate}
+              onChange={(v) => handleOnChange(Number(v) || 0)}
+            />
+          </div>
+          <div className='flex items-center gap-2'>
+            <span className='text-xs w-16'>Flip H</span>
+            <ParamControls
+              paramId='flipHorizontal'
+              value={safeFlipH}
+              onChange={(v) =>
+                dispatch({
+                  type: "flipHorizontal" as any,
+                  payload: v ? 1 : 0,
+                  t: 0,
+                } as any)
+              }
+            />
+          </div>
+          <div className='flex items-center gap-2'>
+            <span className='text-xs w-16'>Flip V</span>
+            <ParamControls
+              paramId='flipVertical'
+              value={safeFlipV}
+              onChange={(v) =>
+                dispatch({
+                  type: "flipVertical" as any,
+                  payload: v ? 1 : 0,
+                  t: 0,
+                } as any)
+              }
+            />
+          </div>
+        </div>
+      )
     }
-    switch (selectedTool) {
-      case "rotate":
-        return (
-          <RotationControls
-            {...{ ...controlProps, selectedTool: "rotate" as any }}
-          />
-        )
-    }
-  }, [
-    canvasRef,
-    dispatch,
-    drawFnRef,
-    handleOnChange,
-    progress,
-    safeRotate, // Use safeRotate instead of value
-    selectedLayer,
-    selectedTool,
-    toolsValues,
-  ])
+    return null
+  }, [dispatch, handleOnChange, safeFlipH, safeFlipV, safeRotate, selectedTool])
 
   return (
     <div {...props}>
@@ -451,30 +478,25 @@ export function ScaleFooter({
     [dispatch, selectedTool, t]
   )
 
-  const controlProps = {
-    progress,
-    selectedTool: "scale" as any,
-    toolsValues,
-    canvasRef,
-    drawFnRef,
-    selectedLayer,
-    value: (() => {
-      const v: any = (toolsValues as any).scale
-      if (v && typeof v === "object" && Array.isArray(v.kfs)) {
-        const { sampleTrack } = require("@/lib/tools/tools") as any
-        return Number(sampleTrack(v, t))
-      }
-      return Number(v)
-    })(),
-    dispatch,
-    onProgress,
-    onChange: handleOnChange,
-    onSelectedToolChange,
-  }
+  const sampledScale = (() => {
+    const v: any = (toolsValues as any).scale
+    if (v && typeof v === "object" && Array.isArray((v as any).keyframes)) {
+      const m = require("@/lib/animation/model") as any
+      return Number(m.sampleTrackScalar(v, t))
+    }
+    return Number(v)
+  })()
 
   return (
     <div className={cn("flex justify-center", className)} {...props}>
-      <ScaleControls operator='%' isDecimal={true} {...controlProps} />
+      <div className='flex items-center gap-2'>
+        <span className='text-xs w-16'>Scale</span>
+        <ParamControls
+          paramId='scale'
+          value={sampledScale}
+          onChange={(v) => handleOnChange(Number(v) || 0)}
+        />
+      </div>
     </div>
   )
 }
@@ -499,21 +521,44 @@ export function DimensionsFooter({
   onSelectedToolChange: _onSelectedToolChange,
   ...props
 }: DimensionsFooterProps) {
-  const controlProps = {
-    canvasRef,
-    drawFnRef,
-    progress,
-    selectedLayer,
-    selectedTool,
-    toolsValues,
-    value: toolsValues?.dimensions,
-    dispatch,
-    onProgress,
-  }
+  // ParamControls replace bespoke DimensionsControls; sampling handled by reducer
 
   return (
     <div className={cn("flex justify-center", className)} {...props}>
-      <DimensionsControls {...controlProps} />
+      <div className='flex items-center gap-2'>
+        <span className='text-xs w-16'>Width</span>
+        <ParamControls
+          paramId='dimensions.width'
+          value={(toolsValues as any)?.dimensions?.width}
+          onChange={(v) =>
+            dispatch({
+              type: "dimensions" as any,
+              payload: {
+                ...(toolsValues as any).dimensions,
+                width: Number(v) || 0,
+              },
+              t,
+            } as any)
+          }
+        />
+      </div>
+      <div className='flex items-center gap-2'>
+        <span className='text-xs w-16'>Height</span>
+        <ParamControls
+          paramId='dimensions.height'
+          value={(toolsValues as any)?.dimensions?.height}
+          onChange={(v) =>
+            dispatch({
+              type: "dimensions" as any,
+              payload: {
+                ...(toolsValues as any).dimensions,
+                height: Number(v) || 0,
+              },
+              t,
+            } as any)
+          }
+        />
+      </div>
     </div>
   )
 }
@@ -556,9 +601,9 @@ export function UpscaleFooter({
     toolsValues,
     value: (() => {
       const v: any = (toolsValues as any).upscale
-      if (v && typeof v === "object" && Array.isArray(v.kfs)) {
-        const { sampleTrack } = require("@/lib/tools/tools") as any
-        return Number(sampleTrack(v, t))
+      if (v && typeof v === "object" && Array.isArray((v as any).keyframes)) {
+        const m = require("@/lib/animation/model") as any
+        return Number(m.sampleTrackScalar(v, t))
       }
       return Number(v)
     })(),
@@ -568,7 +613,14 @@ export function UpscaleFooter({
   }
   return (
     <div className={cn("flex justify-center", className)} {...props}>
-      <UpscaleControls {...controlProps} />
+      <div className='flex items-center gap-2'>
+        <span className='text-xs w-16'>Upscale</span>
+        <ParamControls
+          paramId='upscale'
+          value={controlProps.value}
+          onChange={(v) => handleOnChange(Number(v) || 0)}
+        />
+      </div>
     </div>
   )
 }
@@ -593,21 +645,46 @@ export function MoveFooter({
   onSelectedToolChange: _onSelectedToolChange,
   ...props
 }: MoveFooterProps) {
-  const controlProps = {
-    canvasRef,
-    drawFnRef,
-    progress,
-    selectedLayer,
-    selectedTool,
-    toolsValues,
-    value: toolsValues?.dimensions,
-    dispatch,
-    onProgress,
-  }
+  const dims = (toolsValues as any)?.dimensions || { x: 0, y: 0 }
 
   return (
     <div className={cn("flex justify-center", className)} {...props}>
-      <MoveControls value={controlProps.value} dispatch={dispatch} />
+      <div className='flex items-center gap-4'>
+        <div className='flex items-center gap-2'>
+          <span className='text-xs w-12'>X</span>
+          <ParamControls
+            paramId='dimensions.x'
+            value={dims.x}
+            onChange={(v) =>
+              dispatch({
+                type: "dimensions" as any,
+                payload: {
+                  ...(toolsValues as any).dimensions,
+                  x: Number(v) || 0,
+                },
+                t: 0,
+              } as any)
+            }
+          />
+        </div>
+        <div className='flex items-center gap-2'>
+          <span className='text-xs w-12'>Y</span>
+          <ParamControls
+            paramId='dimensions.y'
+            value={dims.y}
+            onChange={(v) =>
+              dispatch({
+                type: "dimensions" as any,
+                payload: {
+                  ...(toolsValues as any).dimensions,
+                  y: Number(v) || 0,
+                },
+                t: 0,
+              } as any)
+            }
+          />
+        </div>
+      </div>
     </div>
   )
 }
@@ -632,29 +709,68 @@ export function CropFooter({
   onSelectedToolChange: _onSelectedToolChange,
   ...props
 }: CropFooterProps) {
-  const handleOnChange = useCallback(
-    (value: number) => {
-      dispatch({ type: selectedTool as any, payload: value } as any)
-    },
-    [dispatch, selectedTool]
-  )
-
-  const controlProps = {
-    canvasRef,
-    drawFnRef,
-    progress,
-    selectedLayer,
-    selectedTool,
-    toolsValues,
-    value: toolsValues.crop,
-    dispatch,
-    onChange: handleOnChange,
-    onProgress,
-  }
+  const crop = (toolsValues as any)?.crop || { x: 0, y: 0, width: 0, height: 0 }
 
   return (
     <div className={cn("flex justify-center", className)} {...props}>
-      <CropControls {...controlProps} />
+      <div className='grid grid-cols-2 gap-2'>
+        <div className='flex items-center gap-2'>
+          <span className='text-xs w-16'>Crop X</span>
+          <ParamControls
+            paramId='crop.x'
+            value={crop.x}
+            onChange={(v) =>
+              dispatch({
+                type: "crop" as any,
+                payload: { ...crop, x: Number(v) || 0 },
+                t: 0,
+              } as any)
+            }
+          />
+        </div>
+        <div className='flex items-center gap-2'>
+          <span className='text-xs w-16'>Crop Y</span>
+          <ParamControls
+            paramId='crop.y'
+            value={crop.y}
+            onChange={(v) =>
+              dispatch({
+                type: "crop" as any,
+                payload: { ...crop, y: Number(v) || 0 },
+                t: 0,
+              } as any)
+            }
+          />
+        </div>
+        <div className='flex items-center gap-2'>
+          <span className='text-xs w-16'>Crop W</span>
+          <ParamControls
+            paramId='crop.width'
+            value={crop.width}
+            onChange={(v) =>
+              dispatch({
+                type: "crop" as any,
+                payload: { ...crop, width: Number(v) || 0 },
+                t: 0,
+              } as any)
+            }
+          />
+        </div>
+        <div className='flex items-center gap-2'>
+          <span className='text-xs w-16'>Crop H</span>
+          <ParamControls
+            paramId='crop.height'
+            value={crop.height}
+            onChange={(v) =>
+              dispatch({
+                type: "crop" as any,
+                payload: { ...crop, height: Number(v) || 0 },
+                t: 0,
+              } as any)
+            }
+          />
+        </div>
+      </div>
     </div>
   )
 }

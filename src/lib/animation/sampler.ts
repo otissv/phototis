@@ -1,3 +1,49 @@
+// Memoized sampling utilities for keyframe Tracks and tools state
+// Avoids repeated binary searches across the same tracks/time within a frame
+
+// Support sampling canonical Tracks defined in animation/model only.
+
+// Per-track cache keyed by discrete time buckets
+const trackSampleCache: WeakMap<object, Map<number, any>> = new WeakMap()
+
+const MAX_ENTRIES_PER_TRACK = 64
+
+function sampleCanonicalMemoized<T = any>(track: Track<T>, t: number): T {
+  let cache = trackSampleCache.get(track as any)
+  if (!cache) {
+    cache = new Map<number, any>()
+    trackSampleCache.set(track as any, cache)
+  }
+  const bucket = toTimeBucket(t)
+  if (cache.has(bucket)) return cache.get(bucket) as T
+  const v = evaluateTrack(track, t)
+  if (cache.size >= MAX_ENTRIES_PER_TRACK) {
+    const first = cache.keys().next().value as number | undefined
+    if (typeof first === "number") cache.delete(first)
+  }
+  cache.set(bucket, v)
+  return v as T
+}
+
+export function sampleToolsAtTimeMemoized(
+  state: Record<string, unknown>,
+  t: number
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(state)) {
+    if (k === "history" || k === "historyPosition") continue
+    if (isCanonicalTrack(v)) {
+      out[k] = sampleCanonicalMemoized(v as unknown as Track<any>, t)
+      continue
+    }
+    // No static fallbacks: reject plain values at runtime
+    throw new Error(
+      `Non-track value encountered for param '${k}' at sampling time; expected canonical Track`
+    )
+  }
+  return out
+}
+
 import type { Track, ParamKind, Keyframe, DomainConstraint } from "./model"
 import {
   applyEasing,
@@ -5,8 +51,11 @@ import {
   normalizeAngleRad,
   sortKeyframesInPlace,
 } from "./model"
-import { clamp01, linearRgbaToSrgb, srgbRgbaToLinear } from "./color"
 import { LruCache, makeKey, toTimeBucket } from "./memo"
+
+function clamp01(x: number): number {
+  return x < 0 ? 0 : x > 1 ? 1 : x
+}
 
 export type ParamRef<T = unknown> = {
   track: Track<T>
@@ -58,7 +107,7 @@ function neighborSearch<T>(
   segmentT: number
 } {
   const keys = track.keyframes
-  sortKeyframesInPlace(track)
+  ensureSortedOnce(track)
   const n = keys.length
   if (n === 0) throw new Error("Track has no keyframes")
   if (t <= keys[0].timeSec) return { k0: keys[0], k1: keys[0], segmentT: 0 }
@@ -116,12 +165,35 @@ function evaluateTrack<T>(track: Track<T>, timeSec: number): any {
 function evalScalar(track: Track<number>, t: number): number {
   const { k0, k1, segmentT } = neighborSearch(track, t)
   if (track.interpolation === "step") return k0.value
+  if (track.interpolation === "catmullRom") {
+    const keys = track.keyframes
+    const i0 = keys.indexOf(k0)
+    const p0 = i0 > 0 ? keys[i0 - 1].value : k0.value
+    const p1 = k0.value
+    const p2 = k1.value
+    const p3 = i0 + 2 < keys.length ? keys[i0 + 2].value : k1.value
+    return catmullRom1D(p0, p1, p2, p3, segmentT)
+  }
   return k0.value + (k1.value - k0.value) * segmentT
 }
 
 function evalVector(track: Track<number[]>, t: number): number[] {
   const { k0, k1, segmentT } = neighborSearch(track, t)
   if (track.interpolation === "step") return k0.value.slice()
+  if (track.interpolation === "catmullRom") {
+    const keys = track.keyframes
+    const i0 = keys.indexOf(k0)
+    const v0 = i0 > 0 ? keys[i0 - 1].value : k0.value
+    const v1 = k0.value
+    const v2 = k1.value
+    const v3 = i0 + 2 < keys.length ? keys[i0 + 2].value : k1.value
+    const n = v1.length
+    const out = new Array(n)
+    for (let i = 0; i < n; i++) {
+      out[i] = catmullRom1D(v0[i], v1[i], v2[i], v3[i], segmentT)
+    }
+    return out
+  }
   const a = k0.value
   const b = k1.value
   const out = new Array(a.length)
@@ -142,13 +214,14 @@ function evalColor(track: Track<[number, number, number, number]>, t: number) {
 function evalAngle(track: Track<number>, t: number): number {
   const { k0, k1, segmentT } = neighborSearch(track, t)
   if (track.interpolation === "step") return k0.value
+  // For angles, 'slerp' uses shortest-arc interpolation; default linear-angle also uses shortest arc
   const delta = normalizeAngleRad(k1.value - k0.value)
   return k0.value + delta * segmentT
 }
 
 function evalStepped<T>(track: Track<T>, t: number): T {
   const keys = track.keyframes
-  sortKeyframesInPlace(track)
+  ensureSortedOnce(track)
   // Find last keyframe <= t (binary search)
   let lo = 0
   let hi = keys.length - 1
@@ -161,6 +234,55 @@ function evalStepped<T>(track: Track<T>, t: number): T {
     } else hi = mid - 1
   }
   return keys[idx].value
+}
+
+// Catmull-Rom helper (uniform)
+function catmullRom1D(
+  p0: number,
+  p1: number,
+  p2: number,
+  p3: number,
+  u: number
+): number {
+  const u2 = u * u
+  const u3 = u2 * u
+  return (
+    0.5 *
+    (2 * p1 +
+      (-p0 + p2) * u +
+      (2 * p0 - 5 * p1 + 4 * p2 - p3) * u2 +
+      (-p0 + 3 * p1 - 3 * p2 + p3) * u3)
+  )
+}
+
+function isCanonicalTrack(value: unknown): value is { keyframes: any[] } {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      Array.isArray((value as any).keyframes)
+  )
+}
+
+// No legacy adapters; only canonical tracks are supported
+
+// Track keyframe sorting memoization to avoid repeated sorts across frames
+const SORTED_META = new WeakMap<object, { length: number; lastTime: number }>()
+
+function ensureSortedOnce<T>(track: Track<T>): void {
+  const keys = track.keyframes as Array<Keyframe<T>>
+  const meta = SORTED_META.get(track as any)
+  const length = keys.length
+  const lastTime = length > 0 ? keys[length - 1].timeSec : -1
+  if (!meta || meta.length !== length || meta.lastTime !== lastTime) {
+    sortKeyframesInPlace(track)
+    SORTED_META.set(track as any, {
+      length: track.keyframes.length,
+      lastTime:
+        track.keyframes.length > 0
+          ? track.keyframes[track.keyframes.length - 1].timeSec
+          : -1,
+    })
+  }
 }
 
 function clampToDomain(domain: DomainConstraint, v: number): number {

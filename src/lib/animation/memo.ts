@@ -36,6 +36,10 @@ export class LruCache<V> {
     this.evictIfNeeded()
   }
 
+  has(key: CacheKey): boolean {
+    return this.map.has(key)
+  }
+
   invalidate(predicate: (key: CacheKey) => boolean): void {
     const remaining: CacheKey[] = []
     for (const k of this.order) {

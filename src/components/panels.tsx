@@ -2,6 +2,7 @@
 
 import { HistoryPanel } from "@/components/history/history-panel"
 import { LayersPanel } from "@/components/layers/layer-panel"
+import { TimelinePanel } from "@/components/timeline/timeline-panel"
 import { cn } from "@/lib/utils"
 import type {
   ImageEditorToolsActions,

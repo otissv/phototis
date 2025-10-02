@@ -1,6 +1,7 @@
 import type { CanonicalEditorState } from "@/lib/editor/state"
 import { validateEditorState } from "@/lib/editor/state"
 import type { SerializedCommand } from "@/lib/editor/commands"
+// No migration layer; documents must be canonical
 
 export interface SerializedHistoryEntry {
   label: string
@@ -92,17 +93,28 @@ export async function persistDocument(
   history: SerializedEditorDocumentV1["history"],
   storage: StorageAdapter = new LocalStorageAdapter()
 ): Promise<void> {
-  // const doc = serializeV1(state, history)
-  // await storage.save(key, JSON.stringify(doc))
+  const valid = validateEditorState(state)
+  if (!valid.ok) {
+    const details = valid.errors.map((e) => `${e.path}:${e.message}`).join(", ")
+    throw new Error(`Cannot persist invalid editor state: ${details}`)
+  }
+  const doc = serializeV1(state, history)
+  await storage.save(key, JSON.stringify(doc))
 }
 
 export async function loadDocument(
   key: string,
   storage: StorageAdapter = new LocalStorageAdapter()
 ): Promise<SerializedEditorDocumentV1 | null> {
-  // const raw = await storage.load(key)
-  // if (!raw) return null
-  // const parsed = JSON.parse(raw) as AnySerialized
-  // const migrated = validateAndMigrate(parsed)
-  // return migrated
+  const raw = await storage.load(key)
+  if (!raw) return null
+  let parsed: AnySerialized
+  try {
+    parsed = JSON.parse(raw) as AnySerialized
+  } catch {
+    // Corrupt data; ignore
+    return null
+  }
+  const migrated = validateAndMigrate(parsed)
+  return migrated
 }
