@@ -10,9 +10,8 @@ export const grayscale: AdjustmentPlugin = {
   name: "Grayscale",
   uiSchema: [
     {
-      kind: "slider",
+      type: "slider",
       key: "grayscale",
-      label: "Grayscale",
       ...sliderDefaults("grayscale"),
       sliderType: "grayscale",
     },

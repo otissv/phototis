@@ -10,9 +10,9 @@ export const vibrance: AdjustmentPlugin = {
   name: "Vibrance",
   uiSchema: [
     {
-      kind: "slider",
+      type: "slider",
       key: "vibrance",
-      label: "Vibrance",
+      sliderType: "grayscale",
       ...sliderDefaults("vibrance"),
     },
   ],

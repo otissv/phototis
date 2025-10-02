@@ -5,7 +5,7 @@ import { TOOL_VALUES } from "@/lib/tools/tools"
 export const solid: AdjustmentPlugin = {
   id: "solid",
   name: "Solid",
-  uiSchema: [{ kind: "color", key: "solid", label: "Solid Color" }],
+  uiSchema: [{ type: "color", key: "solid" }],
   defaults: { solid: (TOOL_VALUES.solid as any)?.defaultValue ?? "#000000" },
   toShaderParams: (params) => {
     const out: Record<string, unknown> = {}

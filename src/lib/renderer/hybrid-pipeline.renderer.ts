@@ -99,28 +99,35 @@ export class HybridPassGraphPipeline {
       gl.uniform2f(texel, 1 / Math.max(1, width), 1 / Math.max(1, height))
 
     // Custom uniforms
-    for (const [k, v] of Object.entries(pass.uniforms || {})) {
-      const loc = gl.getUniformLocation(program, k)
+    for (const [key, value] of Object.entries(pass.uniforms || {})) {
+      const loc = gl.getUniformLocation(program, key)
       if (!loc) continue
-      if (typeof v === "number") {
-        if (k === "u_solidEnabled") gl.uniform1i(loc, (v as number) | 0)
-        else gl.uniform1f(loc, v)
-      } else if (Array.isArray(v)) {
-        if (v.length === 2) gl.uniform2f(loc, v[0] as number, v[1] as number)
-        else if (v.length === 3)
-          gl.uniform3f(loc, v[0] as number, v[1] as number, v[2] as number)
-        else if (v.length === 4)
+      if (typeof value === "number") {
+        if (key === "u_solidEnabled" || key === "u_colorizePreserveLum")
+          gl.uniform1i(loc, (value as number) | 0)
+        else gl.uniform1f(loc, value)
+      } else if (Array.isArray(value)) {
+        if (value.length === 2)
+          gl.uniform2f(loc, value[0] as number, value[1] as number)
+        else if (value.length === 3)
+          gl.uniform3f(
+            loc,
+            value[0] as number,
+            value[1] as number,
+            value[2] as number
+          )
+        else if (value.length === 4)
           gl.uniform4f(
             loc,
-            v[0] as number,
-            v[1] as number,
-            v[2] as number,
-            v[3] as number
+            value[0] as number,
+            value[1] as number,
+            value[2] as number,
+            value[3] as number
           )
-        else if (v.length === 9) {
-          gl.uniformMatrix3fv(loc, false, new Float32Array(v as number[]))
-        } else if (v.length === 16) {
-          gl.uniformMatrix4fv(loc, false, new Float32Array(v as number[]))
+        else if (value.length === 9) {
+          gl.uniformMatrix3fv(loc, false, new Float32Array(value as number[]))
+        } else if (value.length === 16) {
+          gl.uniformMatrix4fv(loc, false, new Float32Array(value as number[]))
         }
       }
     }
@@ -140,10 +147,10 @@ export class HybridPassGraphPipeline {
     const deps = new Map<string, Set<string>>()
     const dependents = new Map<string, Set<string>>()
     const roots: string[] = []
-    for (const p of passes) {
-      const id = p.passId || p.shaderName
-      idToPass.set(id, p)
-      const ins = (p as any)?.inputs as string[] | undefined
+    for (const pass of passes) {
+      const id = pass.passId || pass.shaderName
+      idToPass.set(id, pass)
+      const ins = (pass as any)?.inputs as string[] | undefined
       if (ins?.length) {
         deps.set(id, new Set(ins))
         for (const i of ins) {
@@ -161,11 +168,11 @@ export class HybridPassGraphPipeline {
     while (queue.length) {
       const id = queue.shift() as string
       topo.push(id)
-      for (const d of dependents.get(id) || []) {
-        const s = deps.get(d)
+      for (const dep of dependents.get(id) || []) {
+        const s = deps.get(dep)
         if (!s) continue
         s.delete(id)
-        if (s.size === 0) queue.push(d)
+        if (s.size === 0) queue.push(dep)
       }
     }
     if (topo.length < idToPass.size) {
@@ -183,9 +190,11 @@ export class HybridPassGraphPipeline {
     }
     let last: WebGLTexture | null = null
     for (const id of topo) {
-      const p = idToPass.get(id) as PassInvocation
-      if (last) p.channels = { ...(p.channels || {}), u_previousPass: last }
-      const out = this.runSingle(p, width, height, attribs)
+      const pass = idToPass.get(id) as PassInvocation
+      if (last) {
+        pass.channels = { ...(pass.channels || {}), u_previousPass: last }
+      }
+      const out = this.runSingle(pass, width, height, attribs)
       if (!out) return last
       last = out
     }

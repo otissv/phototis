@@ -13,15 +13,15 @@ export const presets: Record<string, PresetSpec> = {
     label: "Bounce In",
     description: "Ease-in bounce to target over duration",
     generate: (d) => {
-      const k: Keyframe<number>[] = []
+      const keyframes: Keyframe<number>[] = []
       const steps = 8
       for (let i = 0; i <= steps; i += 1) {
         const t = (i / steps) * d
         const u = i / steps
         const b = Math.pow(2, -6 * u) * Math.cos(10 * Math.PI * u)
-        k.push({ timeSec: t, value: 1 - b, easing: "linear" })
+        keyframes.push({ timeSec: t, value: 1 - b, easing: "linear" })
       }
-      return k
+      return keyframes
     },
   },
   pingpong: {

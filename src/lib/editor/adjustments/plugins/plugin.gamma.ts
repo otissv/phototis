@@ -10,9 +10,8 @@ export const gamma: AdjustmentPlugin = {
   name: "Gamma",
   uiSchema: [
     {
-      kind: "slider",
+      type: "slider",
       key: "gamma",
-      label: "Gamma",
       ...sliderDefaults("gamma"),
       sliderType: "grayscale",
     },

@@ -571,10 +571,42 @@ export class HybridRenderer {
       const uKey = key.startsWith("u_") ? key : `u_${key}`
       paramUniforms[uKey] = value
     }
+    // Provide safe defaults for all adjustment uniforms used by adjustments.basic shader
+    const defaultUniforms: Record<string, unknown> = {
+      u_brightness: 100,
+      u_contrast: 100,
+      u_saturation: 100,
+      u_hue: 0,
+      u_exposure: 0,
+      u_gamma: 1,
+      u_grayscale: 0,
+      u_temperature: 0,
+      u_invert: 0,
+      u_sepia: 0,
+      u_vibrance: 0,
+      u_tint: 0,
+      u_colorizeHue: 0,
+      u_colorizeSaturation: 0,
+      u_colorizeLightness: 0,
+      u_colorizePreserveLum: 1,
+      u_colorizeAmount: 0,
+      u_sharpenAmount: 0,
+      u_sharpenRadius: 1,
+      u_sharpenThreshold: 0,
+      u_noiseAmount: 0,
+      u_noiseSize: 1,
+      u_gaussianAmount: 0,
+      u_gaussianRadius: 1,
+      // Solid overlay defaults disabled
+      u_solidEnabled: 0,
+      u_solidColor: [0, 0, 0],
+      u_solidAlpha: 0,
+    }
     const uniforms: Record<string, unknown> = {
+      ...defaultUniforms,
       ...paramUniforms,
       u_opacity: 100,
-      u_colorSpace: 0,
+      u_colorSpace: this.colorSpaceFlag,
       u_transform,
       u_resolution: [canvasWidth, canvasHeight],
     }

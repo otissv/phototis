@@ -27,11 +27,12 @@ export const expressions: Record<string, ExpressionSpec> = {
       bias: { label: "Bias", defaultValue: 0 },
     },
     compile: (p) => {
-      const a = p.amplitude ?? 1
-      const f = p.frequency ?? 1
-      const ph = p.phase ?? 0
-      const b = p.bias ?? 0
-      return (t) => b + a * Math.sin(2 * Math.PI * (t * f + ph))
+      const amplitude = p.amplitude ?? 1
+      const frequency = p.frequency ?? 1
+      const phase = p.phase ?? 0
+      const bias = p.bias ?? 0
+      return (t) =>
+        bias + amplitude * Math.sin(2 * Math.PI * (t * frequency + phase))
     },
   },
   ramp: {
@@ -42,9 +43,9 @@ export const expressions: Record<string, ExpressionSpec> = {
       intercept: { label: "Intercept", defaultValue: 0 },
     },
     compile: (p) => {
-      const m = p.slope ?? 1
-      const c = p.intercept ?? 0
-      return (t) => m * t + c
+      const slope = p.slope ?? 1
+      const intercept = p.intercept ?? 0
+      return (t) => slope * t + intercept
     },
   },
   pulse: {
@@ -56,10 +57,10 @@ export const expressions: Record<string, ExpressionSpec> = {
       amplitude: { label: "Amplitude", defaultValue: 1 },
     },
     compile: (p) => {
-      const f = p.frequency ?? 1
-      const d = Math.max(0, Math.min(1, p.duty ?? 0.5))
-      const a = p.amplitude ?? 1
-      return (t) => ((t * f) % 1 < d ? a : 0)
+      const frequency = p.frequency ?? 1
+      const duty = Math.max(0, Math.min(1, p.duty ?? 0.5))
+      const amplitude = p.amplitude ?? 1
+      return (t) => ((t * frequency) % 1 < duty ? amplitude : 0)
     },
   },
 }

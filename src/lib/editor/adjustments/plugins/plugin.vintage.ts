@@ -10,9 +10,8 @@ export const vintage: AdjustmentPlugin = {
   name: "Vintage",
   uiSchema: [
     {
-      kind: "slider",
+      type: "slider",
       key: "vintage",
-      label: "Vintage",
       ...sliderDefaults("vintage"),
     },
   ],

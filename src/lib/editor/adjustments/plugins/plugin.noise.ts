@@ -14,14 +14,14 @@ export const noise: AdjustmentPlugin = {
   capabilities: ["Designer", "Motion", "Pro"],
   uiSchema: [
     {
-      kind: "slider",
+      type: "slider",
       key: "noiseAmount",
       label: "Amount",
       ...sliderDefaults("noiseAmount"),
       sliderType: "grayscale",
     },
     {
-      kind: "slider",
+      type: "slider",
       key: "noiseSize",
       label: "Size",
       ...sliderDefaults("noiseSize"),

@@ -116,7 +116,7 @@ self.onmessage = async (event: MessageEvent) => {
           data: { imageData: result },
         }
         // ImageBitmap is transferable implicitly; still pass in transfer list for clarity
-        // @ts-ignore TS doesn't know ImageBitmap in transfer list here
+        // @ts-expect-error TS doesn't know ImageBitmap in transfer list here
         postMessage(msg, [result])
         break
       }

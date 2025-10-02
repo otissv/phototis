@@ -10,9 +10,9 @@ export const sepia: AdjustmentPlugin = {
   name: "Sepia",
   uiSchema: [
     {
-      kind: "slider",
+      type: "slider",
       key: "sepia",
-      label: "Sepia",
+      sliderType: "grayscale",
       ...sliderDefaults("sepia"),
     },
   ],

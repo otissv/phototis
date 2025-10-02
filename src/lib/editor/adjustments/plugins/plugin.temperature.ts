@@ -10,9 +10,8 @@ export const temperature: AdjustmentPlugin = {
   name: "Temperature",
   uiSchema: [
     {
-      kind: "slider",
+      type: "slider",
       key: "temperature",
-      label: "Temperature",
       ...sliderDefaults("temperature"),
       sliderType: "grayscale",
     },

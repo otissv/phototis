@@ -224,33 +224,35 @@ export class WorkerManager {
         )
         const version = GlobalShaderRegistryV2.getVersion()
         // Send full descriptors for dynamic plugin support
-        const descriptors = GlobalShaderRegistryV2.getAll().map((d) => ({
-          name: d.name,
-          version: d.version,
-          sources: d.sources
-            ? {
-                vertex: d.sources.vertex || null,
-                fragment: d.sources.fragment || null,
-              }
-            : undefined,
-          defines: d.defines || undefined,
-          uniforms: d.uniforms || undefined,
-          channels: d.channels || undefined,
-          variants: d.variants || undefined,
-          defaults: d.defaults || undefined,
-          ui: d.ui || undefined,
-          policies: d.policies || undefined,
-          passes:
-            d.passes?.map((p) => ({
-              id: p.id,
-              vertexSource: p.vertexSource || null,
-              fragmentSource: p.fragmentSource,
-              defines: p.defines || undefined,
-              uniforms: p.uniforms || undefined,
-              channels: p.channels || undefined,
-              inputs: p.inputs || undefined,
-            })) || undefined,
-        }))
+        const descriptors = GlobalShaderRegistryV2.getAll().map(
+          (descriptor) => ({
+            name: descriptor.name,
+            version: descriptor.version,
+            sources: descriptor.sources
+              ? {
+                  vertex: descriptor.sources.vertex || null,
+                  fragment: descriptor.sources.fragment || null,
+                }
+              : undefined,
+            defines: descriptor.defines || undefined,
+            uniforms: descriptor.uniforms || undefined,
+            channels: descriptor.channels || undefined,
+            variants: descriptor.variants || undefined,
+            defaults: descriptor.defaults || undefined,
+            ui: descriptor.ui || undefined,
+            policies: descriptor.policies || undefined,
+            passes:
+              descriptor.passes?.map((pass) => ({
+                id: pass.id,
+                vertexSource: pass.vertexSource || null,
+                fragmentSource: pass.fragmentSource,
+                defines: pass.defines || undefined,
+                uniforms: pass.uniforms || undefined,
+                channels: pass.channels || undefined,
+                inputs: pass.inputs || undefined,
+              })) || undefined,
+          })
+        )
         await this.sendMessage(worker, {
           type: "shader:sync-registry",
           data: { version, descriptors },

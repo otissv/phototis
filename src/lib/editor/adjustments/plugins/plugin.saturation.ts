@@ -10,9 +10,9 @@ export const saturation: AdjustmentPlugin = {
   name: "Saturation",
   uiSchema: [
     {
-      kind: "slider",
+      type: "slider",
       key: "saturation",
-      label: "Saturation",
+      sliderType: "grayscale",
       ...sliderDefaults("saturation"),
     },
   ],

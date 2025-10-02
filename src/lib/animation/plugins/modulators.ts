@@ -11,12 +11,12 @@ export interface LfoParams {
 }
 
 export const lfo: (params: LfoParams) => Modulator = (params) => {
-  const a = Number.isFinite(params.amplitude) ? params.amplitude : 1
-  const f = Number.isFinite(params.frequency) ? params.frequency : 1
-  const p = Number.isFinite(params.phase) ? params.phase : 0
-  const b = Number.isFinite(params.bias ?? 0) ? (params.bias as number) : 0
+  const amplitude = Number.isFinite(params.amplitude) ? params.amplitude : 1
+  const frequency = Number.isFinite(params.frequency) ? params.frequency : 1
+  const phase = Number.isFinite(params.phase) ? params.phase : 0
+  const bias = Number.isFinite(params.bias ?? 0) ? (params.bias as number) : 0
   return (base, t) => {
-    const u = t * f + p
+    const u = t * frequency + phase
     const osc = (() => {
       switch (params.type) {
         case "triangle": {
@@ -32,11 +32,12 @@ export const lfo: (params: LfoParams) => Modulator = (params) => {
           return 2 * x - 1
         }
         case "sine":
+          return Math.sin(2 * Math.PI * u)
         default:
           return Math.sin(2 * Math.PI * u)
       }
     })()
-    return base + a * osc + b
+    return base + amplitude * osc + bias
   }
 }
 
@@ -47,10 +48,10 @@ export interface NoiseParams {
 }
 
 export const noise: (params: NoiseParams) => Modulator = (params) => {
-  const a = Number.isFinite(params.amplitude) ? params.amplitude : 1
-  const f = Number.isFinite(params.frequency) ? params.frequency : 1
-  const s = Number.isFinite(params.seed ?? 0) ? (params.seed as number) : 0
-  return (base, t) => base + a * (hash(t * f + s) - 0.5) * 2
+  const amplitude = Number.isFinite(params.amplitude) ? params.amplitude : 1
+  const frequency = Number.isFinite(params.frequency) ? params.frequency : 1
+  const seed = Number.isFinite(params.seed ?? 0) ? (params.seed as number) : 0
+  return (base, t) => base + amplitude * (hash(t * frequency + seed) - 0.5) * 2
 }
 
 export interface RandomStepParams {
@@ -60,10 +61,11 @@ export interface RandomStepParams {
 }
 
 export const randomStep: (params: RandomStepParams) => Modulator = (params) => {
-  const a = Number.isFinite(params.amplitude) ? params.amplitude : 1
-  const h = Number.isFinite(params.hold) ? params.hold : 0.25
-  const s = Number.isFinite(params.seed ?? 0) ? (params.seed as number) : 0
-  return (base, t) => base + a * (hash(Math.floor(t / h) + s) - 0.5) * 2
+  const amplitude = Number.isFinite(params.amplitude) ? params.amplitude : 1
+  const hold = Number.isFinite(params.hold) ? params.hold : 0.25
+  const seed = Number.isFinite(params.seed ?? 0) ? (params.seed as number) : 0
+  return (base, t) =>
+    base + amplitude * (hash(Math.floor(t / hold) + seed) - 0.5) * 2
 }
 
 function hash(x: number): number {

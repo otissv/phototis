@@ -10,9 +10,8 @@ export const exposure: AdjustmentPlugin = {
   name: "Exposure",
   uiSchema: [
     {
-      kind: "slider",
+      type: "slider",
       key: "exposure",
-      label: "Exposure",
       ...sliderDefaults("exposure"),
       sliderType: "grayscale",
     },

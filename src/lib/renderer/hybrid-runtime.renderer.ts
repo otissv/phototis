@@ -87,8 +87,12 @@ export class HybridRuntime implements RuntimeInterface {
       ...(shader.defines || {}),
     }
     if (variantKey && shader.variants) {
-      const v = shader.variants.find((vv) => vv.key === variantKey)
-      if (v?.defines) Object.assign(defineMap, v.defines)
+      const variant = shader.variants.find(
+        (variant) => variant.key === variantKey
+      )
+      if (variant?.defines) {
+        Object.assign(defineMap, variant.defines)
+      }
     }
 
     let vertexSource =
@@ -106,12 +110,13 @@ void main(){ v_texCoord = a_texCoord; gl_Position = vec4(a_position, 0.0, 1.0); 
       fragmentSource = pass.fragmentSource
     }
 
-    const vs = gl.createShader(gl.VERTEX_SHADER)
-    if (!vs) return null
-    gl.shaderSource(vs, withDefines(vertexSource, defineMap))
-    gl.compileShader(vs)
-    if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) {
-      const info = gl.getShaderInfoLog(vs) || "Unknown vertex compile error"
+    const vertexShader = gl.createShader(gl.VERTEX_SHADER)
+    if (!vertexShader) return null
+    gl.shaderSource(vertexShader, withDefines(vertexSource, defineMap))
+    gl.compileShader(vertexShader)
+    if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
+      const info =
+        gl.getShaderInfoLog(vertexShader) || "Unknown vertex compile error"
       const src = withDefines(vertexSource, defineMap)
       const excerpt = src.split("\n").slice(0, 60).join("\n")
       console.error("Vertex shader compilation failed:", {
@@ -121,19 +126,20 @@ void main(){ v_texCoord = a_texCoord; gl_Position = vec4(a_position, 0.0, 1.0); 
         info,
         excerpt,
       })
-      gl.deleteShader(vs)
+      gl.deleteShader(vertexShader)
       return null
     }
 
-    const fs = gl.createShader(gl.FRAGMENT_SHADER)
-    if (!fs) {
-      gl.deleteShader(vs)
+    const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER)
+    if (!fragmentShader) {
+      gl.deleteShader(vertexShader)
       return null
     }
-    gl.shaderSource(fs, withDefines(fragmentSource, defineMap))
-    gl.compileShader(fs)
-    if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
-      const info = gl.getShaderInfoLog(fs) || "Unknown fragment compile error"
+    gl.shaderSource(fragmentShader, withDefines(fragmentSource, defineMap))
+    gl.compileShader(fragmentShader)
+    if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
+      const info =
+        gl.getShaderInfoLog(fragmentShader) || "Unknown fragment compile error"
       const src = withDefines(fragmentSource, defineMap)
       const excerpt = src.split("\n").slice(0, 120).join("\n")
       console.error("Fragment shader compilation failed:", {
@@ -143,22 +149,22 @@ void main(){ v_texCoord = a_texCoord; gl_Position = vec4(a_position, 0.0, 1.0); 
         info,
         excerpt,
       })
-      gl.deleteShader(vs)
-      gl.deleteShader(fs)
+      gl.deleteShader(vertexShader)
+      gl.deleteShader(fragmentShader)
       return null
     }
 
     const program = gl.createProgram()
     if (!program) {
-      gl.deleteShader(vs)
-      gl.deleteShader(fs)
+      gl.deleteShader(vertexShader)
+      gl.deleteShader(fragmentShader)
       return null
     }
-    gl.attachShader(program, vs)
-    gl.attachShader(program, fs)
+    gl.attachShader(program, vertexShader)
+    gl.attachShader(program, fragmentShader)
     gl.linkProgram(program)
-    gl.deleteShader(vs)
-    gl.deleteShader(fs)
+    gl.deleteShader(vertexShader)
+    gl.deleteShader(fragmentShader)
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
       const info = gl.getProgramInfoLog(program) || "Unknown program link error"
       console.error("Program linking failed:", {

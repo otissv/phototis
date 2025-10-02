@@ -2,14 +2,34 @@
 
 import React from "react"
 import { GlobalKeyframePluginRegistry } from "@/lib/animation/plugins"
+import { TOOL_VALUES } from "@/lib/tools/tools"
+import { type } from "os"
+import style from "styled-jsx/style"
+import { useEditorContext } from "@/lib/editor/context"
 
 export function ParamControls({
   paramId,
   value,
   onChange,
+  uiOverride,
+  id,
+  style,
+  thumbColor = "#000000",
 }: {
   paramId: string
+  style?: React.CSSProperties
+  thumbColor?: string
   value: any
+  id?: string
+  uiOverride?: {
+    type: "slider" | "toggle" | "select" | "color"
+    label?: string
+    min?: number
+    max?: number
+    step?: number
+    options?: Array<{ label: string; value: string }>
+    sliderType?: "hue" | "grayscale" | "default"
+  }
   onChange: (next: any) => void
 }) {
   const meta = React.useMemo(() => {
@@ -20,15 +40,20 @@ export function ParamControls({
     }
   }, [paramId])
 
-  if (!meta) return null
+  if (!meta && !uiOverride) return null
 
-  const ui = meta.ui as any
+  const ui = (uiOverride as any) || (meta?.ui as any)
+
   switch (ui.type) {
     case "slider":
       return (
-        <label className='flex items-center gap-2 text-xs'>
-          <span className='w-24 truncate'>{ui.label}</span>
+        <label className='flex items-center h-9 gap-2'>
+          {ui.label && (
+            <span className='w-24 truncate text-xs'>{ui.label}</span>
+          )}
+
           <input
+            id={id}
             type='range'
             min={ui.min}
             max={ui.max}
@@ -36,7 +61,24 @@ export function ParamControls({
             value={Number(value) || 0}
             onChange={(e) => onChange(Number(e.target.value))}
             aria-label={ui.label}
+            className='h-2 bg-accent rounded-full appearance-none cursor-pointer flex-1 range-thumb'
+            style={{
+              ["--thumb-color" as any]: thumbColor,
+              ...(ui.sliderType === "grayscale"
+                ? {
+                    background: "linear-gradient(to right, #000000, #ffffff)",
+                  }
+                : undefined),
+              ...(ui.sliderType === "hue"
+                ? {
+                    background:
+                      "linear-gradient(to right, #ff0000 0%, #ffff00 16.66%, #00ff00 33.33%, #00ffff 50%, #0000ff 66.66%, #ff00ff 83.33%, #ff0000 100%)",
+                  }
+                : undefined),
+              ...style,
+            }}
           />
+          <span className='text-xs block text-right'>{value as number}</span>
         </label>
       )
     case "toggle":

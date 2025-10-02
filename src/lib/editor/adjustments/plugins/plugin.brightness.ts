@@ -10,9 +10,8 @@ export const brightness: AdjustmentPlugin = {
   name: "Brightness",
   uiSchema: [
     {
-      kind: "slider",
+      type: "slider",
       key: "brightness",
-      label: "Brightness",
       ...sliderDefaults("brightness"),
       sliderType: "grayscale",
     },

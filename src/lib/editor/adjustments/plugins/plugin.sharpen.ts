@@ -14,21 +14,21 @@ export const sharpen: AdjustmentPlugin = {
   capabilities: ["Designer", "Motion", "Pro"],
   uiSchema: [
     {
-      kind: "slider",
+      type: "slider",
       key: "sharpenAmount",
       label: "Amount",
       ...sliderDefaults("sharpenAmount"),
       sliderType: "grayscale",
     },
     {
-      kind: "slider",
+      type: "slider",
       key: "sharpenRadius",
       label: "Radius",
       ...sliderDefaults("sharpenRadius"),
       sliderType: "grayscale",
     },
     {
-      kind: "slider",
+      type: "slider",
       key: "sharpenThreshold",
       label: "Threshold",
       ...sliderDefaults("sharpenThreshold"),

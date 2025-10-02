@@ -14,14 +14,14 @@ export const gaussian: AdjustmentPlugin = {
   capabilities: ["Designer", "Motion", "Pro"],
   uiSchema: [
     {
-      kind: "slider",
+      type: "slider",
       key: "gaussianAmount",
       label: "Amount",
       ...sliderDefaults("gaussianAmount"),
       sliderType: "grayscale",
     },
     {
-      kind: "slider",
+      type: "slider",
       key: "gaussianRadius",
       label: "Radius",
       ...sliderDefaults("gaussianRadius"),

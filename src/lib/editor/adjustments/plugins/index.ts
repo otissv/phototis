@@ -11,7 +11,6 @@ import { vintage } from "./plugin.vintage"
 import { grayscale } from "./plugin.grayscale"
 import { invert } from "./plugin.invert"
 import { sepia } from "./plugin.sepia"
-import { blur } from "./plugin.blur"
 import { noise } from "./plugin.noise"
 import { grain } from "./plugin.grain"
 import { colorize } from "./plugin.colorize"
@@ -33,7 +32,6 @@ export const PLUGINS: readonly AdjustmentPlugin[] = [
   grayscale,
   invert,
   sepia,
-  blur,
   noise,
   grain,
   colorize,

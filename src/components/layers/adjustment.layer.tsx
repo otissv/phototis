@@ -5,10 +5,9 @@ import { Eclipse, Palette, Sun, Droplets, Sparkles } from "lucide-react"
 
 import { TOOL_VALUES, type ToolValueColorType } from "@/lib/tools/tools"
 import { ParamControls } from "@/components/timeline/ParamControls"
-// ParamControls drives UI from plugin UISchema; no direct registry use here
+import { getAdjustmentPlugin } from "@/lib/editor/adjustments/registry"
 import { useEditorContext } from "@/lib/editor/context"
 import { sampleToolsAtTime } from "@/lib/tools/tools-state"
-// Legacy adjustment plugin UI generation removed; use ParamControls
 import { Color } from "@/components/ui/color"
 import { colorPalette } from "@/components/ui/color-palette"
 import type { AdjustmentLayer } from "@/lib/editor/state"
@@ -72,23 +71,115 @@ export function AdjustmentLayerEditor({
     onUpdate({ [key]: value })
   }
 
-  // Legacy bespoke controls removed; ParamControls used below
   const params = sampledParams
+  const plugin = getAdjustmentPlugin(layer.adjustmentType as any)
 
   return (
     <div className='flex items-center rounded-b-sm min-h-10 border'>
       <div className='flex flex-col  w-full'>
-        {Object.entries(params).map(([key, val]) => (
-          <Fragment key={key}>
-            <div className='px-2 py-1'>
-              <ParamControls
-                paramId={key}
-                value={val as any}
-                onChange={(val) => handleParameterChange(key, val as any)}
-              />
-            </div>
-          </Fragment>
-        ))}
+        {plugin?.uiSchema?.length
+          ? plugin.uiSchema.map((control) => {
+              const key = control.key
+              const val = (params as any)[key]
+              if (control.type === "slider") {
+                return (
+                  <div key={key} className='px-2 py-1'>
+                    <ParamControls
+                      paramId={key}
+                      value={val as any}
+                      onChange={(v) => handleParameterChange(key, v as any)}
+                      uiOverride={control}
+                    />
+                  </div>
+                )
+              }
+              if (control.type === "toggle") {
+                const ui = {
+                  type: "toggle" as const,
+                  label: control.label,
+                }
+                return (
+                  <div key={key} className='px-2 py-1'>
+                    <ParamControls
+                      paramId={key}
+                      value={val as any}
+                      onChange={(v) => handleParameterChange(key, v as any)}
+                      uiOverride={ui}
+                    />
+                  </div>
+                )
+              }
+              if (control.type === "color") {
+                const ui = {
+                  type: "color" as const,
+                  label: control.label,
+                }
+                return (
+                  <div key={key} className='px-2 py-1'>
+                    <ParamControls
+                      paramId={key}
+                      value={val as any}
+                      onChange={(v) => handleParameterChange(key, v as any)}
+                      uiOverride={ui}
+                    />
+                  </div>
+                )
+              }
+              if (control.type === "color+slider") {
+                const uiSlider = {
+                  type: "slider" as const,
+                  label: control.label ?? `${key} Amount`,
+                  min: (TOOL_VALUES as any)[key]?.min,
+                  max: (TOOL_VALUES as any)[key]?.max,
+                  step: (TOOL_VALUES as any)[key]?.step ?? 1,
+                }
+                const colorVal = (val as any)?.color ?? "#000000"
+                const amountVal = Number((val as any)?.value ?? 0)
+                return (
+                  <div key={key} className='px-2 py-1'>
+                    <div className='flex items-center gap-2'>
+                      <ParamControls
+                        paramId={key}
+                        value={amountVal}
+                        onChange={(v) =>
+                          handleParameterChange(key, {
+                            ...(val as any),
+                            value: Number(v) || 0,
+                          })
+                        }
+                        uiOverride={uiSlider}
+                      />
+                      <ParamControls
+                        paramId={`${key}.color`}
+                        value={colorVal}
+                        onChange={(v) =>
+                          handleParameterChange(key, {
+                            ...(val as any),
+                            color: String(v),
+                          })
+                        }
+                        uiOverride={{
+                          type: "color",
+                          label: control.label ?? `${key} Color`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                )
+              }
+              return null
+            })
+          : Object.entries(params).map(([key, val]) => (
+              <Fragment key={key}>
+                <div className='px-2 py-1'>
+                  <ParamControls
+                    paramId={key}
+                    value={val as any}
+                    onChange={(val) => handleParameterChange(key, val as any)}
+                  />
+                </div>
+              </Fragment>
+            ))}
       </div>
     </div>
   )

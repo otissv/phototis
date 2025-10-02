@@ -10,9 +10,8 @@ export const hue: AdjustmentPlugin = {
   name: "Hue",
   uiSchema: [
     {
-      kind: "slider",
+      type: "slider",
       key: "hue",
-      label: "Hue",
       ...sliderDefaults("hue"),
       sliderType: "hue",
     },

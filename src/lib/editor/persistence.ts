@@ -93,12 +93,33 @@ export async function persistDocument(
   history: SerializedEditorDocumentV1["history"],
   storage: StorageAdapter = new LocalStorageAdapter()
 ): Promise<void> {
-  const valid = validateEditorState(state)
+  // Sanitize selection against current layer ids to avoid persisting invalid state
+  const layerIdsSet = (() => {
+    try {
+      const s = new Set<string>()
+      for (const id of state.layers.order) s.add(id)
+      return s
+    } catch {
+      return new Set<string>()
+    }
+  })()
+  const filteredSelection = (state.selection?.layerIds || []).filter((id) =>
+    layerIdsSet.has(id)
+  )
+  const stateForPersist: CanonicalEditorState =
+    filteredSelection.length === (state.selection?.layerIds || []).length
+      ? state
+      : ({
+          ...state,
+          selection: { layerIds: filteredSelection },
+        } as CanonicalEditorState)
+
+  const valid = validateEditorState(stateForPersist)
   if (!valid.ok) {
     const details = valid.errors.map((e) => `${e.path}:${e.message}`).join(", ")
     throw new Error(`Cannot persist invalid editor state: ${details}`)
   }
-  const doc = serializeV1(state, history)
+  const doc = serializeV1(stateForPersist, history)
   await storage.save(key, JSON.stringify(doc))
 }
 

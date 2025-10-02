@@ -14,9 +14,8 @@ export const tintPlugin: AdjustmentPlugin = {
   capabilities: ["Designer", "Motion", "Pro"],
   uiSchema: [
     {
-      kind: "slider",
+      type: "slider",
       key: "tint",
-      label: "Tint",
       ...sliderDefaults("tint"),
       sliderType: "grayscale",
     },

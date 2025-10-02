@@ -10,9 +10,8 @@ export const grain: AdjustmentPlugin = {
   name: "Grain",
   uiSchema: [
     {
-      kind: "slider",
+      type: "slider",
       key: "grain",
-      label: "Grain",
       ...sliderDefaults("grain"),
     },
   ],

@@ -20,9 +20,9 @@ export class LruCache<V> {
   constructor(private maxSize: number) {}
 
   get(key: CacheKey): V | undefined {
-    const v = this.map.get(key)
-    if (v !== undefined) this.touch(key)
-    return v
+    const value = this.map.get(key)
+    if (value !== undefined) this.touch(key)
+    return value
   }
 
   set(key: CacheKey, value: V): void {
@@ -42,11 +42,11 @@ export class LruCache<V> {
 
   invalidate(predicate: (key: CacheKey) => boolean): void {
     const remaining: CacheKey[] = []
-    for (const k of this.order) {
-      if (predicate(k)) {
-        this.map.delete(k)
+    for (const key of this.order) {
+      if (predicate(key)) {
+        this.map.delete(key)
       } else {
-        remaining.push(k)
+        remaining.push(key)
       }
     }
     this.order = remaining

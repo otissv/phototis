@@ -10,9 +10,8 @@ export const contrast: AdjustmentPlugin = {
   name: "Contrast",
   uiSchema: [
     {
-      kind: "slider",
+      type: "slider",
       key: "contrast",
-      label: "Contrast",
       ...sliderDefaults("contrast"),
       sliderType: "grayscale",
     },
