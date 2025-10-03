@@ -15,7 +15,7 @@ import type {
   SIDEBAR_TOOLS,
 } from "@/lib/tools/tools-state"
 import type { TOOL_VALUES } from "@/lib/tools/tools"
-import type { AdjustmentTypes } from "./types.adjustment"
+import type { AdjustmentTypes } from "./adjustments/types.adjustment"
 import { config } from "@/config"
 
 const { isDebug } = config()

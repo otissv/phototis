@@ -7,9 +7,9 @@ import { CopyShader } from "@/lib/shaders/passes/copy.shader-descriptor"
 import { LinearizeShader } from "@/lib/shaders/passes/linearize.shader-descriptor"
 import { EncodeShader } from "@/lib/shaders/passes/encode.shader-descriptor"
 import { LayerRenderShader } from "@/lib/shaders/passes/layer.render.shader-descriptor"
-import { AdjustmentsBasicDescriptor } from "@/lib/shaders/plugins/adjustments.shader-descriptor"
-import { BlurSeparableDescriptor } from "@/lib/shaders/plugins/blur.shader-descriptor"
-import { VintageDescriptor } from "@/lib/shaders/plugins/vintage.shader-descriptor"
+import { AdjustmentShaderDescriptors } from "@/lib/adjustments/shaders"
+import { BlurSeparableDescriptor } from "@/lib/adjustments/shaders/blur.shader-descriptor"
+import { VintageDescriptor } from "@/lib/adjustments/shaders/vintage.shader-descriptor"
 
 export function registerBuiltinShaders(
   registry: ShaderRegistryV2 = GlobalShaderRegistryV2
@@ -19,7 +19,12 @@ export function registerBuiltinShaders(
   registry.register(EncodeShader)
   registry.register(CopyShader)
   registry.register(LayerRenderShader)
-  registry.register(AdjustmentsBasicDescriptor)
+
+  // Register individual adjustment shaders
+  AdjustmentShaderDescriptors.forEach((descriptor) => {
+    registry.register(descriptor)
+  })
+
   registry.register(BlurSeparableDescriptor)
   registry.register(VintageDescriptor)
 }

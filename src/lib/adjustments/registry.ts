@@ -1,4 +1,4 @@
-import type { AdjustmentTypes } from "@/lib/editor/types.adjustment"
+import type { AdjustmentTypes } from "@/lib/adjustments/types.adjustment"
 
 export type AdjustmentParamValue = number | { value: number; color: string }
 

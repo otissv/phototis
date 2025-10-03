@@ -1412,23 +1412,58 @@ async function renderLayers(
                 ],
               })
             }
-            layerPasses.push({
-              shaderName: "adjustments.basic",
-              uniforms: {
-                ...baseUniforms,
-                u_brightness: Number(p.brightness || 100),
-                u_contrast: Number(p.contrast || 100),
-                u_saturation: Number(p.saturation || 100),
-                u_hue: Number(p.hue || 0),
-                u_exposure: Number(p.exposure || 0),
-                u_gamma: Number(p.gamma || 1),
-                u_opacity: 100,
-              },
-              inputs: [
-                layerPasses[layerPasses.length - 1].passId ||
-                  layerPasses[layerPasses.length - 1].shaderName,
-              ],
-            })
+            // Append individual adjustment passes instead of monolithic shader
+            const pushAdj = (
+              shaderName: string,
+              uniforms: Record<string, unknown>
+            ) => {
+              layerPasses.push({
+                shaderName,
+                uniforms: { ...baseUniforms, ...uniforms },
+                inputs: [
+                  layerPasses[layerPasses.length - 1].passId ||
+                    layerPasses[layerPasses.length - 1].shaderName,
+                ],
+              })
+            }
+            if (typeof p.brightness === "number" && p.brightness !== 100)
+              pushAdj("adjustments.brightness", {
+                u_brightness: Number(p.brightness),
+              })
+            if (typeof p.contrast === "number" && p.contrast !== 100)
+              pushAdj("adjustments.contrast", {
+                u_contrast: Number(p.contrast),
+              })
+            if (typeof p.exposure === "number" && p.exposure !== 0)
+              pushAdj("adjustments.exposure", {
+                u_exposure: Number(p.exposure),
+              })
+            if (typeof p.gamma === "number" && p.gamma !== 1)
+              pushAdj("adjustments.gamma", { u_gamma: Number(p.gamma) })
+            if (typeof p.hue === "number" && p.hue !== 0)
+              pushAdj("adjustments.hue", { u_hue: Number(p.hue) })
+            if (typeof p.saturation === "number" && p.saturation !== 100)
+              pushAdj("adjustments.saturation", {
+                u_saturation: Number(p.saturation),
+              })
+            if (typeof p.temperature === "number" && p.temperature !== 0)
+              pushAdj("adjustments.temperature", {
+                u_temperature: Number(p.temperature),
+              })
+            if (typeof p.tint === "number" && p.tint !== 0)
+              pushAdj("adjustments.tint", { u_tint: Number(p.tint) })
+            if (typeof p.grayscale === "number" && p.grayscale > 0)
+              pushAdj("adjustments.grayscale", {
+                u_grayscale: Number(p.grayscale),
+              })
+            if (typeof p.invert === "number" && p.invert > 0)
+              pushAdj("adjustments.invert", { u_invert: Number(p.invert) })
+            if (typeof p.sepia === "number" && p.sepia > 0)
+              pushAdj("adjustments.sepia", { u_sepia: Number(p.sepia) })
+            if (typeof p.vibrance === "number" && p.vibrance !== 0)
+              pushAdj("adjustments.vibrance", {
+                u_vibrance: Number(p.vibrance),
+              })
 
             if (layerPasses.length) {
               // Source for the first pass comes from oriented layer texture
@@ -1697,7 +1732,7 @@ async function renderLayers(
             // Map UI-level params to shader params via adjustment plugin registry
             try {
               const { mapParametersToShader } = await import(
-                "@/lib/editor/adjustments/registry"
+                "@/lib/adjustments/registry"
               )
               const shaderParams = mapParametersToShader(
                 (layer as any).adjustmentType,
@@ -2259,64 +2294,144 @@ async function renderAdjustmentFromBase(
     return null
 
   try {
-    // Prefix UI params to shader uniform names (u_*)
-    const paramUniforms: Record<string, unknown> = {}
-    for (const [key, value] of Object.entries(parameters as any)) {
-      const uKey = key.startsWith("u_") ? key : `u_${key}`
-      paramUniforms[uKey] = value
-    }
-    // Safe defaults mirroring adjustments.basic uniforms to avoid undefined inputs
-    const defaultUniforms: Record<string, unknown> = {
-      u_brightness: 100,
-      u_contrast: 100,
-      u_saturation: 100,
-      u_hue: 0,
-      u_exposure: 0,
-      u_gamma: 1,
-      u_grayscale: 0,
-      u_temperature: 0,
-      u_invert: 0,
-      u_sepia: 0,
-      u_vibrance: 0,
-      u_tint: 0,
-      u_colorizeHue: 0,
-      u_colorizeSaturation: 0,
-      u_colorizeLightness: 0,
-      u_colorizePreserveLum: 1,
-      u_colorizeAmount: 0,
-      u_sharpenAmount: 0,
-      u_sharpenRadius: 1,
-      u_sharpenThreshold: 0,
-      u_noiseAmount: 0,
-      u_noiseSize: 1,
-      u_gaussianAmount: 0,
-      u_gaussianRadius: 1,
-      // Solid overlay defaults disabled
-      u_solidEnabled: 0,
-      u_solidColor: [0, 0, 0],
-      u_solidAlpha: 0,
-    }
-    const uniforms: Record<string, unknown> = {
-      ...defaultUniforms,
-      ...paramUniforms,
+    const p: any = parameters as any
+    let last: WebGLTexture | null = baseTexture
+    const baseUniforms = {
       u_opacity: 100,
       u_colorSpace: docColorSpaceFlag,
-      u_resolution: [canvasWidth, canvasHeight],
+      u_resolution: [canvasWidth, canvasHeight] as [number, number],
     }
-    const out = passGraphPipeline.runSingle(
-      {
-        shaderName: "adjustments.basic",
-        uniforms,
-        channels: { u_texture: baseTexture },
-        targetFboName: "pong", // write to a pooled FBO; will be read and ping-ponged by caller
-      },
-      canvasWidth,
-      canvasHeight,
-      { position: pgPositionBuffer, texcoord: pgCompTexcoordBuffer }
-    )
-    return out
+
+    const run = (
+      shaderName: string,
+      uniforms: Record<string, unknown>,
+      passId?: string
+    ): void => {
+      if (!last) return
+      const out = passGraphPipeline?.runSingle(
+        {
+          shaderName,
+          passId,
+          uniforms: { ...baseUniforms, ...uniforms },
+          channels: { u_texture: last },
+          targetFboName: "pong",
+        },
+        canvasWidth,
+        canvasHeight,
+        {
+          position: pgPositionBuffer as WebGLBuffer,
+          texcoord: pgCompTexcoordBuffer as WebGLBuffer,
+        }
+      )
+      if (out) last = out
+    }
+
+    if (typeof p.brightness === "number" && p.brightness !== 100)
+      run("adjustments.brightness", { u_brightness: Number(p.brightness) })
+    if (typeof p.contrast === "number" && p.contrast !== 100)
+      run("adjustments.contrast", { u_contrast: Number(p.contrast) })
+    if (typeof p.exposure === "number" && p.exposure !== 0)
+      run("adjustments.exposure", { u_exposure: Number(p.exposure) })
+    if (typeof p.gamma === "number" && p.gamma !== 1)
+      run("adjustments.gamma", { u_gamma: Number(p.gamma) })
+
+    if (typeof p.hue === "number" && p.hue !== 0)
+      run("adjustments.hue", { u_hue: Number(p.hue) })
+    if (typeof p.saturation === "number" && p.saturation !== 100)
+      run("adjustments.saturation", { u_saturation: Number(p.saturation) })
+
+    if (typeof p.temperature === "number" && p.temperature !== 0)
+      run("adjustments.temperature", { u_temperature: Number(p.temperature) })
+    if (typeof p.tint === "number" && p.tint !== 0)
+      run("adjustments.tint", { u_tint: Number(p.tint) })
+
+    if (typeof p.grayscale === "number" && p.grayscale > 0)
+      run("adjustments.grayscale", { u_grayscale: Number(p.grayscale) })
+    if (typeof p.invert === "number" && p.invert > 0)
+      run("adjustments.invert", { u_invert: Number(p.invert) })
+    if (typeof p.sepia === "number" && p.sepia > 0)
+      run("adjustments.sepia", { u_sepia: Number(p.sepia) })
+
+    if (typeof p.vibrance === "number" && p.vibrance !== 0)
+      run("adjustments.vibrance", { u_vibrance: Number(p.vibrance) })
+
+    if (typeof p.colorizeAmount === "number" && p.colorizeAmount > 0)
+      run("adjustments.colorize", {
+        u_colorizeHue: Number(p.colorizeHue || 0),
+        u_colorizeSaturation: Number(p.colorizeSaturation || 0),
+        u_colorizeLightness: Number(p.colorizeLightness || 0),
+        u_colorizePreserveLum: Number(p.colorizePreserveLum ? 1 : 0),
+        u_colorizeAmount: Number(p.colorizeAmount || 0),
+      })
+
+    if (typeof p.sharpenAmount === "number" && p.sharpenAmount > 0)
+      run("adjustments.sharpen", {
+        u_sharpenAmount: Number(p.sharpenAmount || 0),
+        u_sharpenRadius: Number(p.sharpenRadius || 1),
+        u_sharpenThreshold: Number(p.sharpenThreshold || 0),
+      })
+
+    if (typeof p.noiseAmount === "number" && p.noiseAmount > 0)
+      run("adjustments.noise", {
+        u_noiseAmount: Number(p.noiseAmount || 0),
+        u_noiseSize: Number(p.noiseSize || 1),
+      })
+
+    if (typeof p.gaussianAmount === "number" && p.gaussianAmount > 0) {
+      const radius = Math.max(0.1, Number(p.gaussianRadius || 1))
+      // H pass
+      if (last) {
+        const outH = passGraphPipeline.runSingle(
+          {
+            shaderName: "adjustments.gaussian_blur",
+            passId: "horizontal_blur",
+            uniforms: { ...baseUniforms, u_radius: radius },
+            channels: { u_texture: last },
+            targetFboName: "pong",
+          },
+          canvasWidth,
+          canvasHeight,
+          {
+            position: pgPositionBuffer as WebGLBuffer,
+            texcoord: pgCompTexcoordBuffer as WebGLBuffer,
+          }
+        )
+        if (outH) {
+          const outV = passGraphPipeline.runSingle(
+            {
+              shaderName: "adjustments.gaussian_blur",
+              passId: "vertical_blur",
+              uniforms: {
+                ...baseUniforms,
+                u_radius: radius,
+                u_amount: Number(p.gaussianAmount || 0),
+              },
+              channels: { u_texture: last, u_previousPass: outH },
+              targetFboName: "pong",
+            },
+            canvasWidth,
+            canvasHeight,
+            {
+              position: pgPositionBuffer as WebGLBuffer,
+              texcoord: pgCompTexcoordBuffer as WebGLBuffer,
+            }
+          )
+          last = outV || outH
+        }
+      }
+    }
+
+    // Solid overlay
+    if (Number(p.solidEnabled ? 1 : 0) === 1)
+      run("adjustments.solid", {
+        u_solidEnabled: 1,
+        u_solidColor: Array.isArray(p.solidColor) ? p.solidColor : [0, 0, 0],
+        u_solidAlpha: Number(p.solidAlpha || 1),
+      })
+
+    return last
   } catch (error) {
-    console.error("Failed to render adjustment from base (v2):", error)
+    console.error("Failed to render adjustment from base (v2 chain):", error)
     return null
   }
 }

@@ -1095,9 +1095,7 @@ export function EditorProvider({
       let params = parameters
       try {
         // Fill defaults from plugin if parameters not provided
-        const {
-          getDefaultParameters,
-        } = require("@/lib/editor/adjustments/registry")
+        const { getDefaultParameters } = require("@/lib/adjustments/registry")
         if (!params) {
           params = getDefaultParameters(adjustmentType as any) as any
         }

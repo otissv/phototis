@@ -564,71 +564,172 @@ export class HybridRenderer {
     const flipH = Boolean((adjustmentTools as any).flipHorizontal)
     const flipV = Boolean((adjustmentTools as any).flipVertical)
     const u_transform = this.computeTransformMat3(sx, rot, flipH, flipV)
-    // Map UI params (e.g., brightness) to shader uniforms (u_brightness)
-    const paramUniforms: Record<string, unknown> = {}
-    for (const [key, value] of Object.entries(adjustmentTools as any)) {
-      // Don't double-prefix uniforms that already have u_ prefix
-      const uKey = key.startsWith("u_") ? key : `u_${key}`
-      paramUniforms[uKey] = value
-    }
-    // Provide safe defaults for all adjustment uniforms used by adjustments.basic shader
-    const defaultUniforms: Record<string, unknown> = {
-      u_brightness: 100,
-      u_contrast: 100,
-      u_saturation: 100,
-      u_hue: 0,
-      u_exposure: 0,
-      u_gamma: 1,
-      u_grayscale: 0,
-      u_temperature: 0,
-      u_invert: 0,
-      u_sepia: 0,
-      u_vibrance: 0,
-      u_tint: 0,
-      u_colorizeHue: 0,
-      u_colorizeSaturation: 0,
-      u_colorizeLightness: 0,
-      u_colorizePreserveLum: 1,
-      u_colorizeAmount: 0,
-      u_sharpenAmount: 0,
-      u_sharpenRadius: 1,
-      u_sharpenThreshold: 0,
-      u_noiseAmount: 0,
-      u_noiseSize: 1,
-      u_gaussianAmount: 0,
-      u_gaussianRadius: 1,
-      // Solid overlay defaults disabled
-      u_solidEnabled: 0,
-      u_solidColor: [0, 0, 0],
-      u_solidAlpha: 0,
-    }
-    const uniforms: Record<string, unknown> = {
-      ...defaultUniforms,
-      ...paramUniforms,
+
+    // Start from base texture and sequentially apply enabled adjustments
+    let lastTexture: WebGLTexture | null = baseTexture
+    const baseUniforms = {
       u_opacity: 100,
       u_colorSpace: this.colorSpaceFlag,
       u_transform,
-      u_resolution: [canvasWidth, canvasHeight],
+      u_resolution: [canvasWidth, canvasHeight] as [number, number],
     }
 
-    // Debug logging removed in production
+    const p: any = adjustmentTools as any
 
-    const tex = this.passGraph.runSingle(
-      {
-        shaderName: "adjustments.basic",
-        uniforms,
-        channels: { u_texture: baseTexture },
-        targetFboName: "temp",
-      },
-      canvasWidth,
-      canvasHeight,
-      {
-        position: this.positionBuffer as WebGLBuffer,
-        texcoord: this.compTexCoordBuffer as WebGLBuffer,
+    const runSinglePass = (
+      shaderName: string,
+      uniforms: Record<string, unknown>
+    ): void => {
+      if (!lastTexture) return
+      const out = this.passGraph?.runSingle(
+        {
+          shaderName,
+          uniforms: { ...baseUniforms, ...uniforms },
+          channels: { u_texture: lastTexture },
+          targetFboName: "temp",
+        },
+        canvasWidth,
+        canvasHeight,
+        {
+          position: this.positionBuffer as WebGLBuffer,
+          texcoord: this.compTexCoordBuffer as WebGLBuffer,
+        }
+      )
+      if (out) lastTexture = out
+    }
+
+    // Order matters: tonal first, then color, then special effects
+    if (typeof p.brightness === "number" && p.brightness !== 100) {
+      runSinglePass("adjustments.brightness", {
+        u_brightness: Number(p.brightness),
+      })
+    }
+    if (typeof p.contrast === "number" && p.contrast !== 100) {
+      runSinglePass("adjustments.contrast", { u_contrast: Number(p.contrast) })
+    }
+    if (typeof p.exposure === "number" && p.exposure !== 0) {
+      runSinglePass("adjustments.exposure", { u_exposure: Number(p.exposure) })
+    }
+    if (typeof p.gamma === "number" && p.gamma !== 1) {
+      runSinglePass("adjustments.gamma", { u_gamma: Number(p.gamma) })
+    }
+
+    if (typeof p.hue === "number" && p.hue !== 0) {
+      runSinglePass("adjustments.hue", { u_hue: Number(p.hue) })
+    }
+    if (typeof p.saturation === "number" && p.saturation !== 100) {
+      runSinglePass("adjustments.saturation", {
+        u_saturation: Number(p.saturation),
+      })
+    }
+
+    if (typeof p.temperature === "number" && p.temperature !== 0) {
+      runSinglePass("adjustments.temperature", {
+        u_temperature: Number(p.temperature),
+      })
+    }
+    if (typeof p.tint === "number" && p.tint !== 0) {
+      runSinglePass("adjustments.tint", { u_tint: Number(p.tint) })
+    }
+
+    if (typeof p.grayscale === "number" && p.grayscale > 0) {
+      runSinglePass("adjustments.grayscale", {
+        u_grayscale: Number(p.grayscale),
+      })
+    }
+    if (typeof p.invert === "number" && p.invert > 0) {
+      runSinglePass("adjustments.invert", { u_invert: Number(p.invert) })
+    }
+    if (typeof p.sepia === "number" && p.sepia > 0) {
+      runSinglePass("adjustments.sepia", { u_sepia: Number(p.sepia) })
+    }
+
+    if (typeof p.vibrance === "number" && p.vibrance !== 0) {
+      runSinglePass("adjustments.vibrance", { u_vibrance: Number(p.vibrance) })
+    }
+
+    if (typeof p.colorizeAmount === "number" && p.colorizeAmount > 0) {
+      runSinglePass("adjustments.colorize", {
+        u_colorizeHue: Number(p.colorizeHue || 0),
+        u_colorizeSaturation: Number(p.colorizeSaturation || 0),
+        u_colorizeLightness: Number(p.colorizeLightness || 0),
+        u_colorizePreserveLum: Number(p.colorizePreserveLum ? 1 : 0),
+        u_colorizeAmount: Number(p.colorizeAmount || 0),
+      })
+    }
+
+    if (typeof p.sharpenAmount === "number" && p.sharpenAmount > 0) {
+      runSinglePass("adjustments.sharpen", {
+        u_sharpenAmount: Number(p.sharpenAmount || 0),
+        u_sharpenRadius: Number(p.sharpenRadius || 1),
+        u_sharpenThreshold: Number(p.sharpenThreshold || 0),
+      })
+    }
+
+    if (typeof p.noiseAmount === "number" && p.noiseAmount > 0) {
+      runSinglePass("adjustments.noise", {
+        u_noiseAmount: Number(p.noiseAmount || 0),
+        u_noiseSize: Number(p.noiseSize || 1),
+      })
+    }
+
+    if (typeof p.gaussianAmount === "number" && p.gaussianAmount > 0) {
+      // Two-pass separable Gaussian blur, mixed by amount in the second pass
+      const radius = Math.max(0.1, Number(p.gaussianRadius || 1))
+      // First pass (horizontal)
+      if (lastTexture) {
+        const outH = this.passGraph.runSingle(
+          {
+            shaderName: "adjustments.gaussian_blur",
+            passId: "horizontal_blur",
+            uniforms: { ...baseUniforms, u_radius: radius },
+            channels: { u_texture: lastTexture },
+            targetFboName: "temp",
+          },
+          canvasWidth,
+          canvasHeight,
+          {
+            position: this.positionBuffer as WebGLBuffer,
+            texcoord: this.compTexCoordBuffer as WebGLBuffer,
+          }
+        )
+        if (outH) {
+          // Second pass (vertical + mix with original). Bind original and previous pass.
+          const outV = this.passGraph.runSingle(
+            {
+              shaderName: "adjustments.gaussian_blur",
+              passId: "vertical_blur",
+              uniforms: {
+                ...baseUniforms,
+                u_radius: radius,
+                u_amount: Number(p.gaussianAmount || 0),
+              },
+              channels: { u_texture: lastTexture, u_previousPass: outH },
+              targetFboName: "temp",
+            },
+            canvasWidth,
+            canvasHeight,
+            {
+              position: this.positionBuffer as WebGLBuffer,
+              texcoord: this.compTexCoordBuffer as WebGLBuffer,
+            }
+          )
+          if (outV) lastTexture = outV
+          else lastTexture = outH
+        }
       }
-    )
+    }
 
-    return tex
+    // Solid overlay (if present in tools)
+    if (Number(p.solidEnabled ? 1 : 0) === 1) {
+      runSinglePass("adjustments.solid", {
+        u_solidEnabled: 1,
+        u_solidColor: Array.isArray(p.solidColor) ? p.solidColor : [0, 0, 0],
+        u_solidAlpha: Number(p.solidAlpha || 1),
+      })
+    }
+
+    return lastTexture
   }
 
   compositeLayers(
@@ -1498,7 +1599,7 @@ void main() {
         try {
           // dynamic require to avoid top-level await and keep main bundle small
           // eslint-disable-next-line @typescript-eslint/no-var-requires
-          const reg = require("@/lib/editor/adjustments/registry")
+          const reg = require("@/lib/adjustments/registry")
           const mapped = reg.mapParametersToShader(
             layer.adjustmentType as any,
             adjustmentParams
@@ -1582,7 +1683,7 @@ void main() {
           try {
             // dynamic require to avoid top-level await and keep main bundle small
             // eslint-disable-next-line @typescript-eslint/no-var-requires
-            const reg = require("@/lib/editor/adjustments/registry")
+            const reg = require("@/lib/adjustments/registry")
             const mapped = reg.mapParametersToShader(
               globalLayer.adjustmentType as any,
               adjustmentParams

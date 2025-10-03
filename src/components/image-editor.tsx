@@ -367,7 +367,7 @@ function ImageEditorInner({
       <div
         className={cn(
           "lg:col-start-2 lg:row-start-1 lg:row-span-2",
-          "flex flex-col items-center overflow-auto border custom-scrollbar",
+          "flex flex-col items-center overflow-auto border-l border-l-black border-r border-r-black custom-scrollbar",
           selectedLayer?.type === "document" && "border-blue-500 border-2"
         )}
       >

@@ -379,7 +379,7 @@ export function LayersPanelInner({
         </Button>
 
         <div className='text-xs ml-auto text-muted-foreground'>
-          {layers.length === 1 ? "1 layer" : `${layers.length} layers`}
+          {layers.length - 1 === 1 ? "1 layer" : `${layers.length - 1} layers`}
         </div>
       </div>
     </div>

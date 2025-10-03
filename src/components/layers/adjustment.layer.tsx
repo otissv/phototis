@@ -5,7 +5,7 @@ import { Eclipse, Palette, Sun, Droplets, Sparkles } from "lucide-react"
 
 import { TOOL_VALUES, type ToolValueColorType } from "@/lib/tools/tools"
 import { ParamControls } from "@/components/timeline/ParamControls"
-import { getAdjustmentPlugin } from "@/lib/editor/adjustments/registry"
+import { getAdjustmentPlugin } from "@/lib/adjustments/registry"
 import { useEditorContext } from "@/lib/editor/context"
 import { sampleToolsAtTime } from "@/lib/tools/tools-state"
 import { Color } from "@/components/ui/color"

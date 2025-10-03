@@ -1348,19 +1348,12 @@ export function ImageEditorCanvas({
       // Use worker-based rendering if available (always queue; manager cancels in-flight)
 
       if (renderType === "worker" && isWorkerReadyRef.current) {
+        // Synchronize ref with latest state before decision to avoid stale-read races
+        isWorkerProcessingRef.current = isWorkerProcessing
         // Avoid spamming the worker: if a task is already processing or we are in the middle of queueing, skip
-        // Use both ref and state to prevent race conditions
-        if (
-          isWorkerProcessingRef.current ||
-          isWorkerProcessing ||
-          isQueueingRenderRef.current
-        ) {
-          // Debug race condition detection
-          if (isWorkerProcessing && !isWorkerProcessingRef.current) {
-            console.warn(
-              "🚨 Race condition detected: isWorkerProcessing=true but ref=false"
-            )
-          }
+        const isBusy =
+          isWorkerProcessingRef.current || isQueueingRenderRef.current
+        if (isBusy) {
           // Remember that a render was requested while busy; draw right after current task finishes
           if (pendingRenderRef.current !== layersSignature) {
             pendingRenderRef.current = layersSignature
@@ -1424,7 +1417,28 @@ export function ImageEditorCanvas({
         try {
           const manager = WorkerManager.getShared()
           await manager.prepareWorkerShaders({
-            shaderNames: ["compositor", "adjustments.basic", "copy"],
+            shaderNames: [
+              "compositor",
+              "copy",
+              // Core adjustments (single-pass)
+              "adjustments.brightness",
+              "adjustments.contrast",
+              "adjustments.saturation",
+              "adjustments.hue",
+              "adjustments.exposure",
+              "adjustments.gamma",
+              "adjustments.grayscale",
+              "adjustments.invert",
+              "adjustments.sepia",
+              "adjustments.vibrance",
+              "adjustments.colorize",
+              "adjustments.temperature",
+              "adjustments.tint",
+              "adjustments.sharpen",
+              "adjustments.noise",
+              // Multi-pass blur (we'll compile both passes on demand)
+              "adjustments.gaussian_blur",
+            ],
           })
         } catch {}
 
