@@ -22,10 +22,6 @@ import {
   validateFilterParameters,
 } from "@/lib/security/gpu-security"
 
-import { GPU_SECURITY_CONSTANTS } from "@/lib/security/gpu-security"
-
-const { MAX_BLUR_KERNEL_SIZE } = GPU_SECURITY_CONSTANTS
-
 // Worker message types
 interface WorkerMessage {
   type: string
@@ -82,16 +78,6 @@ interface ResizeMessage extends WorkerMessage {
   }
 }
 
-interface FilterMessage extends WorkerMessage {
-  type: "applyFilter"
-  data: {
-    layerId: string
-    filterType: string
-    parameters: any
-    imageData: ImageBitmap
-  }
-}
-
 interface ProgressMessage {
   type: "progress"
   id: string
@@ -144,7 +130,6 @@ function computeTransformMat3(
 }
 let canvas: OffscreenCanvas | null = null
 let asynchronousPipeline: any | null = null
-const shaderManager: any | null = null // Legacy - will be removed
 let hybridRendererInstance: HybridRenderer | null = null
 // Enable pipeline path; progressive rendering will render when final texture ready
 // Temporarily disable pipeline and hybrid renderer paths to debug first-frame strip issue
@@ -630,11 +615,6 @@ void main() {\n
   glCtx.bindVertexArray(null)
 }
 
-// Security validation helper
-function validateBlurKernelSize(size: number): number {
-  return Math.max(1, Math.min(size, MAX_BLUR_KERNEL_SIZE))
-}
-
 // Initialize WebGL context with OffscreenCanvas
 function initializeWebGL(
   offscreenCanvas: OffscreenCanvas,
@@ -873,67 +853,6 @@ async function ensureHeavyInit(width: number, height: number): Promise<void> {
   })
   dbg("heavy:init:done")
   heavyInitDone = true
-}
-
-// Helper to safely get layer dimensions from tuple array
-function getLayerDims(
-  list: [string, { width: number; height: number; x: number; y: number }][],
-  id: string
-): { x: number; y: number; width: number; height: number } | null {
-  try {
-    for (let i = 0; i < list.length; i++) {
-      const entry = list[i]
-      if (Array.isArray(entry) && entry.length === 2) {
-        const key = entry[0]
-        const val = entry[1] as any
-        if (key === id && val && typeof val.width === "number") {
-          return {
-            x: Number(val.x) || 0,
-            y: Number(val.y) || 0,
-            width: Math.max(0, Number(val.width) || 0),
-            height: Math.max(0, Number(val.height) || 0),
-          }
-        }
-      }
-    }
-  } catch {}
-  return null
-}
-
-// Flatten grouped layers into a single array for rendering
-// This function recursively processes group layers and their children,
-// respecting the visible state and maintaining proper z-order
-function flattenLayersForRendering(layers: EditorLayer[]): EditorLayer[] {
-  const flattened: EditorLayer[] = []
-
-  for (const layer of layers) {
-    if (layer.type === "group") {
-      const groupLayer = layer as any
-
-      // Only skip group children if the group itself is not visible
-      // collapsed is a UI-only state and should not affect rendering
-      if (!groupLayer.visible) {
-        continue
-      }
-
-      // Add group children in order (they're already in the correct z-order)
-      if (Array.isArray(groupLayer.children)) {
-        for (const child of groupLayer.children) {
-          // Recursively flatten nested groups
-          if (child.type === "group") {
-            flattened.push(...flattenLayersForRendering([child]))
-          } else {
-            flattened.push(child)
-          }
-        }
-      }
-    } else {
-      // Non-group layers are added directly
-      flattened.push(layer)
-    }
-  }
-
-  return flattened
 }
 
 // Render layers with progressive quality
@@ -1394,7 +1313,7 @@ async function renderLayers(
               Number(p.invert || 0) > 0
             ) {
               layerPasses.push({
-                shaderName: "effects.vintage",
+                shaderName: "adjustments.vintage",
                 uniforms: {
                   ...baseUniforms,
                   u_vintage: Number(p.vintage || 0),
@@ -1729,29 +1648,50 @@ async function renderLayers(
           // If current layer is an adjustment layer (no tex), render adjusted top from base
           let topTexture: WebGLTexture | null = tex || null
           if (!topTexture && (layer as any).type === "adjustment") {
-            // Map UI-level params to shader params via adjustment plugin registry
             try {
               const { mapParametersToShader } = await import(
                 "@/lib/adjustments/registry"
               )
-              const shaderParams = mapParametersToShader(
+              let mapped = mapParametersToShader(
                 (layer as any).adjustmentType,
                 (layer as any).parameters || {}
               ) as Record<string, number | { value: number; color: string }>
-              topTexture = await renderAdjustmentFromBase(
+              try {
+                const canon = await import("@/lib/animation/crud")
+                const { sampleToolsAtTimeMemoized } = await import(
+                  "@/lib/animation/sampler"
+                )
+                const t = (() => {
+                  try {
+                    const m: any = (self as any).__lastMessageData
+                    return typeof m?.playheadTime === "number"
+                      ? m.playheadTime
+                      : 0
+                  } catch {
+                    return 0
+                  }
+                })()
+                const onlyTracks = Object.fromEntries(
+                  Object.entries(mapped).filter(([, v]) =>
+                    (canon as any).isCanonicalTrack?.(v)
+                  )
+                ) as Record<string, any>
+                if (Object.keys(onlyTracks).length > 0) {
+                  const sampled = (sampleToolsAtTimeMemoized as any)(
+                    onlyTracks,
+                    t
+                  )
+                  mapped = { ...mapped, ...sampled }
+                }
+              } catch {}
+              topTexture = await renderAdjustmentLayerFromBase(
                 readTexture,
-                shaderParams,
+                String((layer as any).adjustmentType || ""),
+                mapped as Record<string, any>,
                 canvasWidth,
                 canvasHeight
               )
-            } catch {
-              topTexture = await renderAdjustmentFromBase(
-                readTexture,
-                (layer as any).parameters || {},
-                canvasWidth,
-                canvasHeight
-              )
-            }
+            } catch {}
           }
           if (!topTexture) {
             // Nothing to composite for this layer
@@ -2276,14 +2216,14 @@ async function loadLayerTexture(
   }
 }
 
-// Render an adjustment pass by applying given parameters to the base texture
-async function renderAdjustmentFromBase(
+// Render a specific adjustment layer type dynamically using mapped uniforms
+async function renderAdjustmentLayerFromBase(
   baseTexture: WebGLTexture,
-  parameters: Record<string, number | { value: number; color: string }>,
+  adjustmentType: string,
+  mappedParams: Record<string, any>,
   canvasWidth: number,
   canvasHeight: number
 ): Promise<WebGLTexture | null> {
-  // v2 pass-graph path
   if (
     !gl ||
     !shaderManagerV2 ||
@@ -2294,7 +2234,7 @@ async function renderAdjustmentFromBase(
     return null
 
   try {
-    const p: any = parameters as any
+    const p: any = mappedParams || {}
     let last: WebGLTexture | null = baseTexture
     const baseUniforms = {
       u_opacity: 100,
@@ -2302,111 +2242,34 @@ async function renderAdjustmentFromBase(
       u_resolution: [canvasWidth, canvasHeight] as [number, number],
     }
 
-    const run = (
-      shaderName: string,
-      uniforms: Record<string, unknown>,
-      passId?: string
-    ): void => {
-      if (!last) return
-      const out = passGraphPipeline?.runSingle(
-        {
-          shaderName,
-          passId,
-          uniforms: { ...baseUniforms, ...uniforms },
-          channels: { u_texture: last },
-          targetFboName: "pong",
-        },
-        canvasWidth,
-        canvasHeight,
-        {
-          position: pgPositionBuffer as WebGLBuffer,
-          texcoord: pgCompTexcoordBuffer as WebGLBuffer,
-        }
-      )
-      if (out) last = out
-    }
-
-    if (typeof p.brightness === "number" && p.brightness !== 100)
-      run("adjustments.brightness", { u_brightness: Number(p.brightness) })
-    if (typeof p.contrast === "number" && p.contrast !== 100)
-      run("adjustments.contrast", { u_contrast: Number(p.contrast) })
-    if (typeof p.exposure === "number" && p.exposure !== 0)
-      run("adjustments.exposure", { u_exposure: Number(p.exposure) })
-    if (typeof p.gamma === "number" && p.gamma !== 1)
-      run("adjustments.gamma", { u_gamma: Number(p.gamma) })
-
-    if (typeof p.hue === "number" && p.hue !== 0)
-      run("adjustments.hue", { u_hue: Number(p.hue) })
-    if (typeof p.saturation === "number" && p.saturation !== 100)
-      run("adjustments.saturation", { u_saturation: Number(p.saturation) })
-
-    if (typeof p.temperature === "number" && p.temperature !== 0)
-      run("adjustments.temperature", { u_temperature: Number(p.temperature) })
-    if (typeof p.tint === "number" && p.tint !== 0)
-      run("adjustments.tint", { u_tint: Number(p.tint) })
-
-    if (typeof p.grayscale === "number" && p.grayscale > 0)
-      run("adjustments.grayscale", { u_grayscale: Number(p.grayscale) })
-    if (typeof p.invert === "number" && p.invert > 0)
-      run("adjustments.invert", { u_invert: Number(p.invert) })
-    if (typeof p.sepia === "number" && p.sepia > 0)
-      run("adjustments.sepia", { u_sepia: Number(p.sepia) })
-
-    if (typeof p.vibrance === "number" && p.vibrance !== 0)
-      run("adjustments.vibrance", { u_vibrance: Number(p.vibrance) })
-
-    if (typeof p.colorizeAmount === "number" && p.colorizeAmount > 0)
-      run("adjustments.colorize", {
-        u_colorizeHue: Number(p.colorizeHue || 0),
-        u_colorizeSaturation: Number(p.colorizeSaturation || 0),
-        u_colorizeLightness: Number(p.colorizeLightness || 0),
-        u_colorizePreserveLum: Number(p.colorizePreserveLum ? 1 : 0),
-        u_colorizeAmount: Number(p.colorizeAmount || 0),
-      })
-
-    if (typeof p.sharpenAmount === "number" && p.sharpenAmount > 0)
-      run("adjustments.sharpen", {
-        u_sharpenAmount: Number(p.sharpenAmount || 0),
-        u_sharpenRadius: Number(p.sharpenRadius || 1),
-        u_sharpenThreshold: Number(p.sharpenThreshold || 0),
-      })
-
-    if (typeof p.noiseAmount === "number" && p.noiseAmount > 0)
-      run("adjustments.noise", {
-        u_noiseAmount: Number(p.noiseAmount || 0),
-        u_noiseSize: Number(p.noiseSize || 1),
-      })
-
-    if (typeof p.gaussianAmount === "number" && p.gaussianAmount > 0) {
-      const radius = Math.max(0.1, Number(p.gaussianRadius || 1))
-      // H pass
-      if (last) {
-        const outH = passGraphPipeline.runSingle(
-          {
-            shaderName: "adjustments.gaussian_blur",
-            passId: "horizontal_blur",
-            uniforms: { ...baseUniforms, u_radius: radius },
-            channels: { u_texture: last },
-            targetFboName: "pong",
-          },
-          canvasWidth,
-          canvasHeight,
-          {
-            position: pgPositionBuffer as WebGLBuffer,
-            texcoord: pgCompTexcoordBuffer as WebGLBuffer,
-          }
-        )
-        if (outH) {
-          const outV = passGraphPipeline.runSingle(
+    // Dynamic plugin-driven execution
+    try {
+      const mod = await import("@/lib/adjustments/runtime")
+      const steps = (mod as any).buildAdjustmentPasses(
+        String(adjustmentType),
+        p
+      ) as Array<{
+        shaderName: string
+        passId?: string
+        uniforms: Record<string, unknown>
+        withPreviousPass?: boolean
+      }>
+      if (steps && steps.length > 0) {
+        const originalBase: WebGLTexture | null = last
+        let prev: WebGLTexture | null = null
+        for (const step of steps) {
+          if (!last) break
+          const out = passGraphPipeline?.runSingle(
             {
-              shaderName: "adjustments.gaussian_blur",
-              passId: "vertical_blur",
-              uniforms: {
-                ...baseUniforms,
-                u_radius: radius,
-                u_amount: Number(p.gaussianAmount || 0),
-              },
-              channels: { u_texture: last, u_previousPass: outH },
+              shaderName: step.shaderName,
+              passId: step.passId,
+              uniforms: { ...baseUniforms, ...step.uniforms },
+              channels: step.withPreviousPass
+                ? {
+                    u_texture: originalBase as any,
+                    u_previousPass: prev as any,
+                  }
+                : { u_texture: last },
               targetFboName: "pong",
             },
             canvasWidth,
@@ -2416,71 +2279,17 @@ async function renderAdjustmentFromBase(
               texcoord: pgCompTexcoordBuffer as WebGLBuffer,
             }
           )
-          last = outV || outH
+          if (out) {
+            prev = out
+            last = out
+          }
         }
       }
-    }
-
-    // Solid overlay
-    if (Number(p.solidEnabled ? 1 : 0) === 1)
-      run("adjustments.solid", {
-        u_solidEnabled: 1,
-        u_solidColor: Array.isArray(p.solidColor) ? p.solidColor : [0, 0, 0],
-        u_solidAlpha: Number(p.solidAlpha || 1),
-      })
+    } catch {}
 
     return last
   } catch (error) {
-    console.error("Failed to render adjustment from base (v2 chain):", error)
-    return null
-  }
-}
-
-// Composite layers
-async function compositeLayers(
-  layerTextures: [string, WebGLTexture][],
-  canvasWidth: number,
-  canvasHeight: number
-): Promise<WebGLTexture | null> {
-  if (!gl || !passGraphPipeline || !pgPositionBuffer || !pgCompTexcoordBuffer)
-    return null
-
-  try {
-    if (layerTextures.length === 0) return null
-    let acc: WebGLTexture | null = null
-    for (let i = 0; i < layerTextures.length; i++) {
-      const [layerId, tex] = layerTextures[i]
-      if (!acc) {
-        acc = tex
-        continue
-      }
-      // Mask plumbing: lookup mask on the current layer if provided and bind
-      const maskTex: WebGLTexture | null =
-        maskTextures.get(`${layerId}:mask`) || null
-      const out = passGraphPipeline.runSingle(
-        {
-          shaderName: "compositor",
-          uniforms: {
-            u_blendMode: 0,
-            u_opacity: 100,
-            u_hasMask: maskTex ? 1 : 0,
-            // Default mask params when layer metadata not available here
-            u_maskParams: [0, 0, 1, 0],
-          },
-          channels: maskTex
-            ? { u_baseTexture: acc, u_topTexture: tex, u_maskTexture: maskTex }
-            : { u_baseTexture: acc, u_topTexture: tex },
-          targetFboName: "result",
-        },
-        canvasWidth,
-        canvasHeight,
-        { position: pgPositionBuffer, texcoord: pgCompTexcoordBuffer }
-      )
-      if (out) acc = out
-    }
-    return acc
-  } catch (error) {
-    console.error("Failed to composite layers:", error)
+    console.error("Failed to render dynamic adjustment from base:", error)
     return null
   }
 }
@@ -2789,7 +2598,6 @@ self.onmessage = async (event: MessageEvent) => {
       }
 
       case "applyFilter": {
-        const filterMessage = message as FilterMessage
         // Apply specific filter to layer
         // This will be implemented for individual filter operations
         postMessage({

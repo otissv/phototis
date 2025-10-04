@@ -8,6 +8,9 @@ import {
 export const grain: AdjustmentPlugin = {
   id: "grain",
   name: "Grain",
+  description: "Add film grain noise to the image",
+  category: "effects",
+  icon: "Eclipse",
   uiSchema: [
     {
       type: "slider",

@@ -8,6 +8,9 @@ import {
 export const exposure: AdjustmentPlugin = {
   id: "exposure",
   name: "Exposure",
+  category: "adjustments",
+  icon: "Sun",
+  description: "Adjust the exposure of the image",
   uiSchema: [
     {
       type: "slider",

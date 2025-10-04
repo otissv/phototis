@@ -5,6 +5,9 @@ import { TOOL_VALUES } from "@/lib/tools/tools"
 export const colorize: AdjustmentPlugin = {
   id: "colorize",
   name: "Colorize",
+  description: "Colorize the image",
+  category: "adjustments",
+  icon: "Palette",
   uiSchema: [
     { type: "slider", key: "colorizeHue", label: "Hue", sliderType: "hue" },
     {

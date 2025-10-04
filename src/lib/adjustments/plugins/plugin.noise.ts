@@ -9,9 +9,8 @@ export const noise: AdjustmentPlugin = {
   id: "noise",
   name: "Noise",
   description: "Add film grain noise to the image",
-  category: "texture",
-  icon: "🎭",
-  capabilities: ["Designer", "Motion", "Pro"],
+  icon: "Eclipse",
+  category: "effects",
   uiSchema: [
     {
       type: "slider",

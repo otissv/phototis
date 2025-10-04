@@ -331,63 +331,6 @@ export class HybridRenderer {
     this.colorSpaceFlag = flag
   }
 
-  private compileProgram(
-    vertexSource: string,
-    fragmentSource: string
-  ): WebGLProgram | null {
-    if (!this.gl) return null
-
-    // Create and compile vertex shader
-    const vertexShader = this.gl.createShader(this.gl.VERTEX_SHADER)
-    if (!vertexShader) {
-      console.error("Failed to create vertex shader")
-      return null
-    }
-    this.gl.shaderSource(vertexShader, vertexSource)
-    this.gl.compileShader(vertexShader)
-
-    if (!this.gl.getShaderParameter(vertexShader, this.gl.COMPILE_STATUS)) {
-      const error = this.gl.getShaderInfoLog(vertexShader)
-      console.error("Vertex shader compilation failed:", error)
-      console.error("Vertex shader source:", vertexSource)
-      return null
-    }
-
-    // Create and compile fragment shader
-    const fragmentShader = this.gl.createShader(this.gl.FRAGMENT_SHADER)
-    if (!fragmentShader) {
-      console.error("Failed to create fragment shader")
-      return null
-    }
-    this.gl.shaderSource(fragmentShader, fragmentSource)
-    this.gl.compileShader(fragmentShader)
-
-    if (!this.gl.getShaderParameter(fragmentShader, this.gl.COMPILE_STATUS)) {
-      const error = this.gl.getShaderInfoLog(fragmentShader)
-      console.error("Fragment shader compilation failed:", error)
-      console.error("Fragment shader source:", fragmentSource)
-      return null
-    }
-
-    // Create and link program
-    const program = this.gl.createProgram()
-    if (!program) {
-      console.error("Failed to create program")
-      return null
-    }
-    this.gl.attachShader(program, vertexShader)
-    this.gl.attachShader(program, fragmentShader)
-    this.gl.linkProgram(program)
-
-    if (!this.gl.getProgramParameter(program, this.gl.LINK_STATUS)) {
-      const error = this.gl.getProgramInfoLog(program)
-      console.error("Program linking failed:", error)
-      return null
-    }
-
-    return program
-  }
-
   renderLayer(
     layer: Layer,
     layerTexture: WebGLTexture,
@@ -658,12 +601,15 @@ export class HybridRenderer {
       })
     }
 
-    if (typeof p.sharpenAmount === "number" && p.sharpenAmount > 0) {
-      runSinglePass("adjustments.sharpen", {
-        u_sharpenAmount: Number(p.sharpenAmount || 0),
-        u_sharpenRadius: Number(p.sharpenRadius || 1),
-        u_sharpenThreshold: Number(p.sharpenThreshold || 0),
-      })
+    {
+      const sharpenAmt = Number(p.sharpenAmount || 0)
+      if (!Number.isNaN(sharpenAmt) && sharpenAmt > 0) {
+        runSinglePass("adjustments.sharpen", {
+          u_sharpenAmount: sharpenAmt,
+          u_sharpenRadius: Number(p.sharpenRadius || 1),
+          u_sharpenThreshold: Number(p.sharpenThreshold || 0),
+        })
+      }
     }
 
     if (typeof p.noiseAmount === "number" && p.noiseAmount > 0) {
@@ -673,38 +619,19 @@ export class HybridRenderer {
       })
     }
 
-    if (typeof p.gaussianAmount === "number" && p.gaussianAmount > 0) {
-      // Two-pass separable Gaussian blur, mixed by amount in the second pass
-      const radius = Math.max(0.1, Number(p.gaussianRadius || 1))
-      // First pass (horizontal)
-      if (lastTexture) {
-        const outH = this.passGraph.runSingle(
-          {
-            shaderName: "adjustments.gaussian_blur",
-            passId: "horizontal_blur",
-            uniforms: { ...baseUniforms, u_radius: radius },
-            channels: { u_texture: lastTexture },
-            targetFboName: "temp",
-          },
-          canvasWidth,
-          canvasHeight,
-          {
-            position: this.positionBuffer as WebGLBuffer,
-            texcoord: this.compTexCoordBuffer as WebGLBuffer,
-          }
-        )
-        if (outH) {
-          // Second pass (vertical + mix with original). Bind original and previous pass.
-          const outV = this.passGraph.runSingle(
+    {
+      const gAmt = Number(p.gaussianAmount || 0)
+      if (!Number.isNaN(gAmt) && gAmt > 0) {
+        // Two-pass separable Gaussian blur, mixed by amount in the second pass
+        const radius = Math.max(0.1, Number(p.gaussianRadius || 1))
+        // First pass (horizontal)
+        if (lastTexture) {
+          const outH = this.passGraph.runSingle(
             {
               shaderName: "adjustments.gaussian_blur",
-              passId: "vertical_blur",
-              uniforms: {
-                ...baseUniforms,
-                u_radius: radius,
-                u_amount: Number(p.gaussianAmount || 0),
-              },
-              channels: { u_texture: lastTexture, u_previousPass: outH },
+              passId: "horizontal_blur",
+              uniforms: { ...baseUniforms, u_radius: radius },
+              channels: { u_texture: lastTexture },
               targetFboName: "temp",
             },
             canvasWidth,
@@ -714,8 +641,26 @@ export class HybridRenderer {
               texcoord: this.compTexCoordBuffer as WebGLBuffer,
             }
           )
-          if (outV) lastTexture = outV
-          else lastTexture = outH
+          if (outH) {
+            // Second pass (vertical + mix with original). Bind original and previous pass.
+            const outV = this.passGraph.runSingle(
+              {
+                shaderName: "adjustments.gaussian_blur",
+                passId: "vertical_blur",
+                uniforms: { ...baseUniforms, u_radius: radius, u_amount: gAmt },
+                channels: { u_texture: lastTexture, u_previousPass: outH },
+                targetFboName: "temp",
+              },
+              canvasWidth,
+              canvasHeight,
+              {
+                position: this.positionBuffer as WebGLBuffer,
+                texcoord: this.compTexCoordBuffer as WebGLBuffer,
+              }
+            )
+            if (outV) lastTexture = outV
+            else lastTexture = outH
+          }
         }
       }
     }
@@ -728,6 +673,69 @@ export class HybridRenderer {
         u_solidAlpha: Number(p.solidAlpha || 1),
       })
     }
+
+    return lastTexture
+  }
+
+  private renderAdjustmentLayerToTexture(
+    baseTexture: WebGLTexture,
+    adjustmentType: string,
+    mappedParams: Record<string, any>,
+    canvasWidth: number,
+    canvasHeight: number
+  ): WebGLTexture | null {
+    if (!this.gl || !this.shaderManagerV2 || !this.passGraph) return null
+
+    let lastTexture: WebGLTexture | null = baseTexture
+    const u_transform = this.computeTransformMat3(1, 0, false, false)
+    const baseUniforms = {
+      u_opacity: 100,
+      u_colorSpace: this.colorSpaceFlag,
+      u_transform,
+      u_resolution: [canvasWidth, canvasHeight] as [number, number],
+    }
+
+    const p: any = mappedParams || {}
+
+    // Dynamic plugin-driven execution
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { buildAdjustmentPasses } =
+        require("@/lib/adjustments/runtime") as any
+      const steps = buildAdjustmentPasses(String(adjustmentType), p) as Array<{
+        shaderName: string
+        passId?: string
+        uniforms: Record<string, unknown>
+        withPreviousPass?: boolean
+      }>
+      if (steps && steps.length > 0) {
+        let prev: WebGLTexture | null = null
+        for (const step of steps) {
+          if (!lastTexture) break
+          const out = this.passGraph?.runSingle(
+            {
+              shaderName: step.shaderName,
+              passId: step.passId,
+              uniforms: { ...baseUniforms, ...step.uniforms },
+              channels: step.withPreviousPass
+                ? { u_texture: lastTexture, u_previousPass: prev as any }
+                : { u_texture: lastTexture },
+              targetFboName: "temp",
+            },
+            canvasWidth,
+            canvasHeight,
+            {
+              position: this.positionBuffer as WebGLBuffer,
+              texcoord: this.compTexCoordBuffer as WebGLBuffer,
+            }
+          )
+          if (out) {
+            prev = out
+            lastTexture = out
+          }
+        }
+      }
+    } catch {}
 
     return lastTexture
   }
@@ -779,11 +787,6 @@ export class HybridRenderer {
         `Attempting to copy texture to itself (${fboName}), skipping copy operation`
       )
       return
-    }
-
-    // Additional check for any FBO texture that might cause feedback
-    if (this.fboManager.isTextureBoundToFBO(texture)) {
-      const sourceFBO = this.fboManager.getFBOByTexture(texture)
     }
 
     // Bind the target FBO
@@ -1192,27 +1195,6 @@ void main() {
     return flattened
   }
 
-  // Helper method to get the rendering order (bottom -> top) consistent with layer system
-  private getRenderingOrder(_layers: Layer[]): Layer[] {
-    // First flatten group layers to get all individual layers
-    const flattenedLayers = this.flattenLayersForRendering(_layers)
-
-    // The editor provides layers in top-first order (new layers are unshifted)
-    // For correct compositing we must render bottom-first, so reverse here.
-    return flattenedLayers
-      .filter((layer) => {
-        if (!layer.visible) return false
-        if (layer.opacity <= 0) return false
-        if (layer.type === "image") {
-          return !!(layer as any).image || !(layer as any).isEmpty
-        }
-        // Non-image layers are allowed (e.g., adjustment)
-        return true
-      })
-      .slice()
-      .reverse()
-  }
-
   // Reset all render state to prevent stale data from previous renders
   private resetRenderState(): void {
     if (!this.gl) return
@@ -1588,35 +1570,38 @@ void main() {
           // restore pre-group state marker (no separate stack needed since we use local vars)
         }
       } else if (type === "adjustment") {
-        // Adjustment layers operate on the accumulated result below them
-        if (accumulatedTexture === null) {
-          continue
-        }
+        if (accumulatedTexture === null) continue
 
-        // Build tool values from adjustment parameters using plugin mapping
         const adjustmentParams = (layer.parameters || {}) as Record<string, any>
-        const adjustmentTools = withDefaults(undefined)
+        let mapped: Record<string, any> = {}
         try {
-          // dynamic require to avoid top-level await and keep main bundle small
           // eslint-disable-next-line @typescript-eslint/no-var-requires
           const reg = require("@/lib/adjustments/registry")
-          const mapped = reg.mapParametersToShader(
+          mapped = reg.mapParametersToShader(
             layer.adjustmentType as any,
             adjustmentParams
           ) as Record<string, any>
-          for (const [k, v] of Object.entries(mapped)) {
-            ;(adjustmentTools as any)[k] = v
-          }
-        } catch {
-          for (const [k, v] of Object.entries(adjustmentParams)) {
-            ;(adjustmentTools as any)[k] = v
-          }
-        }
+          try {
+            const canon = require("@/lib/animation/crud") as any
+            const { sampleToolsAtTimeMemoized } =
+              require("@/lib/animation/sampler") as any
+            const onlyTracks = Object.fromEntries(
+              Object.entries(mapped).filter(([, v]) =>
+                canon.isCanonicalTrack(v)
+              )
+            )
+            if (Object.keys(onlyTracks).length > 0) {
+              const t = typeof playheadTime === "number" ? playheadTime : 0
+              const sampled = sampleToolsAtTimeMemoized(onlyTracks, t)
+              mapped = { ...mapped, ...sampled }
+            }
+          } catch {}
+        } catch {}
 
-        // Render adjusted version of the base at full opacity
-        const adjustedTexture = this.renderAdjustmentToTexture(
+        const adjustedTexture = this.renderAdjustmentLayerToTexture(
           accumulatedTexture,
-          adjustmentTools,
+          String((layer as any).adjustmentType || ""),
+          mapped,
           canvasWidth,
           canvasHeight
         )
@@ -1674,33 +1659,39 @@ void main() {
 
       for (const globalLayer of orderedGlobalLayers) {
         if (globalLayer.type === "adjustment") {
-          // Build tool values from global adjustment parameters
           const adjustmentParams = (globalLayer.parameters || {}) as Record<
             string,
             any
           >
-          const adjustmentTools = withDefaults(undefined)
+          let mapped: Record<string, any> = {}
           try {
-            // dynamic require to avoid top-level await and keep main bundle small
             // eslint-disable-next-line @typescript-eslint/no-var-requires
             const reg = require("@/lib/adjustments/registry")
-            const mapped = reg.mapParametersToShader(
+            mapped = reg.mapParametersToShader(
               globalLayer.adjustmentType as any,
               adjustmentParams
             ) as Record<string, any>
-            for (const [k, v] of Object.entries(mapped)) {
-              ;(adjustmentTools as any)[k] = v
-            }
-          } catch {
-            for (const [k, v] of Object.entries(adjustmentParams)) {
-              ;(adjustmentTools as any)[k] = v
-            }
-          }
+            try {
+              const canon = require("@/lib/animation/crud") as any
+              const { sampleToolsAtTimeMemoized } =
+                require("@/lib/animation/sampler") as any
+              const onlyTracks = Object.fromEntries(
+                Object.entries(mapped).filter(([, v]) =>
+                  canon.isCanonicalTrack(v)
+                )
+              )
+              if (Object.keys(onlyTracks).length > 0) {
+                const t = typeof playheadTime === "number" ? playheadTime : 0
+                const sampled = sampleToolsAtTimeMemoized(onlyTracks, t)
+                mapped = { ...mapped, ...sampled }
+              }
+            } catch {}
+          } catch {}
 
-          // Render adjusted version of the accumulated result
-          const adjustedTexture = this.renderAdjustmentToTexture(
+          const adjustedTexture = this.renderAdjustmentLayerToTexture(
             accumulatedTexture,
-            adjustmentTools,
+            String((globalLayer as any).adjustmentType || ""),
+            mapped,
             canvasWidth,
             canvasHeight
           )

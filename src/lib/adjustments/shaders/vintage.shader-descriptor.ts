@@ -65,7 +65,7 @@ void main(){
 `
 
 export const VintageDescriptor: ShaderDescriptor = {
-  name: "effects.vintage",
+  name: "adjustments.vintage",
   version: "1.0.0",
   sources: { vertex: VS, fragment: FS },
   policies: { hybrid: "warm", worker: "warm" },

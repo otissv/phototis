@@ -8,9 +8,9 @@ import {
 export const tintPlugin: AdjustmentPlugin = {
   id: "tint",
   name: "Tint",
+  category: "adjustments",
+  icon: "Palette",
   description: "Add warm (positive) or cool (negative) tint",
-  category: "color",
-  icon: "🎨",
   capabilities: ["Designer", "Motion", "Pro"],
   uiSchema: [
     {

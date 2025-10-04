@@ -1,4 +1,3 @@
-// KF-MIGRATE: Layer .filters will migrate to .tracks with keyframes; UI/state must sample at time t.
 "use client"
 
 import React from "react"
@@ -48,7 +47,7 @@ import {
   UpdateGlobalLayerCommand,
   UpdateGlobalParameterCommand,
 } from "@/lib/editor/commands"
-import { loadDocument } from "@/lib/editor/persistence"
+// import { loadDocument } from "@/lib/editor/persistence"
 import { initializeDefaultKeyframePlugins } from "@/lib/animation/plugins"
 
 export type EditorContextValue = {
@@ -423,6 +422,13 @@ export function EditorProvider({
         storageKey: "phototis:editor",
       }
     )
+  }
+
+  // Expose HistoryManager for debugging in development only
+  if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
+    try {
+      ;(window as any).$state = canonicalRef.current
+    } catch {}
   }
 
   // Load persisted document (if available) once

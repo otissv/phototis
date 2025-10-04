@@ -8,6 +8,9 @@ import {
 export const brightness: AdjustmentPlugin = {
   id: "brightness",
   name: "Brightness",
+  description: "Adjust the brightness of the image",
+  category: "adjustments",
+  icon: "Sun",
   uiSchema: [
     {
       type: "slider",

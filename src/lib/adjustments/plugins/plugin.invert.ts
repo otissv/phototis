@@ -4,6 +4,9 @@ import { TOOL_VALUES } from "@/lib/tools/tools"
 export const invert: AdjustmentPlugin = {
   id: "invert",
   name: "Invert",
+  category: "adjustments",
+  icon: "Eclipse",
+  description: "Invert the colors of the image",
   uiSchema: [{ type: "toggle", key: "invert" }],
   defaults: { invert: (TOOL_VALUES.invert as any)?.defaultValue ?? 0 },
   toShaderParams: (params) => {

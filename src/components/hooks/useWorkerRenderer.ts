@@ -408,7 +408,7 @@ export function useWorkerRenderer(config: Partial<WorkerRendererConfig> = {}) {
                   Number((p as any).invert || 0) > 0
                 ) {
                   passes.push({
-                    shaderName: "effects.vintage",
+                    shaderName: "adjustments.vintage",
                     uniforms: {
                       u_vintage: Number((p as any).vintage || 0),
                       u_invert: Number((p as any).invert || 0),

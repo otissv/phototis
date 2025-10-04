@@ -8,6 +8,9 @@ import {
 export const contrast: AdjustmentPlugin = {
   id: "contrast",
   name: "Contrast",
+  category: "adjustments",
+  icon: "Sun",
+  description: "Adjust the contrast of the image",
   uiSchema: [
     {
       type: "slider",

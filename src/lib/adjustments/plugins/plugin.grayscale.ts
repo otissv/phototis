@@ -8,6 +8,9 @@ import {
 export const grayscale: AdjustmentPlugin = {
   id: "grayscale",
   name: "Grayscale",
+  description: "Convert the image to grayscale",
+  category: "adjustments",
+  icon: "Eclipse",
   uiSchema: [
     {
       type: "slider",

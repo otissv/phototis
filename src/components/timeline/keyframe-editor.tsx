@@ -429,6 +429,11 @@ export function KeyframeEditor({ className, duration }: KeyframeEditorProps) {
                                   )
                                 }}
                                 onClick={() => {
+                                  // Single-click selects the keyframe by moving playhead
+                                  setPlayheadTime(kf.timeSec)
+                                }}
+                                onDoubleClick={() => {
+                                  // Double-click deletes the keyframe
                                   deleteKeyframe(
                                     (layer as any).id as any,
                                     paramKey,
@@ -470,10 +475,12 @@ function KeyframeHandle({
   leftPct,
   onDrag,
   onClick,
+  onDoubleClick,
 }: {
   leftPct: number
   onDrag: (dxPct: number) => void
   onClick: () => void
+  onDoubleClick?: () => void
 }) {
   const ref = React.useRef<HTMLButtonElement | null>(null)
   const dragging = React.useRef(false)
@@ -510,6 +517,10 @@ function KeyframeHandle({
       onClick={(e) => {
         e.stopPropagation()
         onClick()
+      }}
+      onDoubleClick={(e) => {
+        e.stopPropagation()
+        if (onDoubleClick) onDoubleClick()
       }}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {

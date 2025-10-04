@@ -8,6 +8,9 @@ import {
 export const hue: AdjustmentPlugin = {
   id: "hue",
   name: "Hue",
+  category: "adjustments",
+  icon: "Droplets",
+  description: "Adjust the hue of the image",
   uiSchema: [
     {
       type: "slider",

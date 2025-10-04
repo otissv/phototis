@@ -1,11 +1,14 @@
 import type { AdjustmentPlugin } from "../registry"
-import { identityToShader, hexToRgba01 } from "../helpers"
+import { hexToRgba01 } from "../helpers"
 import { TOOL_VALUES } from "@/lib/tools/tools"
 
 export const solid: AdjustmentPlugin = {
   id: "solid",
   name: "Solid",
   uiSchema: [{ type: "color", key: "solid" }],
+  category: "adjustments",
+  icon: "Palette",
+  description: "Adjust the solid of the image",
   defaults: { solid: (TOOL_VALUES.solid as any)?.defaultValue ?? "#000000" },
   toShaderParams: (params) => {
     const out: Record<string, unknown> = {}

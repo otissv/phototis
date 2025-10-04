@@ -8,6 +8,9 @@ import {
 export const saturation: AdjustmentPlugin = {
   id: "saturation",
   name: "Saturation",
+  category: "adjustments",
+  icon: "Droplets",
+  description: "Adjust the saturation of the image",
   uiSchema: [
     {
       type: "slider",

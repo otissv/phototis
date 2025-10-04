@@ -9,9 +9,8 @@ export const gaussian: AdjustmentPlugin = {
   id: "gaussian",
   name: "Gaussian Blur",
   description: "Apply Gaussian blur to the image",
-  category: "blur",
-  icon: "🌫️",
-  capabilities: ["Designer", "Motion", "Pro"],
+  category: "effects",
+  icon: "Eclipse",
   uiSchema: [
     {
       type: "slider",

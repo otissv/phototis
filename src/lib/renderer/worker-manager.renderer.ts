@@ -403,11 +403,11 @@ export class WorkerManager {
     }
 
     // Vintage/effects variants (example): strength-{low|med|high}
-    if (names.includes("effects.vintage")) {
+    if (names.includes("adjustments.vintage")) {
       const list = ["strength-low", "strength-med", "strength-high"]
-      const prev = new Set(variants["effects.vintage"] || [])
+      const prev = new Set(variants["adjustments.vintage"] || [])
       for (const v of list) prev.add(v)
-      variants["effects.vintage"] = Array.from(prev)
+      variants["adjustments.vintage"] = Array.from(prev)
     }
 
     // Allow flat variantKeys to apply to all requested shaders

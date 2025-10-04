@@ -2,6 +2,8 @@ import {
   TOOL_VALUES,
   createTrack,
   addOrUpdateKeyframe,
+  type ToolValueStepType,
+  type ToolValueStringType,
 } from "@/lib/tools/tools"
 
 export type ImageEditorToolsState = any

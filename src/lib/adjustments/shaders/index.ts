@@ -42,8 +42,8 @@ export const AdjustmentShaderDescriptors = [
   ColorizeShaderDescriptor,
   TemperatureShaderDescriptor,
   TintShaderDescriptor,
-  SharpenShaderDescriptor,
   NoiseShaderDescriptor,
-  GaussianBlurShaderDescriptor,
   solidShaderDescriptor,
+  GaussianBlurShaderDescriptor,
+  SharpenShaderDescriptor,
 ] as const

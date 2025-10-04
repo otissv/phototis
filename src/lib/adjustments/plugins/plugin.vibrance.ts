@@ -8,6 +8,9 @@ import {
 export const vibrance: AdjustmentPlugin = {
   id: "vibrance",
   name: "Vibrance",
+  category: "adjustments",
+  icon: "Sparkles",
+  description: "Adjust the vibrance of the image",
   uiSchema: [
     {
       type: "slider",

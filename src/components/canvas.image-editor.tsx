@@ -6,7 +6,6 @@ import { motion, useMotionValue, useTransform } from "motion/react"
 import { useDebounce } from "use-debounce"
 
 import type { ImageEditorToolsState } from "@/lib/tools/tools-state"
-import { initialToolsState } from "@/lib/tools/tools-state"
 import type { EditorLayer } from "@/lib/editor/state"
 import { useEditorContext } from "@/lib/editor/context"
 import { ShaderManager } from "@/lib/shaders/manager.shader"
@@ -398,7 +397,7 @@ export function ImageEditorCanvas({
     const selectedLayer = state.canonical.layers.byId[selectedLayerId]
     if (!selectedLayer) return {} as ImageEditorToolsState
 
-    let effects: ImageEditorToolsState = {} as any
+    const effects: ImageEditorToolsState = {} as any
     try {
       const canon = require("@/lib/animation/crud") as any
       const base = (selectedLayer as any).filters || {}
@@ -533,18 +532,13 @@ export function ImageEditorCanvas({
     }
   }, [effectiveFilters])
 
-  // Force redraw on flip/rotate changes (sampled at current playhead time)
+  // Force redraw on viewport rotation changes
   // biome-ignore lint/correctness/useExhaustiveDependencies: we only want to react to orientation tools here
   useEffect(() => {
     // Avoid spamming draws during drags; draw loop already handles that case
     if (isDragActive) return
     triggerDraw("orientation-tools")
-  }, [
-    state.canonical.playheadTime,
-    state.canonical.viewport.rotation,
-    isDragActive,
-    triggerDraw,
-  ])
+  }, [state.canonical.viewport.rotation, isDragActive, triggerDraw])
 
   // Redraw when debounced tool values change (includes adjustment parameters)
   // biome-ignore lint/correctness/useExhaustiveDependencies: we only want to react to debounced tools here

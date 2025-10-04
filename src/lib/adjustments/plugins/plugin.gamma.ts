@@ -8,6 +8,9 @@ import {
 export const gamma: AdjustmentPlugin = {
   id: "gamma",
   name: "Gamma",
+  category: "adjustments",
+  icon: "Sun",
+  description: "Adjust the gamma of the image",
   uiSchema: [
     {
       type: "slider",

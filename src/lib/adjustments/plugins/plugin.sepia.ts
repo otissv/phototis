@@ -8,6 +8,9 @@ import {
 export const sepia: AdjustmentPlugin = {
   id: "sepia",
   name: "Sepia",
+  category: "adjustments",
+  icon: "Eclipse",
+  description: "Adjust the sepia of the image",
   uiSchema: [
     {
       type: "slider",

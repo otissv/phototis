@@ -9,9 +9,8 @@ export const sharpen: AdjustmentPlugin = {
   id: "sharpen",
   name: "Sharpen",
   description: "Unsharp mask sharpening",
-  category: "detail",
-  icon: "✨",
-  capabilities: ["Designer", "Motion", "Pro"],
+  category: "effects",
+  icon: "Eclipse",
   uiSchema: [
     {
       type: "slider",
