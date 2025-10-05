@@ -1,9 +1,14 @@
 import type { AdjustmentPlugin } from "../registry"
-import {
-  identityToShader,
-  sliderDefaultValue,
-  sliderDefaults,
-} from "../helpers"
+import { identityToShader } from "../helpers"
+
+const params = {
+  saturation: {
+    min: 0,
+    max: 200,
+    step: 1,
+    defaultValue: 100,
+  },
+}
 
 export const saturation: AdjustmentPlugin = {
   id: "saturation",
@@ -16,9 +21,9 @@ export const saturation: AdjustmentPlugin = {
       type: "slider",
       key: "saturation",
       sliderType: "grayscale",
-      ...sliderDefaults("saturation"),
+      ...params.saturation,
     },
   ],
-  defaults: { saturation: sliderDefaultValue("saturation") ?? 100 },
+  params,
   toShaderParams: identityToShader,
 }

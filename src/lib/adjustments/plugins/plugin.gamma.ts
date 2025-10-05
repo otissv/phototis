@@ -1,9 +1,14 @@
 import type { AdjustmentPlugin } from "../registry"
-import {
-  identityToShader,
-  sliderDefaultValue,
-  sliderDefaults,
-} from "../helpers"
+import { identityToShader } from "../helpers"
+
+const params = {
+  gamma: {
+    min: 0.1,
+    max: 3.0,
+    step: 0.01,
+    defaultValue: 1,
+  },
+}
 
 export const gamma: AdjustmentPlugin = {
   id: "gamma",
@@ -15,10 +20,10 @@ export const gamma: AdjustmentPlugin = {
     {
       type: "slider",
       key: "gamma",
-      ...sliderDefaults("gamma"),
+      ...params.gamma,
       sliderType: "grayscale",
     },
   ],
-  defaults: { gamma: sliderDefaultValue("gamma") ?? 1 },
+  params,
   toShaderParams: identityToShader,
 }

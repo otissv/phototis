@@ -1,9 +1,14 @@
 import type { AdjustmentPlugin } from "../registry"
-import {
-  identityToShader,
-  sliderDefaultValue,
-  sliderDefaults,
-} from "../helpers"
+import { identityToShader } from "../helpers"
+
+const params = {
+  contrast: {
+    min: 0,
+    max: 200,
+    step: 1,
+    defaultValue: 100,
+  },
+}
 
 export const contrast: AdjustmentPlugin = {
   id: "contrast",
@@ -15,10 +20,10 @@ export const contrast: AdjustmentPlugin = {
     {
       type: "slider",
       key: "contrast",
-      ...sliderDefaults("contrast"),
       sliderType: "grayscale",
+      ...params.contrast,
     },
   ],
-  defaults: { contrast: sliderDefaultValue("contrast") ?? 100 },
+  params,
   toShaderParams: identityToShader,
 }

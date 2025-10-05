@@ -14,7 +14,7 @@ export type AdjustmentTypes =
   | "invert"
   | "sepia"
   | "sharpen"
-  | "blur"
+  | "gaussian"
   | "noise"
   | "grain"
   | "solid"

@@ -1,9 +1,20 @@
 import type { AdjustmentPlugin } from "../registry"
-import {
-  identityToShader,
-  sliderDefaultValue,
-  sliderDefaults,
-} from "../helpers"
+import { identityToShader } from "../helpers"
+
+const params = {
+  gaussianAmount: {
+    min: 0,
+    max: 100,
+    step: 1,
+    defaultValue: 0,
+  },
+  gaussianRadius: {
+    min: 0.1,
+    max: 10,
+    step: 0.1,
+    defaultValue: 1.0,
+  },
+}
 
 export const gaussian: AdjustmentPlugin = {
   id: "gaussian",
@@ -16,20 +27,17 @@ export const gaussian: AdjustmentPlugin = {
       type: "slider",
       key: "gaussianAmount",
       label: "Amount",
-      ...sliderDefaults("gaussianAmount"),
       sliderType: "grayscale",
+      ...params.gaussianAmount,
     },
     {
       type: "slider",
       key: "gaussianRadius",
       label: "Radius",
-      ...sliderDefaults("gaussianRadius"),
       sliderType: "grayscale",
+      ...params.gaussianRadius,
     },
   ],
-  defaults: {
-    gaussianAmount: sliderDefaultValue("gaussianAmount") ?? 0,
-    gaussianRadius: sliderDefaultValue("gaussianRadius") ?? 1.0,
-  },
+  params,
   toShaderParams: identityToShader,
 }

@@ -13,7 +13,9 @@ type KeyframeEditorProps = {
 
 export function KeyframeEditor({ className, duration }: KeyframeEditorProps) {
   const {
+    initialToolsState,
     state,
+    toolValues,
     addKeyframe,
     updateKeyframeTime,
     deleteKeyframe,
@@ -33,7 +35,6 @@ export function KeyframeEditor({ className, duration }: KeyframeEditorProps) {
   // 3) Else fall back to all animatable keys from initial tools state
   const animatableKeys = React.useMemo(() => {
     try {
-      const { initialToolsState } = require("@/lib/tools/tools-state") as any
       const { isTrack } = require("@/lib/tools/tools") as any
       return Object.keys(initialToolsState).filter((k) =>
         isTrack((initialToolsState as any)[k])
@@ -41,7 +42,7 @@ export function KeyframeEditor({ className, duration }: KeyframeEditorProps) {
     } catch {
       return []
     }
-  }, [])
+  }, [initialToolsState])
 
   const keys = React.useMemo(() => {
     try {
@@ -49,7 +50,7 @@ export function KeyframeEditor({ className, duration }: KeyframeEditorProps) {
       const { collectModifiedKeysFromSample, isTrack } =
         require("@/lib/tools/tools") as any
       const sampled = sampleToolsAtTime(filters, state.canonical.playheadTime)
-      const modified = collectModifiedKeysFromSample(sampled)
+      const modified = collectModifiedKeysFromSample(sampled, toolValues)
       if (modified.length > 0) return modified
       const layerTrackKeys = Object.keys(filters || {}).filter((k) =>
         isTrack((filters as any)[k])
@@ -59,7 +60,7 @@ export function KeyframeEditor({ className, duration }: KeyframeEditorProps) {
     } catch {
       return animatableKeys
     }
-  }, [filters, state.canonical.playheadTime, animatableKeys])
+  }, [filters, state.canonical.playheadTime, animatableKeys, toolValues])
 
   // Group keys for better UX and scanning
   const groupedKeys = React.useMemo(() => {

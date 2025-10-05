@@ -1,9 +1,14 @@
 import type { AdjustmentPlugin } from "../registry"
-import {
-  identityToShader,
-  sliderDefaultValue,
-  sliderDefaults,
-} from "../helpers"
+import { identityToShader } from "../helpers"
+
+const params = {
+  sepia: {
+    min: 0,
+    max: 100,
+    step: 1,
+    defaultValue: 0,
+  },
+}
 
 export const sepia: AdjustmentPlugin = {
   id: "sepia",
@@ -16,9 +21,9 @@ export const sepia: AdjustmentPlugin = {
       type: "slider",
       key: "sepia",
       sliderType: "grayscale",
-      ...sliderDefaults("sepia"),
+      ...params.sepia,
     },
   ],
-  defaults: { sepia: sliderDefaultValue("sepia") ?? 0 },
+  params,
   toShaderParams: identityToShader,
 }

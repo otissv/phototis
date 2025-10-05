@@ -2,10 +2,6 @@
 
 import React from "react"
 import { GlobalKeyframePluginRegistry } from "@/lib/animation/plugins"
-import { TOOL_VALUES } from "@/lib/tools/tools"
-import { type } from "os"
-import style from "styled-jsx/style"
-import { useEditorContext } from "@/lib/editor/context"
 
 export function ParamControls({
   paramId,

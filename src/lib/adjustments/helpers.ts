@@ -1,29 +1,4 @@
-import { TOOL_VALUES } from "@/lib/tools/tools"
-
 export type AdjustmentParamValue = number | { value: number; color: string }
-
-export function sliderDefaults(key: keyof typeof TOOL_VALUES): {
-  min?: number
-  max?: number
-  step?: number
-} {
-  const def = (TOOL_VALUES as Record<string, any>)[key]
-  if (!def) return {}
-  return {
-    min: typeof def.min === "number" ? def.min : undefined,
-    max: typeof def.max === "number" ? def.max : undefined,
-    step: typeof def.step === "number" ? def.step : undefined,
-  }
-}
-
-export function sliderDefaultValue(
-  key: keyof typeof TOOL_VALUES
-): number | undefined {
-  const def = (TOOL_VALUES as Record<string, any>)[key]
-  return typeof def?.defaultValue === "number"
-    ? (def.defaultValue as number)
-    : undefined
-}
 
 export const identityToShader = (
   params: Record<string, AdjustmentParamValue>

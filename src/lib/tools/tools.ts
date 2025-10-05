@@ -1,5 +1,22 @@
-// KF-MIGRATE: Replace legacy static tool defaults with Track seeds at t=0. All parameters migrate to Track<Keyframe<T>> sampled at playheadTime.
-// KF-MIGRATE: TOOL_VALUES.defaultValue is only used to seed first keyframe at t=0; no runtime static fallback.
+// Legacy Track type retained for compatibility in types only. Runtime now uses
+// the canonical animation/model Track shape: { keyframes: [{ timeSec, value }], interpolation, ... }.
+import type { Track as CanonicalTrack } from "@/lib/animation/model"
+import {
+  sampleTrackScalar,
+  sampleTrackAngle,
+  sampleTrackBoolean,
+  sampleTrackEnum,
+  sampleTrackVec,
+} from "@/lib/animation/model"
+import {
+  createCanonicalTrack,
+  setInterpolationCanonical,
+  addOrUpdateKeyframeCanonical,
+  removeKeyframeCanonical,
+  moveKeyframeCanonical,
+} from "@/lib/animation/crud"
+import { GlobalKeyframePluginRegistry } from "@/lib/animation/plugins"
+
 export type ToolValueStepType = {
   min: number
   max: number
@@ -69,161 +86,7 @@ export type ToolValueKeys =
   | ScaleType
   | UpscaleType
 
-export const TOOL_VALUES: Record<ToolValueKeys, ToolValueTypes> = {
-  // KF-MIGRATE: This table is a schema for ranges/constraints only. defaultValue seeds the t=0 keyframe during track creation.
-  // Adjustment values
-  brightness: {
-    min: 0,
-    max: 200,
-    step: 1,
-    defaultValue: 100,
-  },
-  contrast: {
-    min: 0,
-    max: 200,
-    step: 1,
-    defaultValue: 100,
-  },
-  saturation: {
-    min: 0,
-    max: 200,
-    step: 1,
-    defaultValue: 100,
-  },
-  exposure: {
-    min: -100,
-    max: 100,
-    step: 1,
-    defaultValue: 0,
-  },
-  hue: {
-    min: 0,
-    max: 360,
-    step: 1,
-    defaultValue: 180,
-  },
-  temperature: {
-    min: -100,
-    max: 100,
-    step: 1,
-    defaultValue: 0,
-  },
-  gamma: {
-    min: 0.1,
-    max: 3.0,
-    step: 0.01,
-    defaultValue: 1,
-  },
-  grayscale: {
-    min: 0,
-    max: 100,
-    step: 1,
-    defaultValue: 100,
-  },
-  vibrance: {
-    min: 0,
-    max: 200,
-    step: 1,
-    defaultValue: 0,
-  },
-  solid: {
-    defaultValue: "#000000",
-  },
-  invert: {
-    defaultValue: 100,
-  },
-  colorizeHue: {
-    min: 0,
-    max: 360,
-    step: 1,
-    defaultValue: 180,
-  },
-  colorizeSaturation: {
-    min: 0,
-    max: 100,
-    step: 1,
-    defaultValue: 50,
-  },
-  colorizeLightness: {
-    min: -100,
-    max: 200,
-    step: 1,
-    defaultValue: 50,
-  },
-  colorizeAmount: {
-    min: 0,
-    max: 100,
-    step: 1,
-    defaultValue: 50,
-  },
-  colorizePreserveLum: {
-    defaultValue: false,
-  },
-  sepia: {
-    min: 0,
-    max: 100,
-    step: 1,
-    defaultValue: 0,
-  },
-  vintage: {
-    min: 0,
-    max: 100,
-    step: 1,
-    defaultValue: 0,
-  },
-
-  // Effect values
-  sharpenAmount: {
-    min: 0,
-    max: 300,
-    step: 1,
-    defaultValue: 0,
-  },
-  sharpenRadius: {
-    min: 0.1,
-    max: 10,
-    step: 0.1,
-    defaultValue: 1.5,
-  },
-  sharpenThreshold: {
-    min: 0,
-    max: 255,
-    step: 1,
-    defaultValue: 0,
-  },
-  noiseAmount: {
-    min: 0,
-    max: 100,
-    step: 1,
-    defaultValue: 0,
-  },
-  noiseSize: {
-    min: 0.1,
-    max: 5.0,
-    step: 0.1,
-    defaultValue: 1.0,
-  },
-  gaussianAmount: {
-    min: 0,
-    max: 100,
-    step: 1,
-    defaultValue: 0,
-  },
-  gaussianRadius: {
-    min: 0.1,
-    max: 10.0,
-    step: 0.1,
-    defaultValue: 1.0,
-  },
-  tint: {
-    min: -100,
-    max: 100,
-    step: 1,
-    defaultValue: 0,
-  },
-
-  // Tool values
-
+export const defaultToolValues: Record<string, ToolValueTypes> = {
   rotate: {
     min: 0,
     max: 360,
@@ -274,7 +137,7 @@ export const TOOL_VALUES: Record<ToolValueKeys, ToolValueTypes> = {
       overlay: "thirdGrid",
     },
   },
-}
+} as const
 
 export type DimensionsToolsType = {
   dimensions: Track
@@ -353,25 +216,6 @@ export type Keyframe<T = any> = {
   // Optional bezier controls if easing === "cubicBezier"
   bezier?: { x1: number; y1: number; x2: number; y2: number }
 }
-
-// Legacy Track type retained for compatibility in types only. Runtime now uses
-// the canonical animation/model Track shape: { keyframes: [{ timeSec, value }], interpolation, ... }.
-import type { Track as CanonicalTrack } from "@/lib/animation/model"
-import {
-  sampleTrackScalar,
-  sampleTrackAngle,
-  sampleTrackBoolean,
-  sampleTrackEnum,
-  sampleTrackVec,
-} from "@/lib/animation/model"
-import {
-  createCanonicalTrack,
-  setInterpolationCanonical,
-  addOrUpdateKeyframeCanonical,
-  removeKeyframeCanonical,
-  moveKeyframeCanonical,
-} from "@/lib/animation/crud"
-import { GlobalKeyframePluginRegistry } from "@/lib/animation/plugins"
 
 export type Track<T = unknown> = CanonicalTrack<T>
 
@@ -512,8 +356,11 @@ export function ensureTrackOnToolsState<T = unknown>(
 
 // ===== Smart keyframe capture helpers =====
 
-export function getDefaultValueForParam(key: string): unknown {
-  const spec: any = (TOOL_VALUES as any)[key]
+export function getDefaultValueForParam(
+  key: string,
+  toolValues: Record<string, ToolValueTypes>
+): unknown {
+  const spec: any = (toolValues as any)[key]
   if (spec && (spec as any).defaultValue !== undefined) {
     return spec.defaultValue
   }
@@ -527,9 +374,10 @@ function numbersClose(a: number, b: number, eps = 1e-6): boolean {
 export function isValueModifiedFromDefault(
   key: string,
   value: unknown,
+  toolValues: Record<string, ToolValueTypes>,
   eps = 1e-6
 ): boolean {
-  const def = getDefaultValueForParam(key)
+  const def = getDefaultValueForParam(key, toolValues)
   if (typeof value === "number" && typeof def === "number") {
     return !numbersClose(value, def, eps)
   }
@@ -567,13 +415,14 @@ export function isValueModifiedFromDefault(
 }
 
 export function collectModifiedKeysFromSample(
-  sampled: Record<string, unknown>
+  sampled: Record<string, unknown>,
+  toolValues: Record<string, ToolValueTypes>
 ): string[] {
   const out: string[] = []
   for (const [key, value] of Object.entries(sampled)) {
     if (key === "history" || key === "historyPosition" || key === "solid")
       continue
-    if (isValueModifiedFromDefault(key, value)) out.push(key)
+    if (isValueModifiedFromDefault(key, value, toolValues)) out.push(key)
   }
   return out
 }

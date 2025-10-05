@@ -1,10 +1,14 @@
 import type { AdjustmentPlugin } from "../registry"
-import {
-  identityToShader,
-  sliderDefaultValue,
-  sliderDefaults,
-} from "../helpers"
+import { identityToShader } from "../helpers"
 
+const params = {
+  exposure: {
+    min: -100,
+    max: 100,
+    step: 1,
+    defaultValue: 0,
+  },
+}
 export const exposure: AdjustmentPlugin = {
   id: "exposure",
   name: "Exposure",
@@ -15,10 +19,10 @@ export const exposure: AdjustmentPlugin = {
     {
       type: "slider",
       key: "exposure",
-      ...sliderDefaults("exposure"),
       sliderType: "grayscale",
+      ...params.exposure,
     },
   ],
-  defaults: { exposure: sliderDefaultValue("exposure") ?? 0 },
+  params,
   toShaderParams: identityToShader,
 }

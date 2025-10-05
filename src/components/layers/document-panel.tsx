@@ -5,8 +5,6 @@ import { Eye, EyeOff, Lock, MoreHorizontal, Copy, Trash2 } from "lucide-react"
 
 import { Button } from "@/ui/button"
 import { useEditorContext } from "@/lib/editor/context"
-import { TOOL_VALUES } from "@/lib/tools/tools"
-import { sampleToolsAtTime } from "@/lib/tools/tools-state"
 import type {
   ImageEditorToolsActions,
   ImageEditorToolsState,
@@ -34,8 +32,13 @@ export interface DocumentPanelProps {
 }
 
 export function DocumentPanel({ toolsValues, dispatch }: DocumentPanelProps) {
-  const { state, addGlobalLayer, removeGlobalLayer, updateGlobalLayer } =
-    useEditorContext()
+  const {
+    toolValues,
+    state,
+    addGlobalLayer,
+    removeGlobalLayer,
+    updateGlobalLayer,
+  } = useEditorContext()
 
   const [globalSelectedLayerId, setGlobalSelectedLayerId] = useState<
     string | null
@@ -48,37 +51,37 @@ export function DocumentPanel({ toolsValues, dispatch }: DocumentPanelProps) {
     (adjustmentType: string) => {
       const defaultParams: Record<string, Record<string, any>> = {
         brightness: {
-          brightness: TOOL_VALUES.brightness.defaultValue as number,
+          brightness: toolValues.brightness.defaultValue as number,
         },
-        contrast: { contrast: TOOL_VALUES.contrast.defaultValue as number },
-        exposure: { exposure: TOOL_VALUES.exposure.defaultValue as number },
-        gamma: { gamma: TOOL_VALUES.gamma.defaultValue as number },
-        hue: { hue: TOOL_VALUES.hue.defaultValue as number },
+        contrast: { contrast: toolValues.contrast.defaultValue as number },
+        exposure: { exposure: toolValues.exposure.defaultValue as number },
+        gamma: { gamma: toolValues.gamma.defaultValue as number },
+        hue: { hue: toolValues.hue.defaultValue as number },
         saturation: {
-          saturation: TOOL_VALUES.saturation.defaultValue as number,
+          saturation: toolValues.saturation.defaultValue as number,
         },
         temperature: {
-          temperature: TOOL_VALUES.temperature.defaultValue as number,
+          temperature: toolValues.temperature.defaultValue as number,
         },
-        vibrance: { vibrance: TOOL_VALUES.vibrance.defaultValue as number },
-        grayscale: { grayscale: TOOL_VALUES.grayscale.defaultValue as number },
-        invert: { invert: TOOL_VALUES.invert.defaultValue as number },
-        sepia: { sepia: TOOL_VALUES.sepia.defaultValue as number },
+        vibrance: { vibrance: toolValues.vibrance.defaultValue as number },
+        grayscale: { grayscale: toolValues.grayscale.defaultValue as number },
+        invert: { invert: toolValues.invert.defaultValue as number },
+        sepia: { sepia: toolValues.sepia.defaultValue as number },
         sharpen: {
-          sharpenAmount: (TOOL_VALUES as any).sharpenAmount?.defaultValue || 1,
-          sharpenRadius: (TOOL_VALUES as any).sharpenRadius?.defaultValue || 1,
+          sharpenAmount: (toolValues as any).sharpenAmount?.defaultValue || 1,
+          sharpenRadius: (toolValues as any).sharpenRadius?.defaultValue || 1,
           sharpenThreshold:
-            (TOOL_VALUES as any).sharpenThreshold?.defaultValue || 0,
+            (toolValues as any).sharpenThreshold?.defaultValue || 0,
         },
         noise: {
-          noiseAmount: (TOOL_VALUES as any).noiseAmount?.defaultValue || 0,
-          noiseSize: (TOOL_VALUES as any).noiseSize?.defaultValue || 1,
+          noiseAmount: (toolValues as any).noiseAmount?.defaultValue || 0,
+          noiseSize: (toolValues as any).noiseSize?.defaultValue || 1,
         },
         blur: {
-          blur: (TOOL_VALUES as any).blur?.defaultValue || 0,
-          blurType: (TOOL_VALUES as any).blurType?.defaultValue || 0,
-          blurDirection: (TOOL_VALUES as any).blurDirection?.defaultValue || 0,
-          blurCenter: (TOOL_VALUES as any).blurCenter?.defaultValue || 0.5,
+          blur: (toolValues as any).blur?.defaultValue || 0,
+          blurType: (toolValues as any).blurType?.defaultValue || 0,
+          blurDirection: (toolValues as any).blurDirection?.defaultValue || 0,
+          blurCenter: (toolValues as any).blurCenter?.defaultValue || 0.5,
         },
       }
 
@@ -96,7 +99,7 @@ export function DocumentPanel({ toolsValues, dispatch }: DocumentPanelProps) {
 
       addGlobalLayer(layer, "top")
     },
-    [addGlobalLayer]
+    [toolValues, addGlobalLayer]
   )
 
   const handleToggleGlobalLayerVisibility = useCallback(

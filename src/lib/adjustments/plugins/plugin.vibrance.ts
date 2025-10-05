@@ -1,9 +1,14 @@
 import type { AdjustmentPlugin } from "../registry"
-import {
-  identityToShader,
-  sliderDefaultValue,
-  sliderDefaults,
-} from "../helpers"
+import { identityToShader } from "../helpers"
+
+const params = {
+  vibrance: {
+    min: 0,
+    max: 200,
+    step: 1,
+    defaultValue: 100,
+  },
+}
 
 export const vibrance: AdjustmentPlugin = {
   id: "vibrance",
@@ -16,9 +21,9 @@ export const vibrance: AdjustmentPlugin = {
       type: "slider",
       key: "vibrance",
       sliderType: "grayscale",
-      ...sliderDefaults("vibrance"),
+      ...params.vibrance,
     },
   ],
-  defaults: { vibrance: sliderDefaultValue("vibrance") ?? 0 },
+  params,
   toShaderParams: identityToShader,
 }

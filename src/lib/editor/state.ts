@@ -14,8 +14,7 @@ import type {
   ImageEditorToolsState,
   SIDEBAR_TOOLS,
 } from "@/lib/tools/tools-state"
-import type { TOOL_VALUES } from "@/lib/tools/tools"
-import type { AdjustmentTypes } from "./adjustments/types.adjustment"
+import type { AdjustmentTypes } from "@/lib/adjustments/types.adjustment"
 import { config } from "@/config"
 
 const { isDebug } = config()
@@ -161,7 +160,7 @@ export interface ActiveToolModel {
   /** Currently selected sidebar (transform, effects, etc.). */
   sidebar: keyof typeof SIDEBAR_TOOLS
   /** Currently selected tool within the sidebar. */
-  tool: keyof typeof TOOL_VALUES
+  tool: string
 }
 
 /**
@@ -280,7 +279,7 @@ export function createDefaultSelection(): SelectionModel {
 
 export function createDefaultActiveTool(
   sidebar: keyof typeof SIDEBAR_TOOLS,
-  tool: keyof typeof TOOL_VALUES
+  tool: string
 ): ActiveToolModel {
   return { sidebar, tool }
 }
@@ -300,7 +299,7 @@ export function createEditorRuntimeState(params?: {
   viewport?: Partial<ViewportModel>
   activeTool?: Partial<ActiveToolModel> & {
     sidebar: keyof typeof SIDEBAR_TOOLS
-    tool: keyof typeof TOOL_VALUES
+    tool: string
   }
 }): EditorRuntimeState {
   const document = { ...createDefaultDocument(), ...(params?.document ?? {}) }
@@ -311,7 +310,7 @@ export function createEditorRuntimeState(params?: {
     ? ({ ...params.activeTool } as ActiveToolModel)
     : createDefaultActiveTool(
         "transform" as keyof typeof SIDEBAR_TOOLS,
-        "rotate" as keyof typeof TOOL_VALUES
+        "rotate"
       )
 
   const canonical: CanonicalEditorState = {

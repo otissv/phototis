@@ -1,4 +1,6 @@
 import type { AdjustmentTypes } from "@/lib/adjustments/types.adjustment"
+import { PLUGINS as ADJUSTMENT_PLUGINS } from "./plugins"
+import type { ToolValueTypes } from "../tools/tools"
 
 export type AdjustmentParamValue = number | { value: number; color: string }
 
@@ -25,16 +27,12 @@ export type AdjustmentPlugin = {
     | { type: "color+slider"; key: string; label?: string }
   >
   // Default layer.parameters for this plugin (UI-level parameters)
-  defaults: Record<string, AdjustmentParamValue>
+  params: Record<string, ToolValueTypes>
   // Map UI-level parameters to shader parameter keys expected by validateFilterParameters()
   toShaderParams: (
     params: Record<string, AdjustmentParamValue>
   ) => Record<string, unknown>
 }
-
-// As per new architecture: each adjustment is a standalone plugin module.
-// Keep the export but import all plugins from './plugins' index for aggregation.
-import { PLUGINS as ADJUSTMENT_PLUGINS } from "./plugins"
 
 export function getAdjustmentPlugin(
   id: AdjustmentTypes
@@ -54,7 +52,7 @@ export function getDefaultParameters(
   id: AdjustmentTypes
 ): Record<string, AdjustmentParamValue> {
   const p = getAdjustmentPlugin(id)
-  return p ? { ...p.defaults } : {}
+  return p ? { ...p.params.defaultValue } : {}
 }
 
 export function mapParametersToShader(

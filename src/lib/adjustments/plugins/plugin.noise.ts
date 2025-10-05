@@ -1,9 +1,20 @@
 import type { AdjustmentPlugin } from "../registry"
-import {
-  identityToShader,
-  sliderDefaultValue,
-  sliderDefaults,
-} from "../helpers"
+import { identityToShader } from "../helpers"
+
+const params = {
+  noiseAmount: {
+    min: 0,
+    max: 100,
+    step: 1,
+    defaultValue: 0,
+  },
+  noiseSize: {
+    min: 0.1,
+    max: 5.0,
+    step: 0.1,
+    defaultValue: 1.0,
+  },
+}
 
 export const noise: AdjustmentPlugin = {
   id: "noise",
@@ -16,20 +27,17 @@ export const noise: AdjustmentPlugin = {
       type: "slider",
       key: "noiseAmount",
       label: "Amount",
-      ...sliderDefaults("noiseAmount"),
+      ...params.noiseAmount,
       sliderType: "grayscale",
     },
     {
       type: "slider",
       key: "noiseSize",
       label: "Size",
-      ...sliderDefaults("noiseSize"),
+      ...params.noiseSize,
       sliderType: "grayscale",
     },
   ],
-  defaults: {
-    noiseAmount: sliderDefaultValue("noiseAmount") ?? 0,
-    noiseSize: sliderDefaultValue("noiseSize") ?? 1.0,
-  },
+  params,
   toShaderParams: identityToShader,
 }

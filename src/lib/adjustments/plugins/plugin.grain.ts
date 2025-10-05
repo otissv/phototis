@@ -1,9 +1,14 @@
 import type { AdjustmentPlugin } from "../registry"
-import {
-  identityToShader,
-  sliderDefaultValue,
-  sliderDefaults,
-} from "../helpers"
+import { identityToShader } from "../helpers"
+
+const params = {
+  grain: {
+    min: 0.1,
+    max: 5.0,
+    step: 0.1,
+    defaultValue: 1.0,
+  },
+}
 
 export const grain: AdjustmentPlugin = {
   id: "grain",
@@ -15,9 +20,9 @@ export const grain: AdjustmentPlugin = {
     {
       type: "slider",
       key: "grain",
-      ...sliderDefaults("grain"),
+      ...params.grain,
     },
   ],
-  defaults: { grain: sliderDefaultValue("grain") ?? 0 },
+  params,
   toShaderParams: identityToShader,
 }

@@ -5,6 +5,27 @@ import {
   sliderDefaults,
 } from "../helpers"
 
+const params = {
+  sharpenAmount: {
+    min: 0,
+    max: 300,
+    step: 1,
+    defaultValue: 0,
+  },
+  sharpenRadius: {
+    min: 0.1,
+    max: 10,
+    step: 0.1,
+    defaultValue: 1.5,
+  },
+  sharpenThreshold: {
+    min: 0,
+    max: 255,
+    step: 1,
+    defaultValue: 0,
+  },
+}
+
 export const sharpen: AdjustmentPlugin = {
   id: "sharpen",
   name: "Sharpen",
@@ -16,28 +37,24 @@ export const sharpen: AdjustmentPlugin = {
       type: "slider",
       key: "sharpenAmount",
       label: "Amount",
-      ...sliderDefaults("sharpenAmount"),
+      ...params.sharpenAmount,
       sliderType: "grayscale",
     },
     {
       type: "slider",
       key: "sharpenRadius",
       label: "Radius",
-      ...sliderDefaults("sharpenRadius"),
+      ...params.sharpenRadius,
       sliderType: "grayscale",
     },
     {
       type: "slider",
       key: "sharpenThreshold",
       label: "Threshold",
-      ...sliderDefaults("sharpenThreshold"),
+      ...params.sharpenThreshold,
       sliderType: "grayscale",
     },
   ],
-  defaults: {
-    sharpenAmount: sliderDefaultValue("sharpenAmount") ?? 0,
-    sharpenRadius: sliderDefaultValue("sharpenRadius") ?? 1.5,
-    sharpenThreshold: sliderDefaultValue("sharpenThreshold") ?? 0,
-  },
+  params,
   toShaderParams: identityToShader,
 }

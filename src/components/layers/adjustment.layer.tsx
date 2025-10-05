@@ -3,7 +3,11 @@
 import { Fragment } from "react"
 import { Eclipse, Palette, Sun, Droplets, Sparkles } from "lucide-react"
 
-import { TOOL_VALUES, type ToolValueColorType } from "@/lib/tools/tools"
+import type {
+  ToolValueColorType,
+  ToolValueStepType,
+  ToolValueTypes,
+} from "@/lib/tools/tools"
 import { ParamControls } from "@/components/timeline/ParamControls"
 import { getAdjustmentPlugin } from "@/lib/adjustments/registry"
 import { useEditorContext } from "@/lib/editor/context"
@@ -56,7 +60,7 @@ export function AdjustmentLayerEditor({
   layer,
   onUpdate,
 }: AdjustmentLayerEditorProps) {
-  const { getPlayheadTime } = useEditorContext()
+  const { toolValues, getPlayheadTime } = useEditorContext()
   const playheadTime = getPlayheadTime()
 
   const sampledParams = sampleToolsAtTime(
@@ -129,9 +133,9 @@ export function AdjustmentLayerEditor({
                 const uiSlider = {
                   type: "slider" as const,
                   label: control.label ?? `${key} Amount`,
-                  min: (TOOL_VALUES as any)[key]?.min,
-                  max: (TOOL_VALUES as any)[key]?.max,
-                  step: (TOOL_VALUES as any)[key]?.step ?? 1,
+                  min: (toolValues as any)[key]?.min,
+                  max: (toolValues as any)[key]?.max,
+                  step: (toolValues as any)[key]?.step ?? 1,
                 }
                 const colorVal = (val as any)?.color ?? "#000000"
                 const amountVal = Number((val as any)?.value ?? 0)
@@ -231,6 +235,7 @@ export function AdjustmentLayerSlider({
   type = "default",
   onChange,
 }: AdjustmentLayerSliderProps) {
+  const { toolValues } = useEditorContext()
   return (
     <div
       className={cn("grid grid-cols-[1fr_32px] items-center h-9", className)}
@@ -238,9 +243,9 @@ export function AdjustmentLayerSlider({
       <input
         id={id}
         type='range'
-        min={(TOOL_VALUES[id as keyof typeof TOOL_VALUES] as any).min}
-        max={(TOOL_VALUES[id as keyof typeof TOOL_VALUES] as any).max}
-        step={(TOOL_VALUES[id as keyof typeof TOOL_VALUES] as any).step}
+        min={(toolValues as any)[id]?.min}
+        max={(toolValues as any)[id]?.max}
+        step={(toolValues as any)[id]?.step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
         className='h-2 bg-accent rounded-full appearance-none cursor-pointer flex-1 range-thumb'

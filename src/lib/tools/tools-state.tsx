@@ -1,12 +1,11 @@
 import {
-  TOOL_VALUES,
   createTrack,
   addOrUpdateKeyframe,
   type ToolValueStepType,
-  type ToolValueStringType,
+  type ToolValueTypes,
 } from "@/lib/tools/tools"
 
-export type ImageEditorToolsState = any
+export type ImageEditorToolsState = Record<string, any>
 
 export const SIDEBAR_TOOLS = {
   scale: ["scale"],
@@ -30,7 +29,7 @@ type CropPayload = {
 }
 
 type NumericToolKeys = Exclude<
-  keyof typeof TOOL_VALUES,
+  string,
   "dimensions" | "crop" | "colorize" | "solid"
 >
 
@@ -72,7 +71,7 @@ export type ImageEditorToolsHistoryAction = {
 export type ImageEditorToolsUpdateHistoryAction = {
   type: "updateHistory"
   payload: {
-    type: keyof typeof TOOL_VALUES
+    type: string
     value: number
   }
 }
@@ -150,155 +149,56 @@ export type HistoryToolsState = {
   historyPosition: number
 }
 
-export const initialToolsState: ImageEditorToolsState = {
-  // History values
-  history: [],
-  historyPosition: 0,
+export const createInitialToolsState = (
+  toolValues: Record<string, ToolValueTypes>
+) => {
+  const state: ImageEditorToolsState = {
+    // History values
+    history: [],
+    historyPosition: 0,
 
-  // Rotate values
-  flipHorizontal: createTrack<boolean>(
-    "flipHorizontal",
-    Boolean((TOOL_VALUES.flipHorizontal as any).defaultValue || 0)
-  ) as any,
-  flipVertical: createTrack<boolean>(
-    "flipVertical",
-    Boolean((TOOL_VALUES.flipVertical as any).defaultValue || 0)
-  ) as any,
-  rotate: createTrack(
-    "rotate",
-    TOOL_VALUES.rotate.defaultValue as ToolValueStepType["defaultValue"]
-  ),
+    // Rotate values
+    flipHorizontal: createTrack<boolean>(
+      "flipHorizontal",
+      Boolean((toolValues.flipHorizontal as any).defaultValue || 0)
+    ) as any,
+    flipVertical: createTrack<boolean>(
+      "flipVertical",
+      Boolean((toolValues.flipVertical as any).defaultValue || 0)
+    ) as any,
+    rotate: createTrack(
+      "rotate",
+      toolValues.rotate.defaultValue as ToolValueStepType["defaultValue"]
+    ),
 
-  crop: createTrack("crop", TOOL_VALUES.crop.defaultValue),
+    crop: createTrack("crop", toolValues.crop.defaultValue),
 
-  dimensions: createTrack("dimensions", TOOL_VALUES.dimensions.defaultValue),
+    dimensions: createTrack("dimensions", toolValues.dimensions.defaultValue),
 
-  scale: createTrack(
-    "scale",
-    TOOL_VALUES.scale.defaultValue as ToolValueStepType["defaultValue"]
-  ),
+    scale: createTrack(
+      "scale",
+      toolValues.scale.defaultValue as ToolValueStepType["defaultValue"]
+    ),
 
-  upscale: createTrack(
-    "upscale",
-    TOOL_VALUES.upscale.defaultValue as ToolValueStepType["defaultValue"]
-  ),
+    upscale: createTrack(
+      "upscale",
+      toolValues.upscale.defaultValue as ToolValueStepType["defaultValue"]
+    ),
 
-  zoom: TOOL_VALUES.zoom.defaultValue as ToolValueStepType["defaultValue"],
+    zoom: toolValues.zoom.defaultValue as ToolValueStepType["defaultValue"],
+  } as ImageEditorToolsState
 
-  // Basic adjustment values
-  brightness: createTrack(
-    "brightness",
-    TOOL_VALUES.brightness.defaultValue as ToolValueStepType["defaultValue"]
-  ),
-  contrast: createTrack(
-    "contrast",
-    TOOL_VALUES.contrast.defaultValue as ToolValueStepType["defaultValue"]
-  ),
-  exposure: createTrack(
-    "exposure",
-    TOOL_VALUES.exposure.defaultValue as ToolValueStepType["defaultValue"]
-  ),
-  gamma: createTrack(
-    "gamma",
-    TOOL_VALUES.gamma.defaultValue as ToolValueStepType["defaultValue"]
-  ),
-  grayscale: createTrack(
-    "grayscale",
-    TOOL_VALUES.grayscale.defaultValue as ToolValueStepType["defaultValue"]
-  ),
-  hue: createTrack(
-    "hue",
-    TOOL_VALUES.hue.defaultValue as ToolValueStepType["defaultValue"]
-  ),
-  invert: createTrack(
-    "invert",
-    TOOL_VALUES.invert.defaultValue as ToolValueStepType["defaultValue"]
-  ),
-  saturation: createTrack(
-    "saturation",
-    TOOL_VALUES.saturation.defaultValue as ToolValueStepType["defaultValue"]
-  ),
-  sepia: createTrack(
-    "sepia",
-    TOOL_VALUES.sepia.defaultValue as ToolValueStepType["defaultValue"]
-  ),
-  solid: TOOL_VALUES.solid.defaultValue as ToolValueStringType["defaultValue"],
-  temperature: createTrack(
-    "temperature",
-    TOOL_VALUES.temperature.defaultValue as ToolValueStepType["defaultValue"]
-  ),
-  tint: createTrack(
-    "tint",
-    TOOL_VALUES.tint.defaultValue as ToolValueStepType["defaultValue"]
-  ),
-  colorizeHue: createTrack(
-    "colorizeHue",
-    TOOL_VALUES.colorizeHue.defaultValue as ToolValueStepType["defaultValue"]
-  ),
-  colorizeSaturation: createTrack(
-    "colorizeSaturation",
-    TOOL_VALUES.colorizeSaturation
-      .defaultValue as ToolValueStepType["defaultValue"]
-  ),
-  colorizeLightness: createTrack(
-    "colorizeLightness",
-    TOOL_VALUES.colorizeLightness
-      .defaultValue as ToolValueStepType["defaultValue"]
-  ),
-  colorizeAmount: createTrack(
-    "colorizeAmount",
-    TOOL_VALUES.colorizeAmount.defaultValue as ToolValueStepType["defaultValue"]
-  ),
-  colorizePreserveLum: createTrack(
-    "colorizePreserveLum",
-    Boolean(
-      (TOOL_VALUES.colorizePreserveLum as any).defaultValue || false
-    ) as unknown as number
-  ) as any,
-  vibrance: createTrack(
-    "vibrance",
-    TOOL_VALUES.vibrance.defaultValue as ToolValueStepType["defaultValue"]
-  ),
-  vintage: createTrack(
-    "vintage",
-    TOOL_VALUES.vintage.defaultValue as ToolValueStepType["defaultValue"]
-  ),
+  for (const [key, value] of Object.entries(toolValues)) {
+    state[key] = createTrack(key, value.defaultValue)
+  }
 
-  // Effect values
-  noiseAmount: createTrack(
-    "noiseAmount",
-    TOOL_VALUES.noiseAmount.defaultValue as ToolValueStepType["defaultValue"]
-  ),
-  noiseSize: createTrack(
-    "noiseSize",
-    TOOL_VALUES.noiseSize.defaultValue as ToolValueStepType["defaultValue"]
-  ),
-  gaussianAmount: createTrack(
-    "gaussianAmount",
-    TOOL_VALUES.gaussianAmount.defaultValue as ToolValueStepType["defaultValue"]
-  ),
-  gaussianRadius: createTrack(
-    "gaussianRadius",
-    TOOL_VALUES.gaussianRadius.defaultValue as ToolValueStepType["defaultValue"]
-  ),
-  sharpenAmount: createTrack(
-    "sharpenAmount",
-    TOOL_VALUES.sharpenAmount.defaultValue as ToolValueStepType["defaultValue"]
-  ),
-  sharpenRadius: createTrack(
-    "sharpenRadius",
-    TOOL_VALUES.sharpenRadius.defaultValue as ToolValueStepType["defaultValue"]
-  ),
-  sharpenThreshold: createTrack(
-    "sharpenThreshold",
-    TOOL_VALUES.sharpenThreshold
-      .defaultValue as ToolValueStepType["defaultValue"]
-  ),
+  return state
 }
 
 export function imageEditorToolsReducer(
   state: ImageEditorToolsState,
-  action: ImageEditorToolsActions
+  action: ImageEditorToolsActions,
+  initialToolsState: ImageEditorToolsState
 ): ImageEditorToolsState {
   if (action.type === "reset") {
     return {

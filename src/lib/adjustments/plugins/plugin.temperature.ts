@@ -1,9 +1,14 @@
 import type { AdjustmentPlugin } from "../registry"
-import {
-  identityToShader,
-  sliderDefaultValue,
-  sliderDefaults,
-} from "../helpers"
+import { identityToShader } from "../helpers"
+
+const params = {
+  temperature: {
+    min: -100,
+    max: 100,
+    step: 1,
+    defaultValue: 0,
+  },
+}
 
 export const temperature: AdjustmentPlugin = {
   id: "temperature",
@@ -15,10 +20,10 @@ export const temperature: AdjustmentPlugin = {
     {
       type: "slider",
       key: "temperature",
-      ...sliderDefaults("temperature"),
+      ...params.temperature,
       sliderType: "grayscale",
     },
   ],
-  defaults: { temperature: sliderDefaultValue("temperature") ?? 0 },
+  params,
   toShaderParams: identityToShader,
 }

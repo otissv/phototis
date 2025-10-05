@@ -1,6 +1,6 @@
-import { TOOL_VALUES } from "@/lib/tools/tools"
 import { onToolControlValueChange } from "@/lib/utils"
 import SlidingTrack from "@/components/ui/sliding-track"
+import { useEditorContext } from "@/lib/editor/context"
 
 export interface ImageEditorFooterSliderProps
   extends Omit<
@@ -10,7 +10,7 @@ export interface ImageEditorFooterSliderProps
   isDecimal?: boolean
   operator?: string
   progress?: number
-  selectedTool: keyof typeof TOOL_VALUES
+  selectedTool: string
   value: number
   label?: (value: string, operator: string) => React.ReactNode
   onChange?: (value: number) => void
@@ -31,20 +31,17 @@ export function ImageEditorFooterSlider({
   onDragStart,
   isDecimal,
 }: ImageEditorFooterSliderProps) {
+  const { toolValues } = useEditorContext()
   const disabled = Boolean(progress)
 
   return (
     <SlidingTrack
       title={selectedTool}
       className={className}
-      min={
-        "min" in TOOL_VALUES[selectedTool] ? TOOL_VALUES[selectedTool].min : 0
-      }
-      max={
-        "max" in TOOL_VALUES[selectedTool] ? TOOL_VALUES[selectedTool].max : 0
-      }
+      min={"min" in toolValues[selectedTool] ? toolValues[selectedTool].min : 0}
+      max={"max" in toolValues[selectedTool] ? toolValues[selectedTool].max : 0}
       step={
-        "step" in TOOL_VALUES[selectedTool] ? TOOL_VALUES[selectedTool].step : 0
+        "step" in toolValues[selectedTool] ? toolValues[selectedTool].step : 0
       }
       defaultValue={value}
       operator={operator}

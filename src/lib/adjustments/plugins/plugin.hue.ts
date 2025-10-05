@@ -1,9 +1,14 @@
 import type { AdjustmentPlugin } from "../registry"
-import {
-  identityToShader,
-  sliderDefaultValue,
-  sliderDefaults,
-} from "../helpers"
+import { identityToShader } from "../helpers"
+
+const params = {
+  hue: {
+    min: 0,
+    max: 360,
+    step: 1,
+    defaultValue: 180,
+  },
+}
 
 export const hue: AdjustmentPlugin = {
   id: "hue",
@@ -15,10 +20,10 @@ export const hue: AdjustmentPlugin = {
     {
       type: "slider",
       key: "hue",
-      ...sliderDefaults("hue"),
+      ...params.hue,
       sliderType: "hue",
     },
   ],
-  defaults: { hue: sliderDefaultValue("hue") ?? 180 },
+  params,
   toShaderParams: identityToShader,
 }

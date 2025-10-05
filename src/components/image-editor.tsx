@@ -12,7 +12,6 @@ import { ImageEditorSidebar } from "@/components/sidebar.image-editor"
 import { ImageEditorFooter } from "@/components/tools.image-editor"
 import {
   imageEditorToolsReducer,
-  initialToolsState,
   type ImageEditorToolsActions,
 } from "@/lib/tools/tools-state"
 import { SetActiveToolCommand } from "@/lib/editor/commands"
@@ -26,6 +25,7 @@ import { config } from "@/config"
 import { capitalize } from "@/lib/utils/capitalize"
 import { sampleToolsAtTime } from "@/lib/tools/tools-state"
 import { TimelinePanel } from "./timeline/timeline-panel"
+import type { AdjustmentPlugin } from "@/lib/adjustments/registry"
 
 const { isDebug } = config()
 
@@ -35,6 +35,7 @@ export interface ImageEditorProps extends React.ComponentProps<"div"> {
   onDragStateChange?: (isDragging: boolean) => void
   notify?: (props: { message: string; title?: string }) => void
   allowAddMultipleImages?: boolean
+  adjustmentPlugins: AdjustmentPlugin[]
 }
 
 function ImageEditorInner({
@@ -44,7 +45,7 @@ function ImageEditorInner({
   notify,
   allowAddMultipleImages = false,
   ...props
-}: ImageEditorProps) {
+}: Prettify<Omit<ImageEditorProps, "adjustmentPlugins">>) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const drawFnRef = useRef<() => void>(() => {})
 
@@ -58,12 +59,13 @@ function ImageEditorInner({
     state,
     activeTool,
     history,
+    initialToolsState,
+    renderType,
     duplicateLayer,
     getOrderedLayers,
     getSelectedLayer,
     getSelectedLayerId,
     removeLayer,
-    renderType,
     setRenderType,
     selectLayerNonUndoable,
     setZoomPercent,
@@ -86,7 +88,7 @@ function ImageEditorInner({
     }
     // For other layer types, return initial state
     return initialToolsState
-  }, [selectedLayer])
+  }, [initialToolsState, selectedLayer])
 
   // Sample tools for immediate UI reads outside footer controls
   const sampledTools = useMemo(() => {
@@ -106,14 +108,14 @@ function ImageEditorInner({
       const currentFilters = (current as any).filters || initialToolsState
       const newFilters = Array.isArray(action)
         ? action.reduce((acc, curr) => {
-            return imageEditorToolsReducer(acc, curr)
+            return imageEditorToolsReducer(acc, curr, initialToolsState)
           }, currentFilters)
-        : imageEditorToolsReducer(currentFilters, action)
+        : imageEditorToolsReducer(currentFilters, action, initialToolsState)
 
       // Cast to any to bypass type checking for filters property
       updateLayer(selectedId, { filters: newFilters } as any)
     },
-    [selectedLayer, getSelectedLayerId, updateLayer]
+    [initialToolsState, selectedLayer, getSelectedLayerId, updateLayer]
   )
 
   const value = useMemo(() => {
@@ -490,6 +492,7 @@ export function ImageEditor({
   images,
   onImageDrop,
   onDragStateChange,
+  adjustmentPlugins,
   ...props
 }: ImageEditorProps) {
   const [dimensions, setDimensions] = useState<
@@ -527,7 +530,11 @@ export function ImageEditor({
   }, [images])
 
   return dimensions.length > 0 ? (
-    <EditorProvider images={images} dimensions={dimensions}>
+    <EditorProvider
+      images={images}
+      dimensions={dimensions}
+      adjustmentPlugins={adjustmentPlugins}
+    >
       <WorkerPrewarm />
       <ImageEditorInner
         images={images}

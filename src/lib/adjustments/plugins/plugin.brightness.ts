@@ -1,9 +1,14 @@
 import type { AdjustmentPlugin } from "../registry"
-import {
-  identityToShader,
-  sliderDefaultValue,
-  sliderDefaults,
-} from "../helpers"
+import { identityToShader } from "../helpers"
+
+const params = {
+  brightness: {
+    min: 0,
+    max: 200,
+    step: 1,
+    defaultValue: 100,
+  },
+}
 
 export const brightness: AdjustmentPlugin = {
   id: "brightness",
@@ -15,10 +20,10 @@ export const brightness: AdjustmentPlugin = {
     {
       type: "slider",
       key: "brightness",
-      ...sliderDefaults("brightness"),
       sliderType: "grayscale",
+      ...params.brightness,
     },
   ],
-  defaults: { brightness: sliderDefaultValue("brightness") ?? 100 },
+  params: params,
   toShaderParams: identityToShader,
 }

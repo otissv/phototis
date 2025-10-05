@@ -1,4 +1,4 @@
-import type { AdjustmentPlugin } from "../registry"
+import type { AdjustmentParamValue, AdjustmentPlugin } from "../registry"
 import { brightness } from "./plugin.brightness"
 import { contrast } from "./plugin.contrast"
 import { exposure } from "./plugin.exposure"
@@ -18,6 +18,7 @@ import { solid } from "./plugin.solid"
 import { tintPlugin as tint } from "./plugin.tint"
 import { sharpen } from "./plugin.sharpen"
 import { gaussian } from "./plugin.gaussian"
+import type { ToolValueTypes } from "@/lib/tools/tools"
 
 export const PLUGINS: readonly AdjustmentPlugin[] = [
   brightness,
@@ -40,3 +41,13 @@ export const PLUGINS: readonly AdjustmentPlugin[] = [
   sharpen,
   gaussian,
 ]
+
+export function getAdjustmentParameters() {
+  let params: Record<string, ToolValueTypes> = {}
+
+  for (const plugin of PLUGINS) {
+    params = { ...params, ...plugin.params }
+  }
+
+  return params
+}

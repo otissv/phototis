@@ -1,9 +1,14 @@
 import type { AdjustmentPlugin } from "../registry"
-import {
-  identityToShader,
-  sliderDefaultValue,
-  sliderDefaults,
-} from "../helpers"
+import { identityToShader } from "../helpers"
+
+const params = {
+  grayscale: {
+    min: 0,
+    max: 100,
+    step: 1,
+    defaultValue: 100,
+  },
+}
 
 export const grayscale: AdjustmentPlugin = {
   id: "grayscale",
@@ -15,10 +20,10 @@ export const grayscale: AdjustmentPlugin = {
     {
       type: "slider",
       key: "grayscale",
-      ...sliderDefaults("grayscale"),
+      ...params.grayscale,
       sliderType: "grayscale",
     },
   ],
-  defaults: { grayscale: sliderDefaultValue("grayscale") ?? 0 },
+  params,
   toShaderParams: identityToShader,
 }

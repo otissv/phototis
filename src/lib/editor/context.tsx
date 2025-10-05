@@ -21,7 +21,6 @@ import {
   createEditorRuntimeState,
   assertInvariants,
 } from "@/lib/editor/state"
-import { initialToolsState as defaultFilters } from "@/lib/tools/tools-state"
 import { HistoryManager, type Command } from "@/lib/editor/history"
 import {
   AddLayerCommand,
@@ -47,8 +46,13 @@ import {
   UpdateGlobalLayerCommand,
   UpdateGlobalParameterCommand,
 } from "@/lib/editor/commands"
-// import { loadDocument } from "@/lib/editor/persistence"
 import { initializeDefaultKeyframePlugins } from "@/lib/animation/plugins"
+import type { AdjustmentPlugin } from "../adjustments/registry"
+import { defaultToolValues, type ToolValueTypes } from "@/lib/tools/tools"
+import {
+  createInitialToolsState,
+  type ImageEditorToolsState,
+} from "@/lib/tools/tools-state"
 
 export type EditorContextValue = {
   state: EditorRuntimeState
@@ -59,6 +63,8 @@ export type EditorContextValue = {
     size: number
     name: string
   }
+  initialToolsState: ImageEditorToolsState
+  toolValues: Record<string, ToolValueTypes>
   renderType: "default" | "worker" | "hybrid"
   history: {
     begin: (name: string) => void
@@ -218,6 +224,7 @@ export function EditorProvider({
   children,
   images,
   dimensions: imageDimensions = [],
+  adjustmentPlugins = [],
 }: {
   children: React.ReactNode
   images: File[]
@@ -227,7 +234,27 @@ export function EditorProvider({
     size: number
     name: string
   }[]
+  adjustmentPlugins: AdjustmentPlugin[]
 }): React.JSX.Element {
+  const adjustmentPluginsMemoized = React.useMemo(() => {
+    return adjustmentPlugins
+  }, [])
+
+  const toolValues = React.useMemo(() => {
+    let params: Record<string, ToolValueTypes> = defaultToolValues
+
+    for (const plugin of adjustmentPluginsMemoized) {
+      params = { ...params, ...plugin.params }
+    }
+
+    return params
+  }, [adjustmentPluginsMemoized])
+
+  const initialToolsState = React.useMemo(
+    () => createInitialToolsState(toolValues),
+    [toolValues]
+  )
+
   // Initialize keyframe plugin registry once
   React.useMemo(() => {
     try {
@@ -235,6 +262,7 @@ export function EditorProvider({
     } catch {}
     return null
   }, [])
+
   const documentLayerDimensions = imageDimensions.sort(
     (a, b) => b.size - a.size
   )[0] || { width: 800, height: 600, size: 800 * 600, name: "Document" }
@@ -270,13 +298,13 @@ export function EditorProvider({
               overlay: "thirdGrid",
             }
             return {
-              ...defaultFilters,
+              ...initialToolsState,
               dimensions: canon.createCanonicalTrack("dimensions", dims),
               crop: canon.createCanonicalTrack("crop", crop),
             }
           } catch {
             return {
-              ...defaultFilters,
+              ...initialToolsState,
               dimensions: {
                 width: dimensions?.width || 1,
                 height: dimensions?.height || 1,
@@ -284,7 +312,7 @@ export function EditorProvider({
                 y: 0,
               },
               crop: {
-                ...(defaultFilters as any).crop,
+                ...(initialToolsState as any).crop,
                 width: dimensions?.width || 1,
                 height: dimensions?.height || 1,
               },
@@ -308,7 +336,7 @@ export function EditorProvider({
       type: "document",
       visible: true,
       locked: false,
-      filters: { ...defaultFilters },
+      filters: { ...initialToolsState },
       opacity: 100,
       blendMode: "normal",
     }
@@ -722,7 +750,7 @@ export function EditorProvider({
           require("@/lib/tools/tools") as any
         const canon = require("@/lib/animation/crud") as any
         const sampled = sampleToolsAtTime(filters, t)
-        const modifiedKeys = collectModifiedKeysFromSample(sampled)
+        const modifiedKeys = collectModifiedKeysFromSample(sampled, toolValues)
         if (modifiedKeys.length === 0) return
         h.beginTransaction(
           `Capture ${modifiedKeys.length} tracks @ ${t.toFixed(3)}s`
@@ -831,7 +859,7 @@ export function EditorProvider({
       visible: true,
       locked: false,
       type: "image",
-      filters: { ...defaultFilters },
+      filters: { ...initialToolsState },
       opacity: 100,
       isEmpty: true,
       blendMode: "normal",
@@ -840,7 +868,7 @@ export function EditorProvider({
     historyRef.current?.push(new AddLayerCommand(newLayer, "top"))
     historyRef.current?.push(new SetSelectionCommand([newLayer.id]))
     historyRef.current?.endTransaction(true)
-  }, [runtime.canonical.layers.order.length])
+  }, [initialToolsState, runtime.canonical.layers.order.length])
 
   const addImageLayer = React.useCallback(
     (files: File | File[]) => {
@@ -869,7 +897,7 @@ export function EditorProvider({
         visible: true,
         locked: false,
         type: "image",
-        filters: { ...defaultFilters },
+        filters: initialToolsState,
         opacity: 100,
         isEmpty: false,
         image: file,
@@ -888,7 +916,7 @@ export function EditorProvider({
 
       historyRef.current?.endTransaction(true)
     },
-    [runtime.canonical.layers.order.length]
+    [initialToolsState, runtime.canonical.layers.order.length]
   )
 
   const removeLayer = React.useCallback((layerId: LayerId) => {
@@ -1267,7 +1295,10 @@ export function EditorProvider({
     () => ({
       state: runtime,
       activeTool: runtime.canonical.activeTool.tool,
+      adjustmentPlugins: adjustmentPluginsMemoized,
       documentLayerDimensions,
+      initialToolsState,
+      toolValues,
       renderType,
       history: {
         begin: (name: string) => historyRef.current?.beginTransaction(name),
@@ -1366,9 +1397,12 @@ export function EditorProvider({
       captureChangedTracksAtPlayhead,
     }),
     [
+      adjustmentPluginsMemoized,
       documentLayerDimensions,
-      runtime,
+      toolValues,
+      initialToolsState,
       renderType,
+      runtime,
       addAdjustmentLayer,
       addEmptyLayer,
       addImageLayer,

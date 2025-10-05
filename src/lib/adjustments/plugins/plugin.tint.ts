@@ -1,9 +1,14 @@
 import type { AdjustmentPlugin } from "../registry"
-import {
-  identityToShader,
-  sliderDefaultValue,
-  sliderDefaults,
-} from "../helpers"
+import { identityToShader } from "../helpers"
+
+const params = {
+  tint: {
+    min: -100,
+    max: 100,
+    step: 1,
+    defaultValue: 0,
+  },
+}
 
 export const tintPlugin: AdjustmentPlugin = {
   id: "tint",
@@ -16,10 +21,10 @@ export const tintPlugin: AdjustmentPlugin = {
     {
       type: "slider",
       key: "tint",
-      ...sliderDefaults("tint"),
       sliderType: "grayscale",
+      ...params.tint,
     },
   ],
-  defaults: { tint: sliderDefaultValue("tint") ?? 0 },
+  params,
   toShaderParams: identityToShader,
 }

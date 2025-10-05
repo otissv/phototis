@@ -1,9 +1,14 @@
 import type { AdjustmentPlugin } from "../registry"
-import {
-  identityToShader,
-  sliderDefaultValue,
-  sliderDefaults,
-} from "../helpers"
+import { identityToShader } from "../helpers"
+
+const params = {
+  vintage: {
+    min: 0,
+    max: 100,
+    step: 1,
+    defaultValue: 0,
+  },
+}
 
 export const vintage: AdjustmentPlugin = {
   id: "vintage",
@@ -15,9 +20,10 @@ export const vintage: AdjustmentPlugin = {
     {
       type: "slider",
       key: "vintage",
-      ...sliderDefaults("vintage"),
+      ...params.vintage,
+      sliderType: "grayscale",
     },
   ],
-  defaults: { vintage: sliderDefaultValue("vintage") ?? 0 },
+  params,
   toShaderParams: identityToShader,
 }

@@ -1,7 +1,7 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 
-import { TOOL_VALUES } from "@/lib/tools/tools"
+import { useEditorContext } from "@/lib/editor/context"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -11,13 +11,14 @@ export function onToolControlValueChange({
   selectedTool,
   onChange,
 }: {
-  selectedTool: keyof typeof TOOL_VALUES
+  selectedTool: string
   onChange: (value: number) => void
 }) {
+  const { toolValues } = useEditorContext()
   return (value: number) => {
     const nextValue =
-      value < (TOOL_VALUES[selectedTool] as any).min
-        ? (TOOL_VALUES[selectedTool] as any).min
+      value < (toolValues[selectedTool] as any).min
+        ? (toolValues[selectedTool] as any).min
         : value
     onChange(nextValue)
   }

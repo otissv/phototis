@@ -1,6 +1,35 @@
 import type { AdjustmentPlugin } from "../registry"
 import { identityToShader } from "../helpers"
-import { TOOL_VALUES } from "@/lib/tools/tools"
+
+const params = {
+  colorizeHue: {
+    min: 0,
+    max: 360,
+    step: 1,
+    defaultValue: 180,
+  },
+  colorizeSaturation: {
+    min: 0,
+    max: 100,
+    step: 1,
+    defaultValue: 50,
+  },
+  colorizeLightness: {
+    min: -100,
+    max: 200,
+    step: 1,
+    defaultValue: 50,
+  },
+  colorizeAmount: {
+    min: 0,
+    max: 100,
+    step: 1,
+    defaultValue: 50,
+  },
+  colorizePreserveLum: {
+    defaultValue: false,
+  },
+}
 
 export const colorize: AdjustmentPlugin = {
   id: "colorize",
@@ -15,34 +44,29 @@ export const colorize: AdjustmentPlugin = {
       key: "colorizeSaturation",
       label: "Saturation",
       sliderType: "grayscale",
+      ...params.colorizeSaturation,
     },
     {
       type: "slider",
       key: "colorizeLightness",
       label: "Lightness",
       sliderType: "grayscale",
+      ...params.colorizeLightness,
     },
     {
       type: "slider",
       key: "colorizeAmount",
       label: "Amount",
       sliderType: "grayscale",
+      ...params.colorizeAmount,
     },
     {
       type: "toggle",
       key: "colorizePreserveLum",
       label: "Preserve Lum",
+      ...params.colorizePreserveLum,
     },
   ],
-  defaults: {
-    colorizeHue: (TOOL_VALUES.colorizeHue as any)?.defaultValue ?? 0,
-    colorizeSaturation:
-      (TOOL_VALUES.colorizeSaturation as any)?.defaultValue ?? 0,
-    colorizeLightness:
-      (TOOL_VALUES.colorizeLightness as any)?.defaultValue ?? 0,
-    colorizeAmount: (TOOL_VALUES.colorizeAmount as any)?.defaultValue ?? 0,
-    preserveLum:
-      (TOOL_VALUES.colorizePreserveLum as any)?.defaultValue ?? false,
-  },
+  params,
   toShaderParams: identityToShader,
 }

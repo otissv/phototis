@@ -1,5 +1,10 @@
 import type { AdjustmentPlugin } from "../registry"
-import { TOOL_VALUES } from "@/lib/tools/tools"
+
+const params = {
+  invert: {
+    defaultValue: 0,
+  },
+}
 
 export const invert: AdjustmentPlugin = {
   id: "invert",
@@ -8,7 +13,7 @@ export const invert: AdjustmentPlugin = {
   icon: "Eclipse",
   description: "Invert the colors of the image",
   uiSchema: [{ type: "toggle", key: "invert" }],
-  defaults: { invert: (TOOL_VALUES.invert as any)?.defaultValue ?? 0 },
+  params,
   toShaderParams: (params) => {
     const value = Number((params as any).invert || 0)
     return { invert: value }

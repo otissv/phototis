@@ -1,12 +1,12 @@
 "use client"
 
 import {
-  type ComponentProps,
   createContext,
-  RefObject,
   useCallback,
   useContext,
   useRef,
+  type ComponentProps,
+  type RefObject,
 } from "react"
 import { Image } from "lucide-react"
 import { useDrop } from "react-dnd"
@@ -19,9 +19,6 @@ import { OpacityControls } from "@/components/layers/opacity-controls"
 import { useEditorContext } from "@/lib/editor/context"
 import { useBlendModeChange } from "@/components/hooks/useBlendModeChange"
 import { useOpacityChange } from "@/components/hooks/useOpacityChange"
-import { TOOL_VALUES } from "@/lib/tools/tools"
-import { sampleToolsAtTime } from "@/lib/tools/tools-state"
-import { useMemo } from "react"
 import type {
   ImageEditorToolsActions,
   ImageEditorToolsState,
@@ -66,6 +63,8 @@ export function LayersPanelInner({
   const { isGlobalDragActive } = useContext(LayerContext)
 
   const {
+    state,
+    toolValues,
     addAdjustmentLayer,
     addImageLayer,
     duplicateLayer,
@@ -75,23 +74,14 @@ export function LayersPanelInner({
     reorderLayer,
     reorderLayers,
     selectLayer,
-    setBlendMode,
     setLayerName,
-    setOpacity,
     toggleGroupCollapse,
     toggleLock,
     toggleVisibility,
     ungroupLayer,
-    updateLayer,
-    state,
   } = useEditorContext()
 
   const layers = getOrderedLayers()
-  const sampledDocumentFilters = useMemo(() => {
-    const doc = state.canonical.layers.byId["document"] as any
-    const filters = (doc?.filters || {}) as any
-    return sampleToolsAtTime(filters, state.canonical.playheadTime)
-  }, [state.canonical.layers.byId, state.canonical.playheadTime])
   const selectedLayerId = getSelectedLayerId()
   const isDragActive = state.ephemeral.interaction.isDragging
 
@@ -199,52 +189,51 @@ export function LayersPanelInner({
       // Default parameters for each adjustment type
       const defaultParams: Record<string, Record<string, any>> = {
         brightness: {
-          brightness: TOOL_VALUES.brightness.defaultValue as number,
+          brightness: toolValues.brightness.defaultValue as number,
         },
-        contrast: { contrast: TOOL_VALUES.contrast.defaultValue as number },
-        exposure: { exposure: TOOL_VALUES.exposure.defaultValue as number },
-        gamma: { gamma: TOOL_VALUES.gamma.defaultValue as number },
-        hue: { hue: TOOL_VALUES.hue.defaultValue as number },
+        contrast: { contrast: toolValues.contrast.defaultValue as number },
+        exposure: { exposure: toolValues.exposure.defaultValue as number },
+        gamma: { gamma: toolValues.gamma.defaultValue as number },
+        hue: { hue: toolValues.hue.defaultValue as number },
         saturation: {
-          saturation: TOOL_VALUES.saturation.defaultValue as number,
+          saturation: toolValues.saturation.defaultValue as number,
         },
         temperature: {
-          temperature: TOOL_VALUES.temperature.defaultValue as number,
+          temperature: toolValues.temperature.defaultValue as number,
         },
         colorize: {
-          colorizeHue: (TOOL_VALUES as any).colorizeHue.defaultValue,
-          colorizeSaturation: (TOOL_VALUES as any).colorizeSaturation
+          colorizeHue: (toolValues as any).colorizeHue.defaultValue,
+          colorizeSaturation: (toolValues as any).colorizeSaturation
             .defaultValue,
-          colorizeLightness: (TOOL_VALUES as any).colorizeLightness
-            .defaultValue,
-          colorizeAmount: (TOOL_VALUES as any).colorizeAmount.defaultValue,
-          colorizePreserveLum: (TOOL_VALUES as any).colorizePreserveLum
+          colorizeLightness: (toolValues as any).colorizeLightness.defaultValue,
+          colorizeAmount: (toolValues as any).colorizeAmount.defaultValue,
+          colorizePreserveLum: (toolValues as any).colorizePreserveLum
             .defaultValue,
         },
-        vibrance: { vibrance: TOOL_VALUES.vibrance.defaultValue as number },
-        vintage: { vintage: TOOL_VALUES.vintage.defaultValue as number },
-        grayscale: { grayscale: TOOL_VALUES.grayscale.defaultValue as number },
-        invert: { invert: TOOL_VALUES.invert.defaultValue as number },
-        sepia: { sepia: TOOL_VALUES.sepia.defaultValue as number },
-        solid: { solid: (TOOL_VALUES.solid as any).defaultValue },
+        vibrance: { vibrance: toolValues.vibrance.defaultValue as number },
+        vintage: { vintage: toolValues.vintage.defaultValue as number },
+        grayscale: { grayscale: toolValues.grayscale.defaultValue as number },
+        invert: { invert: toolValues.invert.defaultValue as number },
+        sepia: { sepia: toolValues.sepia.defaultValue as number },
+        solid: { solid: (toolValues.solid as any).defaultValue },
         sharpen: {
-          sharpenAmount: (TOOL_VALUES as any).sharpenAmount.defaultValue,
-          sharpenRadius: (TOOL_VALUES as any).sharpenRadius.defaultValue,
-          sharpenThreshold: (TOOL_VALUES as any).sharpenThreshold.defaultValue,
+          sharpenAmount: (toolValues as any).sharpenAmount.defaultValue,
+          sharpenRadius: (toolValues as any).sharpenRadius.defaultValue,
+          sharpenThreshold: (toolValues as any).sharpenThreshold.defaultValue,
         },
         noise: {
-          noiseAmount: (TOOL_VALUES as any).noiseAmount.defaultValue,
-          noiseSize: (TOOL_VALUES as any).noiseSize.defaultValue,
+          noiseAmount: (toolValues as any).noiseAmount.defaultValue,
+          noiseSize: (toolValues as any).noiseSize.defaultValue,
         },
         gaussian: {
-          gaussianAmount: (TOOL_VALUES as any).gaussianAmount.defaultValue,
-          gaussianRadius: (TOOL_VALUES as any).gaussianRadius.defaultValue,
+          gaussianAmount: (toolValues as any).gaussianAmount.defaultValue,
+          gaussianRadius: (toolValues as any).gaussianRadius.defaultValue,
         },
       }
 
       addAdjustmentLayer(adjustmentType, defaultParams[adjustmentType], "top")
     },
-    [addAdjustmentLayer]
+    [toolValues, addAdjustmentLayer]
   )
 
   const handleUngroupLayer = useCallback(
