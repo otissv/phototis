@@ -12,6 +12,7 @@ import {
   validateFilterParameters,
 } from "@/lib/security/gpu-security"
 import type { EditorLayer } from "@/lib/editor/state"
+import type { ShaderDescriptor } from "@/lib/shaders/types.shader"
 
 // Pipeline stage types
 export enum PipelineStage {
@@ -75,6 +76,8 @@ export interface PipelineConfig {
 
 export class AsynchronousPipeline {
   private hybridRenderer: HybridRenderer | null = null
+  private pendingShaderDescriptors: Record<string, ShaderDescriptor> | null =
+    null
   private config: PipelineConfig
   private taskQueue: PipelineTask[] = []
   private activeTasks: Map<string, PipelineTask> = new Map()
@@ -143,6 +146,13 @@ export class AsynchronousPipeline {
         throw new Error("Failed to initialize hybrid renderer")
       }
 
+      // if callers registered shader descriptors, register them now
+      if (this.pendingShaderDescriptors) {
+        this.hybridRenderer.registerShaderDescriptors(
+          this.pendingShaderDescriptors
+        )
+      }
+
       // Initialize memory monitor if enabled
       if (this.config.enableMemoryMonitoring) {
         this.memoryMonitor = new MemoryMonitor(options.gl)
@@ -152,6 +162,21 @@ export class AsynchronousPipeline {
     } catch (error) {
       console.error("Failed to initialize asynchronous pipeline:", error)
       return false
+    }
+  }
+
+  registerShaderDescriptors(
+    this: AsynchronousPipeline,
+    shaderDescriptors: Record<string, ShaderDescriptor>
+  ): void {
+    this.pendingShaderDescriptors = {
+      ...(this.pendingShaderDescriptors || {}),
+      ...shaderDescriptors,
+    }
+    if (this.hybridRenderer) {
+      this.hybridRenderer.registerShaderDescriptors(
+        this.pendingShaderDescriptors
+      )
     }
   }
 

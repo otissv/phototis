@@ -9,7 +9,7 @@ import type { ImageEditorToolsState } from "@/lib/tools/tools-state"
 import type { EditorLayer } from "@/lib/editor/state"
 import { useEditorContext } from "@/lib/editor/context"
 import { ShaderManager } from "@/lib/shaders/manager.shader"
-import { GlobalShaderRegistryV2 } from "@/lib/shaders/registry.shader"
+import { GlobalShaderRegistry } from "@/lib/shaders/registry.shader"
 import { HybridRenderer } from "@/lib/renderer/hybrid.renderer"
 import { RenderConfig } from "@/lib/renderer/render-config.renderer"
 import { useWorkerRenderer } from "@/components/hooks/useWorkerRenderer"
@@ -58,6 +58,7 @@ export function ImageEditorCanvas({
   const { history } = useEditorContext()
   const {
     state,
+    shaderDescriptors,
     getOrderedLayers,
     getSelectedLayerId,
     renderType,
@@ -165,6 +166,36 @@ export function ImageEditorCanvas({
   useEffect(() => {
     isWorkerInitializingRef.current = isWorkerInitializing
   }, [isWorkerInitializing])
+
+  useEffect(() => {
+    // Only do this for worker mode; hybrid path registers locally already
+    if (renderType !== "worker") return
+
+    ;(async () => {
+      try {
+        const { GlobalShaderRegistry } = await import(
+          "@/lib/shaders/registry.shader"
+        )
+        const { ShaderManager } = await import("@/lib/shaders/manager.shader")
+        const mgr = new ShaderManager(GlobalShaderRegistry)
+        for (const desc of Object.values(shaderDescriptors)) {
+          mgr.registerShader(desc) // bumps registry version
+        }
+      } catch {}
+
+      try {
+        const { WorkerManager } = await import(
+          "@/lib/renderer/worker-manager.renderer"
+        )
+        await WorkerManager.getShared().syncShaderRegistry()
+        if (isWorkerReadyRef.current) {
+          await WorkerManager.getShared().prepareWorkerShaders({
+            shaderNames: Object.keys(shaderDescriptors),
+          })
+        }
+      } catch {}
+    })()
+  }, [renderType, shaderDescriptors])
 
   // Local guard to prevent double-queuing while we await queueing a worker task
   const isQueueingRenderRef = useRef(false)
@@ -823,12 +854,19 @@ export function ImageEditorCanvas({
       height,
     })
 
+    hybridRendererRef.current.registerShaderDescriptors(shaderDescriptors)
+
     if (!success) {
       console.error("Failed to initialize hybrid renderer")
       // Reset the hybrid renderer reference so we can try again
       hybridRendererRef.current = null
     }
-  }, [canvasRef?.current, canvasDimensions.width, canvasDimensions.height])
+  }, [
+    canvasRef?.current,
+    canvasDimensions.width,
+    canvasDimensions.height,
+    shaderDescriptors,
+  ])
 
   // Handle layer-specific image data loading
   // biome-ignore lint/correctness/useExhaustiveDependencies: loadImageDataFromFile cause infinite loop
@@ -1263,18 +1301,26 @@ export function ImageEditorCanvas({
     if (width <= 0 || height <= 0) return false
     if (!hybridRendererRef.current) {
       hybridRendererRef.current = new HybridRenderer()
+
       const ok = hybridRendererRef.current.initialize({
         gl,
         width,
         height,
       })
+
       if (!ok) {
         hybridRendererRef.current = null
         return false
       }
+      hybridRendererRef.current.registerShaderDescriptors(shaderDescriptors)
     }
     return true
-  }, [canvasRef?.current, canvasDimensions.width, canvasDimensions.height])
+  }, [
+    canvasRef?.current,
+    canvasDimensions.width,
+    canvasDimensions.height,
+    shaderDescriptors,
+  ])
 
   // Draw function using worker-based rendering for non-blocking GPU operations
   const draw = async () => {
@@ -1414,31 +1460,14 @@ export function ImageEditorCanvas({
             shaderNames: [
               "compositor",
               "copy",
-              // Core adjustments (single-pass)
-              "adjustments.brightness",
-              "adjustments.contrast",
-              "adjustments.saturation",
-              "adjustments.hue",
-              "adjustments.exposure",
-              "adjustments.gamma",
-              "adjustments.grayscale",
-              "adjustments.invert",
-              "adjustments.sepia",
-              "adjustments.vibrance",
-              "adjustments.colorize",
-              "adjustments.temperature",
-              "adjustments.tint",
-              "adjustments.sharpen",
-              "adjustments.noise",
-              // Multi-pass blur (we'll compile both passes on demand)
-              "adjustments.gaussian_blur",
+              ...Object.keys(shaderDescriptors),
             ],
           })
         } catch {}
 
         // Call ShaderManager.prepareForMode('worker') to follow handshake
         try {
-          const sm2 = new ShaderManager(GlobalShaderRegistryV2)
+          const sm2 = new ShaderManager(GlobalShaderRegistry)
           sm2.prepareForMode("worker", canonicalLayers)
         } catch {}
 

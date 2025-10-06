@@ -41,7 +41,7 @@ const adjustmentPlugins = [
   invert,
   sepia,
   noise,
-  grain,
+  // grain,
   colorize,
   solid,
   tint,

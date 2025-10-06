@@ -3,11 +3,7 @@
 import { Fragment } from "react"
 import { Eclipse, Palette, Sun, Droplets, Sparkles } from "lucide-react"
 
-import type {
-  ToolValueColorType,
-  ToolValueStepType,
-  ToolValueTypes,
-} from "@/lib/tools/tools"
+import type { ToolValueColorType } from "@/lib/tools/tools"
 import { ParamControls } from "@/components/timeline/ParamControls"
 import { getAdjustmentPlugin } from "@/lib/adjustments/registry"
 import { useEditorContext } from "@/lib/editor/context"

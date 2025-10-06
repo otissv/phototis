@@ -218,46 +218,7 @@ export class WorkerManager {
       })
 
       // Sync shader registry (v2) to worker after init
-      try {
-        const { GlobalShaderRegistryV2 } = await import(
-          "@/lib/shaders/registry.shader"
-        )
-        const version = GlobalShaderRegistryV2.getVersion()
-        // Send full descriptors for dynamic plugin support
-        const descriptors = GlobalShaderRegistryV2.getAll().map(
-          (descriptor) => ({
-            name: descriptor.name,
-            version: descriptor.version,
-            sources: descriptor.sources
-              ? {
-                  vertex: descriptor.sources.vertex || null,
-                  fragment: descriptor.sources.fragment || null,
-                }
-              : undefined,
-            defines: descriptor.defines || undefined,
-            uniforms: descriptor.uniforms || undefined,
-            channels: descriptor.channels || undefined,
-            variants: descriptor.variants || undefined,
-            defaults: descriptor.defaults || undefined,
-            ui: descriptor.ui || undefined,
-            policies: descriptor.policies || undefined,
-            passes:
-              descriptor.passes?.map((pass) => ({
-                id: pass.id,
-                vertexSource: pass.vertexSource || null,
-                fragmentSource: pass.fragmentSource,
-                defines: pass.defines || undefined,
-                uniforms: pass.uniforms || undefined,
-                channels: pass.channels || undefined,
-                inputs: pass.inputs || undefined,
-              })) || undefined,
-          })
-        )
-        await this.sendMessage(worker, {
-          type: "shader:sync-registry",
-          data: { version, descriptors },
-        })
-      } catch {}
+      await this.syncShaderRegistry()
 
       // After transfer, the OffscreenCanvas is no longer available in main thread
       // The worker now owns the canvas
@@ -282,6 +243,53 @@ export class WorkerManager {
           canvasStateManager.markAsError(canvas, message)
         }
       } catch {}
+      return false
+    }
+  }
+
+  // Sync shader registry to worker
+  async syncShaderRegistry(): Promise<boolean> {
+    try {
+      if (!this.renderWorker) return false
+      const worker = this.renderWorker as Worker
+      const { GlobalShaderRegistry } = await import(
+        "@/lib/shaders/registry.shader"
+      )
+
+      const version = GlobalShaderRegistry.getVersion()
+      const descriptors = GlobalShaderRegistry.getAll().map((descriptor) => ({
+        name: descriptor.name,
+        version: descriptor.version,
+        sources: descriptor.sources
+          ? {
+              vertex: descriptor.sources.vertex || null,
+              fragment: descriptor.sources.fragment || null,
+            }
+          : undefined,
+        defines: descriptor.defines || undefined,
+        uniforms: descriptor.uniforms || undefined,
+        channels: descriptor.channels || undefined,
+        variants: descriptor.variants || undefined,
+        defaults: descriptor.defaults || undefined,
+        ui: descriptor.ui || undefined,
+        policies: descriptor.policies || undefined,
+        passes:
+          descriptor.passes?.map((pass) => ({
+            id: pass.id,
+            vertexSource: pass.vertexSource || null,
+            fragmentSource: pass.fragmentSource,
+            defines: pass.defines || undefined,
+            uniforms: pass.uniforms || undefined,
+            channels: pass.channels || undefined,
+            inputs: pass.inputs || undefined,
+          })) || undefined,
+      }))
+
+      return await (this as any).sendMessage(worker, {
+        type: "shader:sync-registry",
+        data: { version, descriptors },
+      })
+    } catch {
       return false
     }
   }

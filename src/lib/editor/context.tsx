@@ -53,6 +53,7 @@ import {
   createInitialToolsState,
   type ImageEditorToolsState,
 } from "@/lib/tools/tools-state"
+import type { ShaderDescriptor } from "../shaders/types.shader"
 
 export type EditorContextValue = {
   state: EditorRuntimeState
@@ -66,6 +67,7 @@ export type EditorContextValue = {
   initialToolsState: ImageEditorToolsState
   toolValues: Record<string, ToolValueTypes>
   renderType: "default" | "worker" | "hybrid"
+  shaderDescriptors: Record<string, ShaderDescriptor>
   history: {
     begin: (name: string) => void
     push: (command: Command) => void
@@ -248,6 +250,16 @@ export function EditorProvider({
     }
 
     return params
+  }, [adjustmentPluginsMemoized])
+
+  const shaderDescriptors = React.useMemo(() => {
+    const shaders: Record<string, ShaderDescriptor> = {}
+
+    for (const plugin of adjustmentPluginsMemoized) {
+      shaders[plugin.id] = plugin.shaderDescriptor
+    }
+
+    return shaders
   }, [adjustmentPluginsMemoized])
 
   const initialToolsState = React.useMemo(
@@ -1298,8 +1310,9 @@ export function EditorProvider({
       adjustmentPlugins: adjustmentPluginsMemoized,
       documentLayerDimensions,
       initialToolsState,
-      toolValues,
       renderType,
+      shaderDescriptors,
+      toolValues,
       history: {
         begin: (name: string) => historyRef.current?.beginTransaction(name),
         push: (cmd: Command) => historyRef.current?.push(cmd),
@@ -1403,6 +1416,7 @@ export function EditorProvider({
       initialToolsState,
       renderType,
       runtime,
+      shaderDescriptors,
       addAdjustmentLayer,
       addEmptyLayer,
       addImageLayer,

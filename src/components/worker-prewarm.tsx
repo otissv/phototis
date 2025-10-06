@@ -15,8 +15,8 @@ export function WorkerPrewarm() {
     let cancelled = false
     const run = async () => {
       try {
-        const m = WorkerManager.getShared()
-        await m.prepare()
+        const manager = WorkerManager.getShared()
+        await manager.prepare()
       } catch {}
     }
     void run()
@@ -24,7 +24,7 @@ export function WorkerPrewarm() {
     // Optional: attach debug timeline logger
     const onDbg = (e: Event) => {
       try {
-        const detail = (e as CustomEvent).detail
+        ;(e as CustomEvent).detail
       } catch {}
     }
     window.addEventListener("worker-debug", onDbg as EventListener)

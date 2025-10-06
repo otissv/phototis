@@ -1,6 +1,6 @@
 import {
-  GlobalShaderRegistryV2,
-  type ShaderRegistryV2,
+  GlobalShaderRegistry,
+  type ShaderRegistry,
 } from "@/lib/shaders/registry.shader"
 import { HybridRuntime } from "@/lib/renderer/hybrid-runtime.renderer"
 import { WorkerRuntime } from "@/lib/renderer/worker-runtime.renderer"
@@ -9,16 +9,20 @@ import type {
   ShaderDescriptor,
   ShaderMode,
 } from "@/lib/shaders/types.shader"
-
+import { CompositorShader } from "@/lib/shaders/passes/compositor.shader-descriptor"
+import { CopyShader } from "@/lib/shaders/passes/copy.shader-descriptor"
+import { LinearizeShader } from "@/lib/shaders/passes/linearize.shader-descriptor"
+import { EncodeShader } from "@/lib/shaders/passes/encode.shader-descriptor"
+import { LayerRenderShader } from "@/lib/shaders/passes/layer.render.shader-descriptor"
 export class ShaderManager {
   private gl: WebGL2RenderingContext | null = null
   private activeMode: ShaderMode = "hybrid"
-  private registry: ShaderRegistryV2
+  private registry: ShaderRegistry
   private hybridRuntime: RuntimeInterface
   private workerRuntime: RuntimeInterface
   private activeRuntime: RuntimeInterface
 
-  constructor(registry: ShaderRegistryV2 = GlobalShaderRegistryV2) {
+  constructor(registry: ShaderRegistry = GlobalShaderRegistry) {
     this.registry = registry
     this.hybridRuntime = new HybridRuntime()
     this.workerRuntime = new WorkerRuntime()
@@ -32,6 +36,12 @@ export class ShaderManager {
     this.activeMode = mode
     this.activeRuntime =
       mode === "hybrid" ? this.hybridRuntime : this.workerRuntime
+
+    this.registry.register(LinearizeShader)
+    this.registry.register(CompositorShader)
+    this.registry.register(EncodeShader)
+    this.registry.register(CopyShader)
+    this.registry.register(LayerRenderShader)
   }
 
   registerShader(descriptor: ShaderDescriptor): void {
@@ -82,7 +92,7 @@ export class ShaderManager {
     return this.activeRuntime
   }
 
-  getRegistry(): ShaderRegistryV2 {
+  getRegistry(): ShaderRegistry {
     return this.registry
   }
 }

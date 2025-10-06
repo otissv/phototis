@@ -1,6 +1,7 @@
 import type { AdjustmentTypes } from "@/lib/adjustments/types.adjustment"
-import { PLUGINS as ADJUSTMENT_PLUGINS } from "./plugins"
-import type { ToolValueTypes } from "../tools/tools"
+import { PLUGINS as ADJUSTMENT_PLUGINS } from "@/lib/adjustments/plugins"
+import type { ToolValueTypes } from "@/lib/tools/tools"
+import type { ShaderDescriptor } from "@/lib/shaders/types.shader"
 
 export type AdjustmentParamValue = number | { value: number; color: string }
 
@@ -32,6 +33,7 @@ export type AdjustmentPlugin = {
   toShaderParams: (
     params: Record<string, AdjustmentParamValue>
   ) => Record<string, unknown>
+  shaderDescriptor: ShaderDescriptor
 }
 
 export function getAdjustmentPlugin(

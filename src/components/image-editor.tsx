@@ -542,8 +542,6 @@ export function ImageEditor({
         onDragStateChange={onDragStateChange}
         {...props}
       />
-
-      <TimelinePanel />
     </EditorProvider>
   ) : null
 }

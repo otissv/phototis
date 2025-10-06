@@ -7,8 +7,7 @@ import type { ImageEditorToolsState } from "@/lib/tools/tools-state"
 import type { PipelineStage } from "@/lib/renderer/asynchronous-pipeline.renderer"
 import type { HybridRenderer } from "@/lib/renderer/hybrid.renderer"
 import { ShaderManager } from "@/lib/shaders/manager.shader"
-import { GlobalShaderRegistryV2 } from "@/lib/shaders/registry.shader"
-import { registerBuiltinShaders } from "@/lib/shaders/register-builtin.shader"
+import { GlobalShaderRegistry } from "@/lib/shaders/registry.shader"
 import { FBOManager } from "@/lib/renderer/fbo-manager.renderer"
 import { WorkerPassGraphPipeline } from "@/lib/renderer/worker-pipeline.renderer"
 import { RenderConfig } from "@/lib/renderer/render-config.renderer"
@@ -98,7 +97,7 @@ interface SuccessMessage {
 
 // WebGL context and resources
 let gl: WebGL2RenderingContext | null = null
-let shaderManagerV2: ShaderManager | null = null
+let shaderManager: ShaderManager | null = null
 let shaderRegistryVersion = 0
 let passGraphPipeline: WorkerPassGraphPipeline | null = null
 let fboManagerPG: FBOManager | null = null
@@ -667,20 +666,19 @@ function initializeWebGL(
       })
     } catch {}
 
-    // Initialize v2 shader manager in worker (use HybridRuntime inside the worker's GL context)
+    // Initialize  shader manager in worker (use HybridRuntime inside the worker's GL context)
     try {
-      registerBuiltinShaders(GlobalShaderRegistryV2)
-      shaderManagerV2 = new ShaderManager(GlobalShaderRegistryV2)
+      shaderManager = new ShaderManager(GlobalShaderRegistry)
       // Inside the worker, we own the GL context, so use the HybridRuntime path
-      shaderManagerV2.initialize(gl as WebGL2RenderingContext, "hybrid")
-      shaderRegistryVersion = GlobalShaderRegistryV2.getVersion()
+      shaderManager.initialize(gl as WebGL2RenderingContext, "hybrid")
+      shaderRegistryVersion = GlobalShaderRegistry.getVersion()
       // Build pass-graph essentials
       fboManagerPG = new FBOManager()
       fboManagerPG.initialize(gl as WebGL2RenderingContext)
       passGraphPipeline = new WorkerPassGraphPipeline(
         gl as WebGL2RenderingContext,
         fboManagerPG,
-        shaderManagerV2
+        shaderManager
       )
       // Simple position and comp texcoord buffers
       pgPositionBuffer = (gl as WebGL2RenderingContext).createBuffer()
@@ -728,9 +726,8 @@ async function ensureHeavyInit(width: number, height: number): Promise<void> {
   initCompositingResources(glCtx)
 
   // Initialize v2 shader manager for layer filters (compile in-worker)
-  shaderManagerV2 = new ShaderManager(GlobalShaderRegistryV2)
-  shaderManagerV2.initialize(glCtx, "hybrid")
-  registerBuiltinShaders()
+  shaderManager = new ShaderManager(GlobalShaderRegistry)
+  shaderManager.initialize(glCtx, "hybrid")
   // Build VAO for layer rendering
   layerVAO = glCtx.createVertexArray()
   if (!layerVAO) throw new Error("Failed to create layer VAO")
@@ -2226,7 +2223,7 @@ async function renderAdjustmentLayerFromBase(
 ): Promise<WebGLTexture | null> {
   if (
     !gl ||
-    !shaderManagerV2 ||
+    !shaderManager ||
     !passGraphPipeline ||
     !pgPositionBuffer ||
     !pgCompTexcoordBuffer
@@ -2409,7 +2406,7 @@ self.onmessage = async (event: MessageEvent) => {
             : []
           if (descriptors.length) {
             try {
-              ;(GlobalShaderRegistryV2 as any).replaceAll(descriptors)
+              ;(GlobalShaderRegistry as any).replaceAll(descriptors)
             } catch {}
           }
           if (typeof data.version === "number")
@@ -2422,11 +2419,8 @@ self.onmessage = async (event: MessageEvent) => {
         // Pre-warm requested shaders/passes (with optional variant keys)
         try {
           const payload = (message as any).data || { shaderNames: [] }
-          if (shaderManagerV2 && gl) {
-            try {
-              registerBuiltinShaders(GlobalShaderRegistryV2)
-            } catch {}
-            shaderManagerV2.prepareForMode("worker", null)
+          if (shaderManager && gl) {
+            shaderManager.prepareForMode("worker", null)
             const names: string[] = Array.isArray(payload.shaderNames)
               ? payload.shaderNames
               : []
@@ -2435,9 +2429,9 @@ self.onmessage = async (event: MessageEvent) => {
             const flatVariantKeys: string[] = Array.isArray(payload.variantKeys)
               ? (payload.variantKeys as string[])
               : []
-            const rt = shaderManagerV2.getActiveRuntime()
+            const rt = shaderManager.getActiveRuntime()
             for (const n of names) {
-              const s = shaderManagerV2.getRegistry().get(n)
+              const s = shaderManager.getRegistry().get(n)
               if (!s) continue
               const variantList = variantsMap[n] ||
                 flatVariantKeys || [undefined as any]
@@ -2463,12 +2457,11 @@ self.onmessage = async (event: MessageEvent) => {
       }
       case "shader:context-loss": {
         try {
-          if (shaderManagerV2 && gl) {
-            shaderManagerV2.cleanup("worker")
+          if (shaderManager && gl) {
+            shaderManager.cleanup("worker")
             // Reinitialize using the in-worker GL context with HybridRuntime
-            shaderManagerV2.initialize(gl as WebGL2RenderingContext, "hybrid")
-            registerBuiltinShaders(GlobalShaderRegistryV2)
-            shaderManagerV2.prepareForMode("worker", null)
+            shaderManager.initialize(gl as WebGL2RenderingContext, "hybrid")
+            shaderManager.prepareForMode("worker", null)
           }
           postMessage({ type: "success", id: message.id } as SuccessMessage)
         } catch {

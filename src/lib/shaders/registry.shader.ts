@@ -1,6 +1,6 @@
 import type { ShaderDescriptor } from "@/lib/shaders/types.shader"
 
-export class ShaderRegistryV2 {
+export class ShaderRegistry {
   private descriptors: Map<string, ShaderDescriptor> = new Map()
   private versionCounter = 1
 
@@ -31,4 +31,4 @@ export class ShaderRegistryV2 {
   }
 }
 
-export const GlobalShaderRegistryV2 = new ShaderRegistryV2()
+export const GlobalShaderRegistry = new ShaderRegistry()

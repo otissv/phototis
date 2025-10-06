@@ -4,12 +4,11 @@ import type { BlendMode } from "@/lib/shaders/blend-modes/types.blend"
 import type { ImageEditorToolsState } from "@/lib/tools/tools-state"
 import type { EditorLayer as Layer } from "@/lib/editor/state"
 import { RenderConfig } from "@/lib/renderer/render-config.renderer"
-// Removed: sampleToolsAtTime (we use memoized sampler)
 import { ShaderManager } from "@/lib/shaders/manager.shader"
-import { GlobalShaderRegistryV2 } from "@/lib/shaders/registry.shader"
-import { registerBuiltinShaders } from "@/lib/shaders/register-builtin.shader"
+import { GlobalShaderRegistry } from "@/lib/shaders/registry.shader"
 import { HybridPassGraphPipeline } from "@/lib/renderer/hybrid-pipeline.renderer"
 import { config } from "@/config"
+import type { ShaderDescriptor } from "@/lib/shaders/types.shader"
 
 export interface HybridRendererOptions {
   width: number
@@ -42,7 +41,7 @@ export class HybridRenderer {
     this.fboManager = new FBOManager()
   }
 
-  private shaderManagerV2: ShaderManager | null = null
+  private shaderManager: ShaderManager | null = null
   private passGraph: HybridPassGraphPipeline | null = null
   private colorSpaceFlag = 0 // 0=srgb,1=linear,2=display-p3
 
@@ -231,18 +230,17 @@ export class HybridRenderer {
     }
 
     // Initialize v2 shader manager and register builtins
-    this.shaderManagerV2 = new ShaderManager(GlobalShaderRegistryV2)
-    this.shaderManagerV2.initialize(this.gl as WebGL2RenderingContext, "hybrid")
-    registerBuiltinShaders()
+    this.shaderManager = new ShaderManager(GlobalShaderRegistry)
+    this.shaderManager.initialize(this.gl as WebGL2RenderingContext, "hybrid")
 
     // Compile compositing program using v2 compositor shader
-    const compositorShader = this.shaderManagerV2.getShader("compositor")
+    const compositorShader = this.shaderManager.getShader("compositor")
     if (!compositorShader) {
       console.error("Failed to get compositor shader from v2 system")
       return false
     }
 
-    const rt = this.shaderManagerV2.getActiveRuntime()
+    const rt = this.shaderManager.getActiveRuntime()
     const handle = rt.getOrCompileProgram({ shader: compositorShader })
     if (!handle) {
       console.error("Failed to compile compositor shader")
@@ -254,7 +252,7 @@ export class HybridRenderer {
     this.passGraph = new HybridPassGraphPipeline(
       gl,
       this.fboManager,
-      this.shaderManagerV2
+      this.shaderManager
     )
 
     // Create buffers
@@ -327,6 +325,15 @@ export class HybridRenderer {
     return true
   }
 
+  registerShaderDescriptors(
+    shaderDescriptors: Record<string, ShaderDescriptor>
+  ): void {
+    if (!this.shaderManager) return
+    for (const [_, descriptor] of Object.entries(shaderDescriptors)) {
+      this.shaderManager.registerShader(descriptor)
+    }
+  }
+
   setColorSpace(flag: number): void {
     this.colorSpaceFlag = flag
   }
@@ -342,7 +349,7 @@ export class HybridRenderer {
       { width: number; height: number; x: number; y: number }
     >
   ): WebGLTexture | null {
-    if (!this.gl || !this.shaderManagerV2) return null
+    if (!this.gl || !this.shaderManager) return null
 
     // Use the temp FBO for layer rendering
     const tempFBO = this.fboManager.getFBO("temp")
@@ -379,7 +386,7 @@ export class HybridRenderer {
     const layerY = layerDim?.y || 0
 
     // Use v2 pipeline instead of legacy program (render layer content via copy shader)
-    if (!this.shaderManagerV2 || !this.passGraph) return null
+    if (!this.shaderManager || !this.passGraph) return null
     const u_transform = this.computeTransformMat3(
       Number((toolsValues as any).scale || 1),
       Number((toolsValues as any).rotate || 0),
@@ -500,7 +507,7 @@ export class HybridRenderer {
     canvasWidth: number,
     canvasHeight: number
   ): WebGLTexture | null {
-    if (!this.gl || !this.shaderManagerV2 || !this.passGraph) return null
+    if (!this.gl || !this.shaderManager || !this.passGraph) return null
 
     const sx = Number((adjustmentTools as any).scale || 1)
     const rot = Number((adjustmentTools as any).rotate || 0)
@@ -684,7 +691,7 @@ export class HybridRenderer {
     canvasWidth: number,
     canvasHeight: number
   ): WebGLTexture | null {
-    if (!this.gl || !this.shaderManagerV2 || !this.passGraph) return null
+    if (!this.gl || !this.shaderManager || !this.passGraph) return null
 
     let lastTexture: WebGLTexture | null = baseTexture
     const u_transform = this.computeTransformMat3(1, 0, false, false)
@@ -748,7 +755,7 @@ export class HybridRenderer {
     canvasWidth: number,
     canvasHeight: number
   ): WebGLTexture | null {
-    if (!this.gl || !this.passGraph || !this.shaderManagerV2) return null
+    if (!this.gl || !this.passGraph || !this.shaderManager) return null
 
     const tex = this.passGraph.runSingle(
       {
@@ -1256,7 +1263,7 @@ void main() {
     >,
     playheadTime?: number
   ): void {
-    if (!this.gl || !this.shaderManagerV2 || !this.compositingProgram) {
+    if (!this.gl || !this.shaderManager || !this.compositingProgram) {
       return
     }
 
