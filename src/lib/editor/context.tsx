@@ -21,7 +21,8 @@ import {
   createEditorRuntimeState,
   assertInvariants,
 } from "@/lib/editor/state"
-import { HistoryManager, type Command } from "@/lib/editor/history"
+import type { Command } from "@/lib/commands/command"
+import { DagHistoryManager } from "@/lib/history/history-manager"
 import {
   AddLayerCommand,
   RemoveLayerCommand,
@@ -45,7 +46,7 @@ import {
   SetGlobalParametersCommand,
   UpdateGlobalLayerCommand,
   UpdateGlobalParameterCommand,
-} from "@/lib/editor/commands"
+} from "@/lib/commands/commands"
 import { initializeDefaultKeyframePlugins } from "@/lib/animation/plugins"
 import type { AdjustmentPlugin } from "../adjustments/registry"
 import { defaultToolValues, type ToolValueTypes } from "@/lib/tools/tools"
@@ -69,6 +70,7 @@ export type EditorContextValue = {
   renderType: "default" | "worker" | "hybrid"
   shaderDescriptors: Record<string, ShaderDescriptor>
   history: {
+    // Legacy transactional API
     begin: (name: string) => void
     push: (command: Command) => void
     end: (commit?: boolean) => void
@@ -82,6 +84,7 @@ export type EditorContextValue = {
         thumbnail?: string | null
         scope?: string
         timestamp?: number
+        commands?: Command[]
       }>
       future: Array<{
         label: string
@@ -92,7 +95,34 @@ export type EditorContextValue = {
       checkpoints: any[]
       counts: { past: number; future: number }
       usedBytes: number
+      transactionActive?: boolean
     }
+    setThumbnailProvider?: (
+      provider: (() => Promise<string | null> | string | null) | null
+    ) => void
+    // DAG API
+    getGraph: () => import("@/lib/history/types").HistoryGraph
+    head: () => import("@/lib/history/types").HeadRef
+    listBranches: () => Array<{ name: string; tip: string }>
+    createBranch: (name: string, at?: string) => void
+    renameBranch: (oldName: string, newName: string) => void
+    deleteBranch: (name: string) => void
+    checkout: (ref: { branch?: string; commitId?: string }) => Promise<void>
+    commit: (label?: string) => Promise<string>
+    cherryPick: (
+      commitId: string
+    ) => Promise<
+      | { ok: true }
+      | { ok: false; conflicts: import("@/lib/history/types").ConflictReport }
+    >
+    revert: (commitId: string) => Promise<void>
+    squash: (commitIds: string[]) => Promise<string>
+    label: (commitId: string, label: string) => void
+    gc: () => void
+    export: () => import("@/lib/history/types").SerializedHistory
+    import: (
+      payload: import("@/lib/history/types").SerializedHistory
+    ) => Promise<void>
   }
   addAdjustmentLayer: (
     adjustmentType: string,
@@ -240,7 +270,7 @@ export function EditorProvider({
 }): React.JSX.Element {
   const adjustmentPluginsMemoized = React.useMemo(() => {
     return adjustmentPlugins
-  }, [])
+  }, [adjustmentPlugins])
 
   const toolValues = React.useMemo(() => {
     let params: Record<string, ToolValueTypes> = defaultToolValues
@@ -262,9 +292,10 @@ export function EditorProvider({
     return shaders
   }, [adjustmentPluginsMemoized])
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: toolValues is stable for initialization; we don't want to recreate state
   const initialToolsState = React.useMemo(
     () => createInitialToolsState(toolValues),
-    [toolValues]
+    []
   )
 
   // Initialize keyframe plugin registry once
@@ -445,9 +476,9 @@ export function EditorProvider({
   }, [runtime.canonical])
 
   // History manager instance (stable across renders)
-  const historyRef = React.useRef<HistoryManager | null>(null)
+  const historyRef = React.useRef<DagHistoryManager | null>(null)
   if (!historyRef.current) {
-    historyRef.current = new HistoryManager(
+    historyRef.current = new DagHistoryManager(
       () => canonicalRef.current,
       (updater) =>
         setRuntime((prev) => {
@@ -457,8 +488,7 @@ export function EditorProvider({
         }),
       {
         maxBytes: 32 * 1024 * 1024,
-        coalesceWindowMs: 120,
-        autosaveOnTransactionEnd: true,
+        autosave: true,
         storageKey: "phototis:editor",
       }
     )
@@ -473,19 +503,18 @@ export function EditorProvider({
 
   // Load persisted document (if available) once
   React.useEffect(() => {
-    // TODO: Implement this
-    // ;(async () => {
-    //   try {
-    //     const saved = await loadDocument("phototis:editor")
-    //     if (saved) {
-    //       // Replace canonical state with persisted and rehydrate history
-    //       setRuntime((prev) => ({ ...prev, canonical: saved.state }))
-    //       historyRef.current?.rehydrate(saved.history)
-    //     }
-    //   } catch (e) {
-    //     console.warn("Failed to load persisted document", e)
-    //   }
-    // })()
+    ;(async () => {
+      try {
+        const adapter = await import("@/lib/history/persistence")
+        const loaded = await adapter.loadAutosaved("phototis:editor")
+        if (loaded.state) {
+          setRuntime((prev) => ({ ...prev, canonical: loaded.state as any }))
+        }
+        if (loaded.history) {
+          await historyRef.current?.import(loaded.history)
+        }
+      } catch {}
+    })()
   }, [])
 
   // Interval autosave and beforeunload safeguard
@@ -493,11 +522,12 @@ export function EditorProvider({
     const h = historyRef.current
     if (!h) return
     const interval = setInterval(() => {
-      void h.save("phototis:editor")
+      // autosave uses internal graph + current state
+      void (h as any).save?.("phototis:editor")
     }, 30000)
     const onBeforeUnload = () => {
       // best-effort sync save; localStorage is sync
-      void h.save("phototis:editor")
+      void (h as any).save?.("phototis:editor")
     }
     window.addEventListener("beforeunload", onBeforeUnload)
     return () => {
@@ -747,6 +777,7 @@ export function EditorProvider({
     []
   )
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: toolValues intentionally not a dep; sampled diff is computed inside
   const captureChangedTracksAtPlayhead = React.useCallback(
     (layerId: LayerId) => {
       const h = historyRef.current
@@ -1318,37 +1349,149 @@ export function EditorProvider({
         push: (cmd: Command) => historyRef.current?.push(cmd),
         end: (commit?: boolean) =>
           historyRef.current?.endTransaction(commit ?? true),
-        undo: () => historyRef.current?.undo(),
-        redo: () => historyRef.current?.redo(),
-        canUndo: () => Boolean(historyRef.current?.canUndo),
-        canRedo: () => Boolean(historyRef.current?.canRedo),
-        inspect: () =>
-          historyRef.current?.inspect() ?? {
-            past: [],
+        undo: () => void historyRef.current?.undo(),
+        redo: () => void historyRef.current?.redo(),
+        canUndo: () => {
+          const g = historyRef.current?.getGraph()
+          if (!g) return false
+          const at = g.head.at
+          const c = g.commits[at]
+          return Boolean(c && c.parentIds.length > 0)
+        },
+        canRedo: () => {
+          const g = historyRef.current?.getGraph()
+          if (!g) return false
+          const at = g.head.at
+          const children = g.children[at] || []
+          return children.length === 1
+        },
+        inspect: () => {
+          const g = historyRef.current?.getGraph()
+          if (!g) {
+            return {
+              past: [],
+              future: [],
+              checkpoints: [],
+              counts: { past: 0, future: 0 },
+              usedBytes: 0,
+            }
+          }
+          // Build linearized past from root to HEAD along first-parent lineage
+          const collect = (): string[] => {
+            const seq: string[] = []
+            let cur = g.head.at
+            while (cur) {
+              seq.push(cur)
+              const p = g.commits[cur]?.parentIds?.[0]
+              if (!p) break
+              cur = p
+            }
+            return seq.reverse()
+          }
+          const ids = collect()
+          const past = ids.map((id) => {
+            const c = g.commits[id]
+            return {
+              label: c?.label || "Commit",
+              thumbnail: c?.thumbnail,
+              timestamp: c?.timestamp,
+              scope: "global",
+              commands: c?.commands as any,
+            }
+          })
+          return {
+            past,
             future: [],
             checkpoints: [],
-            counts: { past: 0, future: 0 },
+            counts: { past: past.length, future: 0 },
             usedBytes: 0,
-            commands: [],
-          },
-        addCheckpoint: (name: string) =>
-          historyRef.current?.addCheckpoint(name),
-        jumpToCheckpoint: (id: string) =>
-          historyRef.current?.jumpToCheckpoint(id),
-        clearHistory: () => historyRef.current?.clearHistory(),
-        clearRedo: () => historyRef.current?.clearRedo(),
-        setMaxBytes: (bytes: number) => historyRef.current?.setMaxBytes(bytes),
-        setThumbnailProvider: (
-          provider: (() => Promise<string | null> | string | null) | null
-        ) => historyRef.current?.setThumbnailProvider(provider),
-        isTransactionActive: () =>
-          Boolean(historyRef.current?.isTransactionActive),
-        deleteStepsBeforeIndex: (idx: number) =>
-          historyRef.current?.deleteStepsBeforeIndex(idx),
-        deleteStepsAfterIndex: (idx: number) =>
-          historyRef.current?.deleteStepsAfterIndex(idx),
-        exportDocumentAtIndex: (idx: number) =>
-          historyRef.current?.exportDocumentAtIndex(idx),
+            transactionActive: false,
+          }
+        },
+        setThumbnailProvider: (provider) =>
+          historyRef.current?.setThumbnailProvider(provider),
+        // DAG API
+        getGraph: () =>
+          historyRef.current
+            ? historyRef.current.getGraph()
+            : {
+                commits: {},
+                branches: {},
+                children: {},
+                head: { type: "detached", at: "" },
+                protected: { commits: new Set(), branches: new Set() },
+              },
+        head: () =>
+          historyRef.current
+            ? historyRef.current.head()
+            : { type: "detached", at: "" },
+        listBranches: () =>
+          historyRef.current ? historyRef.current.listBranches() : [],
+        createBranch: (name: string, at?: string) =>
+          historyRef.current?.createBranch(name, at),
+        renameBranch: (oldName: string, newName: string) =>
+          historyRef.current?.renameBranch(oldName, newName),
+        deleteBranch: (name: string) => historyRef.current?.deleteBranch(name),
+        checkout: (ref) =>
+          historyRef.current
+            ? historyRef.current.checkout(ref)
+            : Promise.resolve(),
+        commit: (label?: string) =>
+          historyRef.current
+            ? historyRef.current.commit(label)
+            : Promise.resolve(""),
+        cherryPick: (commitId: string) =>
+          historyRef.current
+            ? historyRef.current.cherryPick(commitId)
+            : Promise.resolve({ ok: true }),
+        revert: (commitId: string) =>
+          historyRef.current
+            ? historyRef.current.revert(commitId)
+            : Promise.resolve(),
+        squash: (commitIds: string[]) =>
+          historyRef.current
+            ? historyRef.current.squash(commitIds)
+            : Promise.resolve(""),
+        label: (commitId: string, label: string) =>
+          historyRef.current?.label(commitId, label),
+        gc: () => historyRef.current?.gc(),
+        setRetention: (settings: {
+          keepUnreachableCount?: number
+          keepUnreachableDays?: number
+        }) => (historyRef.current as any)?.setRetention?.(settings),
+        setAutoCreateBranchOnDetached: (auto: boolean) =>
+          (historyRef.current as any)?.setAutoCreateBranchOnDetached?.(auto),
+        export: () =>
+          historyRef.current
+            ? historyRef.current.export()
+            : {
+                version: 1,
+                schema: "phototis.history.v1",
+                savedAt: Date.now(),
+                graph: {
+                  commits: {},
+                  branches: {},
+                  children: {},
+                  head: { type: "detached", at: "" },
+                  protected: { commits: [], branches: [] },
+                },
+              },
+        import: (payload) =>
+          historyRef.current
+            ? historyRef.current.import(payload)
+            : Promise.resolve(),
+        merge: (args: { ours: string; theirs: string; label?: string }) =>
+          historyRef.current
+            ? historyRef.current.merge(args)
+            : Promise.resolve(""),
+        materializeAt: (id: string) =>
+          historyRef.current
+            ? historyRef.current.materializeAt(id)
+            : Promise.resolve(),
+        replayDelta: (fromId: string, toId: string) =>
+          historyRef.current
+            ? historyRef.current.replayDelta(fromId, toId)
+            : Promise.resolve(),
       },
       addAdjustmentLayer,
       addEmptyLayer,
@@ -1367,7 +1510,7 @@ export function EditorProvider({
       reorderLayer,
       reorderLayers,
       rotateDocument,
-      save: () => historyRef.current?.save().catch(() => {}),
+      save: () => (historyRef.current as any)?.save?.().catch(() => {}),
       selectLayer,
       selectLayerNonUndoable,
       setActiveTool,

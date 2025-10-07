@@ -608,6 +608,8 @@ export function ImageEditorCanvas({
   // Container ref for viewport calculations
   const containerRef = useRef<HTMLDivElement>(null)
   const overlayRef = useRef<HTMLCanvasElement>(null)
+  const thumbPreviewRef = useRef<HTMLDivElement | null>(null)
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Crop tool interaction state (canvas-space pixel coords)
   const [cropRect, setCropRect] = useState<{
@@ -1828,6 +1830,48 @@ export function ImageEditorCanvas({
   }, [isWorkerReady, canonicalLayers.length, triggerDraw])
 
   // Drag and drop handlers
+  // Accessible DAG thumbnail hover handling (event-based)
+  useEffect(() => {
+    const onHover = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { commitId: string }
+      if (!detail) return
+      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
+      hoverTimerRef.current = setTimeout(() => {
+        const div = document.createElement("div")
+        div.setAttribute("role", "img")
+        div.setAttribute("aria-label", "History thumbnail preview")
+        div.className =
+          "fixed bottom-4 right-4 w-32 h-32 rounded border bg-center bg-cover z-50"
+        try {
+          const graph = (window as any)?.$graph as any
+          const thumb = graph?.commits?.[detail.commitId]?.thumbnail
+          if (thumb) div.style.backgroundImage = `url(${thumb})`
+        } catch {}
+        document.body.appendChild(div)
+        thumbPreviewRef.current = div
+      }, 100)
+    }
+    const onHoverEnd = () => {
+      if (hoverTimerRef.current) {
+        clearTimeout(hoverTimerRef.current)
+        hoverTimerRef.current = null
+      }
+      const div = thumbPreviewRef.current
+      if (div?.parentElement) div.parentElement.removeChild(div)
+      thumbPreviewRef.current = null
+    }
+    window.addEventListener("phototis:history-hover", onHover as any)
+    window.addEventListener("phototis:history-hover-end", onHoverEnd)
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onHoverEnd()
+    }
+    window.addEventListener("keydown", onKey)
+    return () => {
+      window.removeEventListener("phototis:history-hover", onHover as any)
+      window.removeEventListener("phototis:history-hover-end", onHoverEnd)
+      window.removeEventListener("keydown", onKey)
+    }
+  }, [])
   // drag-over handled by crop/move hooks; keep placeholder if needed later
 
   useCrop({

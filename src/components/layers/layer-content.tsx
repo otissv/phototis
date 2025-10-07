@@ -28,7 +28,7 @@ import {
   AddLayerCommand,
   RemoveLayerCommand,
   UpdateLayerCommand,
-} from "@/lib/editor/commands"
+} from "@/lib/commands/commands"
 import { getAdjustmentIcon } from "@/components/layers/adjustment.layer"
 import { ListChevronsUpDown } from "@/ui/icons/list-chevrons-up-down"
 import { ListChevronsDownUp } from "@/ui/icons/list-chevrons-down-up"

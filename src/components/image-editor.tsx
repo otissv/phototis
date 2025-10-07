@@ -14,7 +14,7 @@ import {
   imageEditorToolsReducer,
   type ImageEditorToolsActions,
 } from "@/lib/tools/tools-state"
-import { SetActiveToolCommand } from "@/lib/editor/commands"
+import { SetActiveToolCommand } from "@/lib/commands/commands"
 import { EditorProvider, useEditorContext } from "@/lib/editor/context"
 import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover"
 import { ImageEditorPanels } from "@/components/panels"
@@ -24,7 +24,7 @@ import { getImageDimensions } from "@/lib/utils/get-image-dimensions"
 import { config } from "@/config"
 import { capitalize } from "@/lib/utils/capitalize"
 import { sampleToolsAtTime } from "@/lib/tools/tools-state"
-import { TimelinePanel } from "./timeline/timeline-panel"
+// import { TimelinePanel } from "./timeline/timeline-panel"
 import type { AdjustmentPlugin } from "@/lib/adjustments/registry"
 
 const { isDebug } = config()
@@ -229,6 +229,46 @@ function ImageEditorInner({
         history.undo()
         return
       }
+
+      // Branch switcher: Ctrl/Cmd+Shift+B
+      if (meta && shift && key.toLowerCase() === "b") {
+        e.preventDefault()
+        try {
+          // Simple prompt switcher for now (UI dropdown exists in panel)
+          const branches = (history as any).listBranches?.() as Array<{
+            name: string
+            tip: string
+          }>
+          const names = (branches || []).map((b) => b.name).join(", ")
+          const sel = prompt(`Switch branch (available: ${names})`)
+          if (sel) (history as any).checkout?.({ branch: sel })
+        } catch {}
+        return
+      }
+
+      // New branch from here: Ctrl/Cmd+B
+      if (meta && !shift && key.toLowerCase() === "b") {
+        e.preventDefault()
+        try {
+          const name = prompt(
+            "New branch name",
+            `branch-${Date.now().toString(36)}`
+          )
+          if (name) (history as any).createBranch?.(name)
+        } catch {}
+        return
+      }
+
+      // Label current commit: Ctrl/Cmd+L
+      if (meta && key.toLowerCase() === "l") {
+        e.preventDefault()
+        try {
+          const head = (history as any).head?.()
+          const name = prompt("Label current commit", "Label")
+          if (head?.at && name) (history as any).label?.(head.at, name)
+        } catch {}
+        return
+      }
       if (
         meta &&
         ((shift && (key === "z" || key === "Z")) || key.toLowerCase() === "y")
@@ -373,7 +413,8 @@ function ImageEditorInner({
           selectedLayer?.type === "document" && "border-blue-500 border-2"
         )}
       >
-        <div className='relative'>
+        <div className='relative w-full flex items-center justify-between px-2 py-1'>
+          {/* Branch indicator / dropdown */}
           <ImageEditorCanvas
             onProgress={handleOnProgress}
             id={`image-editor-canvas-${id}`}
@@ -401,6 +442,11 @@ function ImageEditorInner({
         canvasRef={canvasRef}
         drawFnRef={drawFnRef}
       />
+
+      {/* Footer branch indicator */}
+      <div className='hidden lg:block lg:col-start-3 lg:row-start-3 p-2'>
+        <BranchIndicator />
+      </div>
 
       <ZoomControls
         className='lg:col-start-1 lg:row-start-3'
@@ -440,6 +486,55 @@ function ImageEditorInner({
           }
         />
       </div>
+    </div>
+  )
+}
+function BranchIndicator() {
+  const { history } = useEditorContext()
+  const head = (history as any).head?.()
+  const branches = (history as any).listBranches?.() as Array<{
+    name: string
+    tip: string
+  }>
+  const current =
+    head?.type === "branch" ? head?.name || "DETACHED" : "DETACHED"
+  return (
+    <div className='flex items-center gap-2 text-xs'>
+      <span className='px-2 py-0.5 rounded bg-black/60 text-white'>
+        {current || "DETACHED"}
+      </span>
+      <select
+        className='px-1 py-0.5 rounded border bg-white/90 text-black'
+        aria-label='Switch branch'
+        value={current || "DETACHED"}
+        onChange={(e) => {
+          const val = e.target.value
+          if (val === "DETACHED") return
+          void (history as any).checkout?.({ branch: val })
+        }}
+      >
+        {(branches || []).map((b) => (
+          <option key={b.name} value={b.name}>
+            {b.name}
+          </option>
+        ))}
+        {current !== "DETACHED" ? null : (
+          <option value='DETACHED'>DETACHED</option>
+        )}
+      </select>
+      <button
+        type='button'
+        className='underline'
+        onClick={() => {
+          const name = prompt(
+            "New branch name",
+            `branch-${Date.now().toString(36)}`
+          )
+          if (name) (history as any).createBranch?.(name)
+        }}
+      >
+        New
+      </button>
     </div>
   )
 }

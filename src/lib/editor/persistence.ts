@@ -1,6 +1,6 @@
 import type { CanonicalEditorState } from "@/lib/editor/state"
 import { validateEditorState } from "@/lib/editor/state"
-import type { SerializedCommand } from "@/lib/editor/commands"
+import type { SerializedCommand } from "@/lib/commands/commands"
 // No migration layer; documents must be canonical
 
 export interface SerializedHistoryEntry {

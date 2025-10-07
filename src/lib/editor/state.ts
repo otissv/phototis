@@ -529,6 +529,64 @@ export function assertInvariants(state: CanonicalEditorState): void {
   }
 }
 
+// Time-travel helpers used by DAG replayer
+export type ReplayResult = { ok: true } | { ok: false; error: string }
+
+export function materializeAt(
+  start: CanonicalEditorState,
+  apply: (s: CanonicalEditorState) => CanonicalEditorState
+): { state: CanonicalEditorState; result: ReplayResult } {
+  try {
+    const next = apply(start)
+    assertInvariants(next)
+    return { state: next, result: { ok: true } }
+  } catch (e) {
+    return { state: start, result: { ok: false, error: (e as Error).message } }
+  }
+}
+
+export function undoTo(
+  start: CanonicalEditorState,
+  inverses: Array<(s: CanonicalEditorState) => CanonicalEditorState>
+): { state: CanonicalEditorState; result: ReplayResult } {
+  try {
+    let cur = start
+    for (const inv of inverses) {
+      cur = inv(cur)
+    }
+    assertInvariants(cur)
+    return { state: cur, result: { ok: true } }
+  } catch (e) {
+    return { state: start, result: { ok: false, error: (e as Error).message } }
+  }
+}
+
+export function redoTo(
+  start: CanonicalEditorState,
+  forwards: Array<(s: CanonicalEditorState) => CanonicalEditorState>
+): { state: CanonicalEditorState; result: ReplayResult } {
+  try {
+    let cur = start
+    for (const f of forwards) {
+      cur = f(cur)
+    }
+    assertInvariants(cur)
+    return { state: cur, result: { ok: true } }
+  } catch (e) {
+    return { state: start, result: { ok: false, error: (e as Error).message } }
+  }
+}
+
+export function replayDelta(
+  start: CanonicalEditorState,
+  inverses: Array<(s: CanonicalEditorState) => CanonicalEditorState>,
+  forwards: Array<(s: CanonicalEditorState) => CanonicalEditorState>
+): { state: CanonicalEditorState; result: ReplayResult } {
+  const u = undoTo(start, inverses)
+  if (!u.result.ok) return u
+  return redoTo(u.state, forwards)
+}
+
 /**
  * Mutation helpers (pure, return new state) that preserve invariants.
  */

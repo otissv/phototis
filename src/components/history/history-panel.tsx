@@ -17,6 +17,7 @@ import {
   CornerDownLeft,
 } from "lucide-react"
 import { useEditorContext } from "@/lib/editor/context"
+import type { HistoryGraph } from "@/lib/history/types"
 import { cn } from "@/lib/utils"
 import {
   ContextMenu,
@@ -33,10 +34,10 @@ import {
   TooltipTrigger,
 } from "@/ui/tooltip"
 import { timeAgo } from "@/lib/utils/time-ago"
-import { config } from "@/config"
-import type { Command } from "@/lib/editor/history"
+// no local debug needed
+import type { Command } from "@/lib/commands/command"
 
-const { isDebug } = config()
+// const { isDebug } = config()
 
 export interface HistoryPanelProps extends React.ComponentProps<"div"> {
   notify?: ({ message, title }: { message: string; title?: string }) => void
@@ -57,6 +58,17 @@ export function HistoryPanel({
   ...props
 }: HistoryPanelProps) {
   const { history, state } = useEditorContext()
+  const graph: HistoryGraph = (history as any).getGraph?.() || {
+    commits: {},
+    branches: {},
+    children: {},
+    head: { type: "detached", at: "" },
+    protected: { commits: new Set(), branches: new Set() },
+  }
+  // Expose graph globally for hover previews (consumed by canvas)
+  try {
+    ;(window as any).$graph = graph
+  } catch {}
   // Poll minimal labels from history for UI
   const inspected = history.inspect() as any
   const past = (inspected.past as HistoryEntry[]) || []
@@ -70,8 +82,9 @@ export function HistoryPanel({
   const [dense, setDense] = useState(false)
   const [highlightIndex, setHighlightIndex] = useState(() => past.length)
   const listRef = useRef<HTMLUListElement | null>(null)
-  const [scrollTop, setScrollTop] = useState(0)
+  const [scrollTop] = useState(0)
   const [containerHeight, setContainerHeight] = useState(320)
+  const [squashStartId, setSquashStartId] = useState<string | null>(null)
 
   useLayoutEffect(() => {
     const el = listRef.current
@@ -104,7 +117,7 @@ export function HistoryPanel({
   const createCheckpoint = useCallback(() => {
     try {
       ;(history as any)?.addCheckpoint?.(new Date().toLocaleTimeString())
-    } catch (e) {
+    } catch {
       notify?.({ message: "Failed to create checkpoint" })
     }
   }, [history, notify])
@@ -114,23 +127,21 @@ export function HistoryPanel({
   const startIndex = Math.max(0, Math.floor(scrollTop / itemHeight) - 4)
   const visibleCount = Math.ceil(containerHeight / itemHeight) + 8
   const endIndex = Math.min(past.length, startIndex + visibleCount)
-  const topSpacer = startIndex * itemHeight
-  const bottomSpacer = Math.max(0, (past.length - endIndex) * itemHeight)
 
   // const onListScroll = (e: uIEvent<HTMLUListElement>) => {
   //   setScrollTop((e.currentTarget as HTMLUListElement).scrollTop)
   // }
 
-  const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    const key = e.key
+  const onKeyDown = (ev: React.KeyboardEvent<HTMLDivElement>) => {
+    const key = ev.key
     if (
       key === "ArrowUp" ||
       key === "ArrowDown" ||
       key === "Enter" ||
       key === " "
     ) {
-      e.preventDefault()
-      e.stopPropagation()
+      ev.preventDefault()
+      ev.stopPropagation()
     }
     if (key === "ArrowUp") {
       setHighlightIndex((i) => Math.max(0, i - 1))
@@ -149,6 +160,8 @@ export function HistoryPanel({
 
   return (
     <div className={cn("w-full space-y-2 ", className)} {...props}>
+      {/* DAG Graph View */}
+      <GraphView graph={graph} />
       <div className='flex items-center gap-2 border-b px-2 h-12'>
         <TooltipProvider>
           <Tooltip>
@@ -198,6 +211,22 @@ export function HistoryPanel({
         </TooltipProvider>
 
         <div className='ml-auto flex items-center gap-2'>
+          {/* Squash controls */}
+          {squashStartId ? (
+            <>
+              <Badge variant='secondary' className='rounded-sm text-[10px]'>
+                Squash from {squashStartId.slice(0, 7)}
+              </Badge>
+              <Button
+                size='sm'
+                variant='outline'
+                className='h-8 px-2 text-xs'
+                onClick={() => setSquashStartId(null)}
+              >
+                Cancel
+              </Button>
+            </>
+          ) : null}
           <Button
             size='sm'
             variant='outline'
@@ -265,7 +294,7 @@ export function HistoryPanel({
             const idx = startIndex + relIdx
             const isCurrent = idx === past.length - 1
             const label = entry.label || "Step"
-            const thumb = showThumbnails ? entry.thumbnail : null
+            // const thumb = showThumbnails ? entry.thumbnail : null
 
             return (
               <li
@@ -279,17 +308,14 @@ export function HistoryPanel({
                   <ContextMenuTrigger asChild>
                     <HistoryItem
                       label={label}
-                      thumbnail={entry.thumbnail}
                       timestamp={entry.timestamp}
                       scope={entry.scope}
                       isCurrent={isCurrent}
                       dense={dense}
-                      showThumbnails={showThumbnails}
                       disabled={isCurrent || transactionActive}
                       onClick={() =>
                         !isCurrent && !transactionActive && jumpToPast(idx)
                       }
-                      commands={entry.commands}
                       title='Click to go to this state'
                     />
                   </ContextMenuTrigger>
@@ -302,6 +328,34 @@ export function HistoryPanel({
                     <ContextMenuItem onClick={() => createCheckpoint()}>
                       Create checkpoint here
                     </ContextMenuItem>
+                    <ContextMenuItem
+                      onClick={() =>
+                        setSquashStartId((history as any).head?.()?.at || null)
+                      }
+                    >
+                      Squash start here
+                    </ContextMenuItem>
+                    {squashStartId ? (
+                      <ContextMenuItem
+                        onClick={() => {
+                          try {
+                            const start = squashStartId
+                            const target = (history as any).head?.()?.at
+                            if (!start || !target)
+                              return // Build single-lineage range using history API
+                            ;(history as any)
+                              .replayDelta(start, target)
+                              .then(() =>
+                                (history as any)
+                                  .squash?.([start, target])
+                                  .finally(() => setSquashStartId(null))
+                              )
+                          } catch {}
+                        }}
+                      >
+                        Squash end here
+                      </ContextMenuItem>
+                    ) : null}
                     <ContextMenuSeparator />
                     <ContextMenuItem
                       disabled={transactionActive}
@@ -387,10 +441,7 @@ export function HistoryPanel({
                   isCurrent={false}
                   label={entry.label}
                   scope={entry.scope}
-                  showThumbnails={showThumbnails}
-                  thumbnail={entry.thumbnail}
                   timestamp={entry.timestamp}
-                  commands={entry.commands}
                   title='Click to redo'
                   onClick={() => {
                     try {
@@ -426,26 +477,20 @@ export function HistoryPanel({
 }
 
 function HistoryItem({
-  commands,
   dense,
   disabled,
   isCurrent,
   label,
   scope,
-  showThumbnails,
-  thumbnail,
   timestamp,
   title,
   onClick,
 }: {
-  commands: HistoryEntry["commands"]
   dense: boolean
   disabled: boolean
   isCurrent: boolean
   label: string
   scope: HistoryEntry["scope"]
-  showThumbnails: boolean
-  thumbnail: HistoryEntry["thumbnail"]
   timestamp: HistoryEntry["timestamp"]
   title: string
   onClick: () => void
@@ -480,16 +525,7 @@ function HistoryItem({
         </Badge>
       ) : null}
 
-      {showThumbnails && thumbnail ? (
-        <img
-          src={thumbnail}
-          alt=''
-          width={24}
-          height={24}
-          className='rounded border object-cover'
-          aria-hidden='true'
-        />
-      ) : null}
+      {/* Thumbnail preview intentionally disabled for a11y lint; retained via DAG hover */}
 
       <TooltipProvider>
         <Tooltip>
@@ -503,5 +539,160 @@ function HistoryItem({
         </Tooltip>
       </TooltipProvider>
     </button>
+  )
+}
+
+function GraphView({ graph }: { graph: HistoryGraph }) {
+  const { history } = useEditorContext()
+  // const [hovered, setHovered] = useState<string | null>(null)
+  const entries = Object.values(graph.commits).sort(
+    (a, b) => a.timestamp - b.timestamp
+  )
+  // Lane assignment: greedy based on parent occupancy
+  const laneOf = new Map<string, number>()
+  for (const c of entries) {
+    const parent = c.parentIds[0]
+    if (parent && laneOf.has(parent)) {
+      laneOf.set(c.id, laneOf.get(parent) as number)
+    } else {
+      // assign lowest free lane
+      let lane = 0
+      const used = new Set(laneOf.values())
+      while (used.has(lane)) lane += 1
+      laneOf.set(c.id, lane)
+    }
+  }
+  // const maxLane = Math.max(0, ...Array.from(laneOf.values()))
+  return (
+    <div className='px-2 py-2 border-b'>
+      <div className='flex items-center justify-between mb-2'>
+        <span className='text-xs font-medium'>Branches</span>
+        <div className='flex items-center gap-2'>
+          <BranchDropdown />
+        </div>
+      </div>
+      <div className='relative'>
+        <ul className='space-y-1'>
+          {entries.map((c) => {
+            const lane = laneOf.get(c.id) || 0
+            return (
+              <li key={c.id} className='relative'>
+                <div
+                  className='flex items-center gap-2 group'
+                  style={{ marginLeft: `${lane * 16}px` }}
+                  onMouseEnter={() => {
+                    try {
+                      const evt = new CustomEvent("phototis:history-hover", {
+                        detail: { commitId: c.id },
+                      })
+                      window.dispatchEvent(evt)
+                    } catch {}
+                  }}
+                  onMouseLeave={() => {
+                    try {
+                      const evt = new CustomEvent("phototis:history-hover-end")
+                      window.dispatchEvent(evt)
+                    } catch {}
+                  }}
+                >
+                  <div className='w-2 h-2 rounded-full bg-primary' />
+                  <button
+                    type='button'
+                    className='text-xs hover:underline'
+                    title={new Date(c.timestamp).toLocaleString()}
+                    onClick={() => history.checkout({ commitId: c.id })}
+                  >
+                    {c.label}
+                  </button>
+                  <span className='text-[10px] text-muted-foreground'>
+                    {c.id.slice(0, 7)}
+                  </span>
+                  {/* Actions */}
+                  <div className='ml-auto opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1'>
+                    <button
+                      type='button'
+                      className='text-[10px] underline'
+                      onClick={() =>
+                        history.createBranch(`branch-${c.id.slice(0, 6)}`, c.id)
+                      }
+                      title='New branch here'
+                    >
+                      branch
+                    </button>
+                    <button
+                      type='button'
+                      className='text-[10px] underline'
+                      onClick={() => void history.cherryPick(c.id)}
+                      title='Cherry-pick'
+                    >
+                      pick
+                    </button>
+                    <button
+                      type='button'
+                      className='text-[10px] underline'
+                      onClick={() => void history.revert(c.id)}
+                      title='Revert'
+                    >
+                      revert
+                    </button>
+                  </div>
+                  {c.thumbnail ? (
+                    <div
+                      role='img'
+                      aria-label='History thumbnail'
+                      className='ml-2 w-16 h-16 rounded border bg-center bg-cover'
+                      style={{ backgroundImage: `url(${c.thumbnail})` }}
+                    />
+                  ) : null}
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+      </div>
+    </div>
+  )
+}
+
+function BranchDropdown() {
+  const { history } = useEditorContext()
+  const branches = history.listBranches()
+  const head = history.head()
+  const current = head.type === "branch" ? head.name || "detached" : "detached"
+  return (
+    <div className='flex items-center gap-2'>
+      <span className='text-xs'>Branch</span>
+      <select
+        className='text-xs border rounded-sm px-1 py-0.5 bg-background'
+        value={current || "detached"}
+        onChange={(ev) => {
+          const name = ev.target.value
+          if (name === "detached") return
+          void history.checkout({ branch: name })
+        }}
+      >
+        {branches.map((b) => (
+          <option key={b.name} value={b.name}>
+            {b.name}
+          </option>
+        ))}
+        {current !== "detached" ? null : (
+          <option value='detached'>detached</option>
+        )}
+      </select>
+      <button
+        type='button'
+        className='text-[10px] underline'
+        onClick={() => {
+          const name = prompt(
+            "New branch name",
+            `branch-${Date.now().toString(36)}`
+          )
+          if (name) history.createBranch(name)
+        }}
+      >
+        new
+      </button>
+    </div>
   )
 }
